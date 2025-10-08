@@ -291,15 +291,28 @@ void Process()
    
    double lots = CalcLotsByRisk(s, riskPrice);
    
-   // Journaliser les niveaux
+   // Calculer le ratio risque/récompense (RR)
+   double entryPrice = isBuy ? ask : bid;
+   double reward = isBuy ? (tp - entryPrice) : (entryPrice - tp);
+   double risk = isBuy ? (entryPrice - sl) : (sl - entryPrice);
+   double rr = (risk > 0) ? (reward / risk) : 0;
+   
+   // Journaliser les niveaux avec RR
    string dirStr = isBuy ? "BUY" : "SELL";
-   LogMessage("Signal " + dirStr + " détecté - SL: " + DoubleToString(sl, 5) + ", TP: " + DoubleToString(tp, 5));
+   LogMessage("Signal " + dirStr + " détecté - Entry: " + DoubleToString(entryPrice, 5) + 
+              ", SL: " + DoubleToString(sl, 5) + 
+              ", TP: " + DoubleToString(tp, 5) + 
+              ", RR: 1:" + DoubleToString(rr, 2) + 
+              ", Lots: " + DoubleToString(lots, 2));
+   
+   // Préparer le commentaire avec RR
+   string orderComment = "BB Outside " + dirStr + " | RR:1:" + DoubleToString(rr, 2);
    
    // Ouvrir la position
    if(isBuy){ // BUY
-      if(lots>0) OpenBuyPosition(trade, s, lots, ask, sl, tp, "BB Outside BUY");
+      if(lots>0) OpenBuyPosition(trade, s, lots, ask, sl, tp, orderComment);
    } else {   // SELL
-      if(lots>0) OpenSellPosition(trade, s, lots, bid, sl, tp, "BB Outside SELL");
+      if(lots>0) OpenSellPosition(trade, s, lots, bid, sl, tp, orderComment);
    }
 }
 void ManageOpenPositions(const string s)
