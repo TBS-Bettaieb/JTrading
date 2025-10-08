@@ -19,8 +19,11 @@ input int      BB_Period           = 20;                 // Période Bollinger
 input double   BB_Dev              = 2.0;                // Déviation
 input int      BB_Shift            = 0;                  // Shift
 
-// RSI (indicateur supplémentaire, non utilisé dans la stratégie)
+// RSI (filtre de confirmation)
+input bool     Use_RSI_Filter      = false;              // Activer filtre RSI
 input int      RSI_Period          = 14;                 // Période RSI
+input double   RSI_Oversold        = 29.0;               // RSI survente (pour BUY)
+input double   RSI_Overbought      = 71.0;               // RSI surachat (pour SELL)
 
 // Entrée
 enum EntryMode { REVERSION=0, BREAKOUT=1 };
@@ -247,14 +250,48 @@ int SignalFromClosedBarStrict()
    bool outsideBearAbove = isAboveBand && red;
    bool outsideBullBelow = isBelowBand && green;
 
+   // Déterminer le signal potentiel
+   int signal = 0;
    if(Mode==REVERSION){
-      if(outsideBearAbove) return -1; // SELL
-      if(outsideBullBelow) return +1; // BUY
+      if(outsideBearAbove) signal = -1; // SELL
+      if(outsideBullBelow) signal = +1; // BUY
    }else{
-      if(isAboveBand) return +1;      // BUY breakout
-      if(isBelowBand) return -1;      // SELL breakout
+      if(isAboveBand) signal = +1;      // BUY breakout
+      if(isBelowBand) signal = -1;      // SELL breakout
    }
-   return 0;
+   
+   // Si pas de signal, retourner 0
+   if(signal == 0) return 0;
+   
+   // Appliquer le filtre RSI si activé
+   if(Use_RSI_Filter) {
+      double rsiValue[];
+      if(CopyBuffer(hRSI, 0, 1, 1, rsiValue) < 1) {
+         LogMessage("Erreur lors de la récupération du RSI");
+         return 0;
+      }
+      
+      double currentRSI = rsiValue[0];
+      LogMessage("RSI valeur: " + DoubleToString(currentRSI, 2));
+      
+      // Pour un signal BUY, vérifier que RSI est en survente
+      if(signal > 0 && currentRSI >= RSI_Oversold) {
+         LogMessage("Signal BUY rejeté - RSI " + DoubleToString(currentRSI, 2) + 
+                    " >= seuil oversold " + DoubleToString(RSI_Oversold, 2));
+         return 0;
+      }
+      
+      // Pour un signal SELL, vérifier que RSI est en surachat
+      if(signal < 0 && currentRSI <= RSI_Overbought) {
+         LogMessage("Signal SELL rejeté - RSI " + DoubleToString(currentRSI, 2) + 
+                    " <= seuil overbought " + DoubleToString(RSI_Overbought, 2));
+         return 0;
+      }
+      
+      LogMessage("Signal confirmé par RSI: " + DoubleToString(currentRSI, 2));
+   }
+   
+   return signal;
 }
 
 void Process()
