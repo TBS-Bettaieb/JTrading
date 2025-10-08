@@ -144,6 +144,16 @@ int OnInit()
    if(!InitIndicators(indicators, s, t, BB_Period, BB_Dev, BB_Shift, RSI_Period)) {
       return INIT_FAILED;
    }
+   
+   // Afficher les Bollinger Bands sur le graphe
+   if(!ChartIndicatorAdd(0, 0, indicators.BB)) {
+      Print("Attention: impossible d'afficher les Bollinger Bands sur le graphe");
+   }
+   
+   // Afficher le RSI dans une sous-fenêtre
+   if(!ChartIndicatorAdd(0, ChartWindowFind(), indicators.RSI)) {
+      Print("Attention: impossible d'afficher le RSI sur le graphe");
+   }
 
    trade.SetExpertMagicNumber((long)Magic);
    
