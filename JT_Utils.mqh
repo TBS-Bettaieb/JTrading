@@ -228,6 +228,117 @@ bool CalculateSwingSLTP(
    return true;
 }
 
+// Structure pour représenter une plage horaire
+struct HourRange {
+   int startHour;
+   int endHour;
+};
+
+// Vérifie si l'heure actuelle est autorisée selon le format de plage horaire spécifié
+// Exemple de formats: "8-10", "16", "8-10;16", "9-11;14-15;21-22"
+bool IsHourAllowedCustom(string hourRangeStr) {
+   if(hourRangeStr == "") return true; // Si vide, autorise toutes les heures
+   
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   int currentHour = dt.hour;
+   
+   // Séparer les différentes plages (séparées par des ";")
+   string ranges[];
+   int rangeCount = StringSplit(hourRangeStr, ';', ranges);
+   
+   for(int i = 0; i < rangeCount; i++) {
+      string range = ranges[i];
+      
+      // Vérifier s'il s'agit d'une plage (contient "-") ou d'une heure unique
+      int dashPos = StringFind(range, "-");
+      
+      if(dashPos > 0) {
+         // Format plage (ex: "8-10")
+         int startHour = (int)StringToInteger(StringSubstr(range, 0, dashPos));
+         int endHour = (int)StringToInteger(StringSubstr(range, dashPos + 1));
+         
+         // Vérifier si l'heure actuelle est dans cette plage
+         if(startHour < endHour) {
+            // Plage normale (ex: 8-10)
+            if(currentHour >= startHour && currentHour < endHour) {
+               return true;
+            }
+         } else if(startHour > endHour) {
+            // Plage qui traverse minuit (ex: 22-2)
+            if(currentHour >= startHour || currentHour < endHour) {
+               return true;
+            }
+         } else {
+            // startHour == endHour, vérifier uniquement cette heure
+            if(currentHour == startHour) {
+               return true;
+            }
+         }
+      } else {
+         // Format heure unique (ex: "16")
+         int hour = (int)StringToInteger(range);
+         if(currentHour == hour) {
+            return true;
+         }
+      }
+   }
+   
+   // Si aucune plage ne correspond à l'heure actuelle
+   return false;
+}
+
+// Fonction utilitaire pour extraire les plages horaires sous forme de structures
+// Cette fonction est utile si vous avez besoin de stocker les plages pour utilisation future
+bool ParseHourRanges(string hourRangeStr, HourRange &ranges[]) {
+   if(hourRangeStr == "") {
+      ArrayResize(ranges, 0);
+      return true;
+   }
+   
+   // Séparer les différentes plages (séparées par des ";")
+   string rangeStrings[];
+   int rangeCount = StringSplit(hourRangeStr, ';', rangeStrings);
+   
+   ArrayResize(ranges, rangeCount);
+   
+   for(int i = 0; i < rangeCount; i++) {
+      string range = rangeStrings[i];
+      
+      // Vérifier s'il s'agit d'une plage (contient "-") ou d'une heure unique
+      int dashPos = StringFind(range, "-");
+      
+      if(dashPos > 0) {
+         // Format plage (ex: "8-10")
+         ranges[i].startHour = (int)StringToInteger(StringSubstr(range, 0, dashPos));
+         ranges[i].endHour = (int)StringToInteger(StringSubstr(range, dashPos + 1));
+      } else {
+         // Format heure unique (ex: "16")
+         ranges[i].startHour = (int)StringToInteger(range);
+         ranges[i].endHour = ranges[i].startHour + 1; // L'heure de fin est exclusive
+      }
+      
+      // Validation basique des valeurs
+      if(ranges[i].startHour < 0 || ranges[i].startHour > 23 || 
+         ranges[i].endHour < 0 || ranges[i].endHour > 24) {
+         LogError("Format de plage horaire invalide: " + range);
+         return false;
+      }
+   }
+   
+   return true;
+}
+
+// Log de débogage pour les plages horaires
+void LogHourRanges(HourRange &ranges[], string prefix = "HourRanges") {
+   string rangesStr = "";
+   for(int i = 0; i < ArraySize(ranges); i++) {
+      if(i > 0) rangesStr += ", ";
+      rangesStr += IntegerToString(ranges[i].startHour) + "-" + IntegerToString(ranges[i].endHour);
+   }
+   LogMessage(prefix + ": " + rangesStr);
+}
+
 // Récupère la description d'une erreur
 string ErrorDescription(int errorCode) {
    switch(errorCode) {

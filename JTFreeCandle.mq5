@@ -38,12 +38,7 @@ input int      TP_Period           = 30;                 // Période pour TP (no
 
 // Time filter (allow trading only in specific hour ranges)
 input bool     UseTimeFilter       = true;               // Activer filtre horaire
-input int      Range1StartHour     = 1;                  // Début plage 1 (0-23)
-input int      Range1EndHour       = 1;                  // Fin plage 1 (0-23)
-input int      Range2StartHour     = 8;                  // Début plage 2 (0-23)
-input int      Range2EndHour       = 9;                  // Fin plage 2 (0-23)
-input int      Range3StartHour     = 16;                 // Début plage 3 (0-23)
-input int      Range3EndHour       = 23;                 // Fin plage 3 (0-23)
+input string   HourRanges          = "8-10;16";          // Plages horaires (ex: 8-10;16)
 
 // Position management
 input bool     Close_On_OppositeBand = true;             // Fermer si touche la bande opposée
@@ -81,12 +76,24 @@ bool NewBar(const string s, ENUM_TIMEFRAMES tf, datetime &last_time)
 
 bool IsHourAllowed()
 {
-   return IsHourAllowed(
-      UseTimeFilter, 
-      Range1StartHour, Range1EndHour,
-      Range2StartHour, Range2EndHour, 
-      Range3StartHour, Range3EndHour
-   );
+   if(!UseTimeFilter) return true;  // Si le filtre horaire est désactivé, toujours autoriser
+   
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   int currentHour = dt.hour;
+   
+   bool isAllowed = IsHourAllowedCustom(HourRanges);
+   
+   if(!isAllowed) {
+      // Ne pas afficher ce message à chaque tick pour éviter de spammer le journal
+      static int lastHourLogged = -1;
+      if(lastHourLogged != currentHour) {
+         LogMessage("Heure actuelle: " + IntegerToString(currentHour) + ":00 - Trading non autorisé selon les plages configurées: " + HourRanges);
+         lastHourLogged = currentHour;
+      }
+   }
+   
+   return isAllowed;
 }
 
 bool HaveOpenPos(const string s)
@@ -134,6 +141,18 @@ int OnInit()
    ArraySetAsSeries(up,true);  ArraySetAsSeries(mid,true); ArraySetAsSeries(lo,true);
 
    trade.SetExpertMagicNumber((long)Magic);
+   
+   // Afficher les plages horaires configurées
+   if(UseTimeFilter) {
+      // Parser les plages horaires pour vérification
+      HourRange ranges[];
+      if(ParseHourRanges(HourRanges, ranges)) {
+         LogHourRanges(ranges, "Plages horaires configurées");
+      } else {
+         LogError("Format de plage horaire invalide: " + HourRanges);
+         return INIT_PARAMETERS_INCORRECT;
+      }
+   }
    return INIT_SUCCEEDED;
 }
 
