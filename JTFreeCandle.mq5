@@ -35,6 +35,7 @@ input ulong    Magic               = 20251007;           // Magic
 // SL/TP basés sur swing points
 input int      SL_Period           = 50;                 // Période pour SL (nombre de bougies)
 input int      TP_Period           = 30;                 // Période pour TP (nombre de bougies)
+input double   Min_RR              = 2.0;                // Ratio risque/récompense minimum (0 = désactivé)
 
 // Time filter (allow trading only in specific hour ranges)
 input bool     UseTimeFilter       = true;               // Activer filtre horaire
@@ -304,6 +305,13 @@ void Process()
               ", TP: " + DoubleToString(tp, 5) + 
               ", RR: 1:" + DoubleToString(rr, 2) + 
               ", Lots: " + DoubleToString(lots, 2));
+   
+   // Vérifier le seuil RR minimum
+   if(Min_RR > 0 && rr < Min_RR) {
+      LogMessage("Trade rejeté - RR insuffisant: 1:" + DoubleToString(rr, 2) + 
+                 " < minimum requis: 1:" + DoubleToString(Min_RR, 2));
+      return;
+   }
    
    // Préparer le commentaire avec RR
    string orderComment = "BB Outside " + dirStr + " | RR:1:" + DoubleToString(rr, 2);
