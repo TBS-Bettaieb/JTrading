@@ -33,7 +33,6 @@ input double   ATR_SL_Mult         = 4;                // SL = ATR*mult
 input double   RR_TP               = 1.5;                // TP = RR * risque
 input bool     One_Pos_Per_Symbol  = true;               // 1 position par symbole
 input ulong    Magic               = 20251007;           // Magic
-input int      Slippage            = 10;                 // Slippage (points)
 
 // Time filter (allow trading only in specific hour ranges)
 input bool     UseTimeFilter       = true;               // Activer filtre horaire

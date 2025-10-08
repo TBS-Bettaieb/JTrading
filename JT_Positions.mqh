@@ -47,11 +47,12 @@ bool HasOpenPosition(
 bool ClosePosition(
    CTrade &trade,
    ulong ticket,
-   string comment = ""
+   string comment = "",
+   double slippage = 0
 ) {
    if(!PositionSelectByTicket(ticket)) return false;
    
-   return trade.PositionClose(ticket);
+   return trade.PositionClose(ticket, slippage);
 }
 
 // Modifie le SL/TP d'une position
