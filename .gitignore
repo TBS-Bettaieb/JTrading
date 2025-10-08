@@ -1,0 +1,25 @@
+# Compiled files
+*.ex4
+*.ex5
+
+# MetaEditor backups
+*.mq4.bak
+*.mq5.bak
+*.mqh.bak
+
+# MetaTrader logs and reports
+*.log
+*.htm
+*.gif
+
+# Temporary files
+*.tmp
+
+# Windows specific files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# User-specific files
+*.swp
+*.user
