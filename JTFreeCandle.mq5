@@ -135,7 +135,7 @@ int OnInit()
 {
    string s = Sym(); ENUM_TIMEFRAMES t = TF();
 
-   hBB  = iBands(s, t, BB_Period, BB_Dev, BB_Shift, PRICE_CLOSE);
+   hBB  = iBands(s, t, BB_Period,  BB_Shift, BB_Dev, PRICE_CLOSE);
    if(hBB==INVALID_HANDLE) return INIT_FAILED;
 
    ArraySetAsSeries(up,true);  ArraySetAsSeries(mid,true); ArraySetAsSeries(lo,true);
@@ -186,10 +186,11 @@ int SignalFromClosedBarStrict()
    double o=r[1].open, h=r[1].high, l=r[1].low, c=r[1].close;
 
    // Bandes à l'index 1 (mêmes bougies)
-   double u1[], m1[], l1[];
-   if(CopyBuffer(hBB,0,1,1,u1)<1) return 0;
-   if(CopyBuffer(hBB,1,1,1,m1)<1) return 0;
-   if(CopyBuffer(hBB,2,1,1,l1)<1) return 0;
+   // Buffer 0 = BASE_LINE (médiane), Buffer 1 = UPPER_BAND, Buffer 2 = LOWER_BAND
+   double m1[], u1[], l1[];
+   if(CopyBuffer(hBB,0,1,1,m1)<1) return 0;  // Ligne médiane
+   if(CopyBuffer(hBB,1,1,1,u1)<1) return 0;  // Bande supérieure
+   if(CopyBuffer(hBB,2,1,1,l1)<1) return 0;  // Bande inférieure
    double upper=u1[0], lower=l1[0];
 
    bool red   = (o>c);
@@ -303,14 +304,15 @@ void Process()
 }
 void ManageOpenPositions(const string s)
 {
-   // bandes 0 et 1
-   double u0[1], m0[1], l0[1], u1[1], m1[1], l1[1];
-   if(CopyBuffer(hBB,0,0,1,u0)<1) return;
-   if(CopyBuffer(hBB,1,0,1,m0)<1) return;
-   if(CopyBuffer(hBB,2,0,1,l0)<1) return;
-   if(CopyBuffer(hBB,0,1,1,u1)<1) return;
-   if(CopyBuffer(hBB,1,1,1,m1)<1) return;   // <- virgule OK
-   if(CopyBuffer(hBB,2,1,1,l1)<1) return;
+   // Bandes 0 et 1
+   // Buffer 0 = BASE_LINE (médiane), Buffer 1 = UPPER_BAND, Buffer 2 = LOWER_BAND
+   double m0[1], u0[1], l0[1], m1[1], u1[1], l1[1];
+   if(CopyBuffer(hBB,0,0,1,m0)<1) return;  // Médiane bougie 0
+   if(CopyBuffer(hBB,1,0,1,u0)<1) return;  // Bande sup bougie 0
+   if(CopyBuffer(hBB,2,0,1,l0)<1) return;  // Bande inf bougie 0
+   if(CopyBuffer(hBB,0,1,1,m1)<1) return;  // Médiane bougie 1
+   if(CopyBuffer(hBB,1,1,1,u1)<1) return;  // Bande sup bougie 1
+   if(CopyBuffer(hBB,2,1,1,l1)<1) return;  // Bande inf bougie 1
 
    double upper0=u0[0], middle0=m0[0], lower0=l0[0];
    double upper1=u1[0], middle1=m1[0], lower1=l1[0];
