@@ -129,3 +129,78 @@ bool IsNewBar(string symbol, ENUM_TIMEFRAMES timeframe, datetime &lastBarTime) {
    }
    return false;
 }
+
+// Détecte si une bougie est "libre" (en dehors des bandes de Bollinger)
+bool IsFreeCandle(
+   MqlRates &candle, 
+   double upperBand, 
+   double lowerBand, 
+   double paddingPoints = 0, 
+   bool bodyOnly = true
+) {
+   // Calculer la marge
+   double padding = paddingPoints * _Point;
+   
+   // Vérifier si la bougie est à l'extérieur des bandes
+   if(bodyOnly) {
+      // Vérifier uniquement le corps de la bougie
+      double bodyHigh = MathMax(candle.open, candle.close);
+      double bodyLow = MathMin(candle.open, candle.close);
+      
+      // Bougie au-dessus de la bande supérieure
+      bool isAbove = (bodyLow >= upperBand + padding);
+      
+      // Bougie en-dessous de la bande inférieure
+      bool isBelow = (bodyHigh <= lowerBand - padding);
+      
+      return isAbove || isBelow;
+   } else {
+      // Vérifier toute la bougie (incluant les mèches)
+      // Bougie au-dessus de la bande supérieure
+      bool isAbove = (candle.low >= upperBand + padding);
+      
+      // Bougie en-dessous de la bande inférieure
+      bool isBelow = (candle.high <= lowerBand - padding);
+      
+      return isAbove || isBelow;
+   }
+}
+
+// Surcharge permettant d'utiliser directement les valeurs de prix
+bool IsFreeCandle(
+   double open,
+   double high,
+   double low,
+   double close,
+   double upperBand, 
+   double lowerBand, 
+   double paddingPoints = 0, 
+   bool bodyOnly = true
+) {
+   // Calculer la marge
+   double padding = paddingPoints * _Point;
+   
+   // Vérifier si la bougie est à l'extérieur des bandes
+   if(bodyOnly) {
+      // Vérifier uniquement le corps de la bougie
+      double bodyHigh = MathMax(open, close);
+      double bodyLow = MathMin(open, close);
+      
+      // Bougie au-dessus de la bande supérieure
+      bool isAbove = (bodyLow >= upperBand + padding);
+      
+      // Bougie en-dessous de la bande inférieure
+      bool isBelow = (bodyHigh <= lowerBand - padding);
+      
+      return isAbove || isBelow;
+   } else {
+      // Vérifier toute la bougie (incluant les mèches)
+      // Bougie au-dessus de la bande supérieure
+      bool isAbove = (low >= upperBand + padding);
+      
+      // Bougie en-dessous de la bande inférieure
+      bool isBelow = (high <= lowerBand - padding);
+      
+      return isAbove || isBelow;
+   }
+}
