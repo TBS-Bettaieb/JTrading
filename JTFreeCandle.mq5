@@ -176,9 +176,26 @@ int SignalFromClosedBarStrict()
    bool red   = (o>c);
    bool green = (c>o);
 
+   // Debug - Afficher les valeurs pour comprendre le problème
+   string debugInfo = 
+      "Candle: O=" + DoubleToString(o, 5) + 
+      " H=" + DoubleToString(h, 5) + 
+      " L=" + DoubleToString(l, 5) + 
+      " C=" + DoubleToString(c, 5) +
+      " | BB: Upper=" + DoubleToString(upper, 5) + 
+      " Lower=" + DoubleToString(lower, 5) +
+      " | Padding=" + IntegerToString(OutsidePaddingPoints) + " points, BodyOnly=" + (BodyMustBeOutside ? "true" : "false");
+   LogMessage(debugInfo);
+   
    // Utiliser la fonction IsFreeCandle pour détecter si la bougie est hors bandes
    bool isFreeCandle = IsFreeCandle(o, h, l, c, upper, lower, OutsidePaddingPoints, BodyMustBeOutside);
-   if(!isFreeCandle) return 0;
+   
+   if(!isFreeCandle) {
+      LogMessage("Pas de free candle détectée");
+      return 0;
+   }
+   
+   LogMessage("FREE CANDLE DÉTECTÉE!");
    
    // Déterminer si la bougie est au-dessus ou en-dessous
    bool isAboveBand = false;
@@ -210,7 +227,19 @@ int SignalFromClosedBarStrict()
 void Process()
 {
    int dir = SignalFromClosedBarStrict();
-   if(dir==0 || HaveOpenPos(Sym())) return;
+   
+   // Log pour le debug
+   LogMessage("SignalFromClosedBarStrict retourne: " + IntegerToString(dir));
+   
+   if(dir==0) {
+      LogMessage("Pas de signal détecté - aucune action prise");
+      return;
+   }
+   
+   if(HaveOpenPos(Sym())) {
+      LogMessage("Position déjà ouverte sur ce symbole - aucune action prise");
+      return;
+   }
 
    // Apply direction filter
    if(TradeDir==DIR_ONLY_BUY && dir<0) return;
