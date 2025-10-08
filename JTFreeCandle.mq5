@@ -182,35 +182,45 @@ int SignalFromClosedBarStrict()
    string s = Sym(); ENUM_TIMEFRAMES t = TF();
    // Bougie N-1 (fermée)
    MqlRates r[]; if(CopyRates(s,t,0,3,r)<3) return 0; ArraySetAsSeries(r,true);
-   double o=r[1].open, c=r[1].close;
+   double o=r[1].open, h=r[1].high, l=r[1].low, c=r[1].close;
 
-   // Bandes à l’index 1 (mêmes bougies)
+   // Bandes à l'index 1 (mêmes bougies)
    double u1[], m1[], l1[];
    if(CopyBuffer(hBB,0,1,1,u1)<1) return 0;
    if(CopyBuffer(hBB,1,1,1,m1)<1) return 0;
    if(CopyBuffer(hBB,2,1,1,l1)<1) return 0;
    double upper=u1[0], lower=l1[0];
 
-   double pad = OutsidePaddingPoints*SymbolInfoDouble(s, SYMBOL_POINT);
-
    bool red   = (o>c);
    bool green = (c>o);
 
-   bool bodyAbove = (MathMin(o,c) >= upper + pad);
-   bool bodyBelow = (MathMax(o,c) <= lower - pad);
-
-   bool condAbove = BodyMustBeOutside ? bodyAbove : (o>=upper+pad && c>=upper+pad);
-   bool condBelow = BodyMustBeOutside ? bodyBelow : (o<=lower-pad && c<=lower-pad);
-
-   bool outsideBearAbove = condAbove && red;
-   bool outsideBullBelow = condBelow && green;
+   // Utiliser la fonction IsFreeCandle pour détecter si la bougie est hors bandes
+   bool isFreeCandle = IsFreeCandle(o, h, l, c, upper, lower, OutsidePaddingPoints, BodyMustBeOutside);
+   if(!isFreeCandle) return 0;
+   
+   // Déterminer si la bougie est au-dessus ou en-dessous
+   bool isAboveBand = false;
+   bool isBelowBand = false;
+   
+   if(BodyMustBeOutside) {
+      double bodyHigh = MathMax(o, c);
+      double bodyLow = MathMin(o, c);
+      isAboveBand = (bodyLow >= upper + OutsidePaddingPoints * _Point);
+      isBelowBand = (bodyHigh <= lower - OutsidePaddingPoints * _Point);
+   } else {
+      isAboveBand = (l >= upper + OutsidePaddingPoints * _Point);
+      isBelowBand = (h <= lower - OutsidePaddingPoints * _Point);
+   }
+   
+   bool outsideBearAbove = isAboveBand && red;
+   bool outsideBullBelow = isBelowBand && green;
 
    if(Mode==REVERSION){
       if(outsideBearAbove) return -1; // SELL
       if(outsideBullBelow) return +1; // BUY
    }else{
-      if(condAbove) return +1;        // BUY breakout
-      if(condBelow) return -1;        // SELL breakout
+      if(isAboveBand) return +1;      // BUY breakout
+      if(isBelowBand) return -1;      // SELL breakout
    }
    return 0;
 }
@@ -286,8 +296,16 @@ void ManageOpenPositions(const string s)
       if(Close_On_OppositeBand)
       {
          bool touchedOpposite = false;
-         if(type==POSITION_TYPE_BUY  && (barHigh>=upper1-pad || bid>=upper0-pad)) touchedOpposite = true;
-         if(type==POSITION_TYPE_SELL && (barLow<=lower1-spr-pad || ask<=lower0+pad)) touchedOpposite = true;
+         // Utiliser la logique de la fonction IsFreeCandle pour déterminer si le prix est proche d'une bande
+         if(type==POSITION_TYPE_BUY) {
+            // Pour un achat, vérifier si le prix approche la bande supérieure
+            touchedOpposite = (barHigh >= upper1-pad || bid >= upper0-pad);
+         }
+         if(type==POSITION_TYPE_SELL) {
+            // Pour une vente, vérifier si le prix approche la bande inférieure
+            touchedOpposite = (barLow <= lower1+pad || ask <= lower0+pad);
+         }
+         
          if(touchedOpposite)
          {
             if(!trade.PositionClose(s,(double)Slippage))
@@ -306,7 +324,7 @@ void ManageOpenPositions(const string s)
             double newSL=op + BE_Offset_Points*point;
             if(sl<newSL) trade.PositionModify(s,newSL,tp);
          }
-         if(type==POSITION_TYPE_SELL && (barLow<=middle1-spr-pad || ask<=middle0+pad)){
+         if(type==POSITION_TYPE_SELL && (barLow<=middle1+pad || ask<=middle0+pad)){
             double newSL=op - BE_Offset_Points*point;
             if(sl==0.0 || sl>newSL) trade.PositionModify(s,newSL,tp);
          }
