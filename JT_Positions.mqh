@@ -52,7 +52,7 @@ bool ClosePosition(
 ) {
    if(!PositionSelectByTicket(ticket)) return false;
    
-   return tradeObj.PositionClose(ticket, slippage, comment);
+   return tradeObj.PositionClose(ticket, slippage);
 }
 
 // Modifie le SL/TP d'une position

@@ -141,7 +141,7 @@ int OnInit()
    string s = Sym(); ENUM_TIMEFRAMES t = TF();
 
    // Initialiser les indicateurs via la structure
-   if(!InitIndicators(indicators, s, t, BB_Period, BB_Dev, BB_Shift, RSI_Period, 14)) {
+   if(!InitIndicators(indicators, s, t, BB_Period, BB_Dev, BB_Shift, RSI_Period)) {
       return INIT_FAILED;
    }
 

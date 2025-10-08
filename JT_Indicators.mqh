@@ -8,7 +8,6 @@
 struct IndicatorHandles {
    int BB;    // Bollinger Bands
    int RSI;   // RSI
-   int ATR;   // ATR
    int EMA;   // EMA (optionnel)
 };
 
@@ -18,7 +17,6 @@ struct IndicatorBuffers {
    double BBMiddle[];
    double BBLower[];
    double RSI[];
-   double ATR[];
    double EMA[];  // Optionnel
 };
 
@@ -31,7 +29,6 @@ bool InitIndicators(
    double bbDeviation,
    int bbShift,
    int rsiPeriod,
-   int atrPeriod,
    int emaPeriod = 0  // Optionnel
 ) {
    // Initialiser Bollinger Bands
@@ -45,13 +42,6 @@ bool InitIndicators(
    handles.RSI = iRSI(symbol, timeframe, rsiPeriod, PRICE_CLOSE);
    if(handles.RSI == INVALID_HANDLE) {
       Print("Erreur d'initialisation du RSI");
-      return false;
-   }
-   
-   // Initialiser ATR
-   handles.ATR = iATR(symbol, timeframe, atrPeriod);
-   if(handles.ATR == INVALID_HANDLE) {
-      Print("Erreur d'initialisation de l'ATR");
       return false;
    }
    
@@ -73,7 +63,6 @@ bool InitIndicators(
 void ReleaseIndicators(IndicatorHandles &handles) {
    if(handles.BB != INVALID_HANDLE) IndicatorRelease(handles.BB);
    if(handles.RSI != INVALID_HANDLE) IndicatorRelease(handles.RSI);
-   if(handles.ATR != INVALID_HANDLE) IndicatorRelease(handles.ATR);
    if(handles.EMA != INVALID_HANDLE) IndicatorRelease(handles.EMA);
 }
 
@@ -85,15 +74,13 @@ bool GetIndicatorData(
    bool useEMA = false
 ) {
    // Copier les données des Bollinger Bands
-   if(CopyBuffer(handles.BB, 0, 0, bars, buffers.BBUpper) < bars) return false;
-   if(CopyBuffer(handles.BB, 1, 0, bars, buffers.BBMiddle) < bars) return false;
+   // Buffer 0 = BASE_LINE (milieu), Buffer 1 = UPPER_BAND, Buffer 2 = LOWER_BAND
+   if(CopyBuffer(handles.BB, 1, 0, bars, buffers.BBUpper) < bars) return false;
+   if(CopyBuffer(handles.BB, 0, 0, bars, buffers.BBMiddle) < bars) return false;
    if(CopyBuffer(handles.BB, 2, 0, bars, buffers.BBLower) < bars) return false;
    
    // Copier les données du RSI
    if(CopyBuffer(handles.RSI, 0, 0, bars, buffers.RSI) < bars) return false;
-   
-   // Copier les données de l'ATR
-   if(CopyBuffer(handles.ATR, 0, 0, bars, buffers.ATR) < bars) return false;
    
    // Copier les données de l'EMA (optionnel)
    if(useEMA && handles.EMA != INVALID_HANDLE) {
@@ -105,7 +92,6 @@ bool GetIndicatorData(
    ArraySetAsSeries(buffers.BBMiddle, true);
    ArraySetAsSeries(buffers.BBLower, true);
    ArraySetAsSeries(buffers.RSI, true);
-   ArraySetAsSeries(buffers.ATR, true);
    if(useEMA) ArraySetAsSeries(buffers.EMA, true);
    
    return true;
