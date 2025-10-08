@@ -20,7 +20,7 @@ input double   BB_Dev              = 2.0;                // Déviation
 input int      BB_Shift            = 0;                  // Shift
 
 // RSI (filtre de confirmation)
-input bool     Use_RSI_Filter      = false;              // Activer filtre RSI
+input bool     Use_RSI_Filter      = true;              // Activer filtre RSI
 input int      RSI_Period          = 14;                 // Période RSI
 input double   RSI_Oversold        = 29.0;               // RSI survente (pour BUY)
 input double   RSI_Overbought      = 71.0;               // RSI surachat (pour SELL)
@@ -62,13 +62,9 @@ input bool     BodyMustBeOutside     = true;             // seulement le corps h
 input bool     Exit_UsePrevBar       = true;             // utiliser bandes de la bougie fermée
 input int      TouchPadPoints        = 5;                // marge de touche en points
 
-//---------------------------- Handles --------------------------------
-int hBB = INVALID_HANDLE;
-int hRSI = INVALID_HANDLE;
-
-//---------------------------- Buffers --------------------------------
-double up[], mid[], lo[];
-double rsi[];
+//---------------------------- Indicateurs --------------------------------
+IndicatorHandles indicators;
+IndicatorBuffers buffers;
 
 //---------------------------- Utils ----------------------------------
 string Sym() { return (InpSymbol=="" ? _Symbol : InpSymbol); }
@@ -144,14 +140,10 @@ int OnInit()
 {
    string s = Sym(); ENUM_TIMEFRAMES t = TF();
 
-   hBB  = iBands(s, t, BB_Period,  BB_Shift, BB_Dev, PRICE_CLOSE);
-   if(hBB==INVALID_HANDLE) return INIT_FAILED;
-
-   hRSI = iRSI(s, t, RSI_Period, PRICE_CLOSE);
-   if(hRSI==INVALID_HANDLE) return INIT_FAILED;
-
-   ArraySetAsSeries(up,true);  ArraySetAsSeries(mid,true); ArraySetAsSeries(lo,true);
-   ArraySetAsSeries(rsi,true);
+   // Initialiser les indicateurs via la structure
+   if(!InitIndicators(indicators, s, t, BB_Period, BB_Dev, BB_Shift, RSI_Period, 14)) {
+      return INIT_FAILED;
+   }
 
    trade.SetExpertMagicNumber((long)Magic);
    
@@ -171,8 +163,7 @@ int OnInit()
 
 void OnDeinit(const int reason)
 {
-   if(hBB!=INVALID_HANDLE)  IndicatorRelease(hBB);
-   if(hRSI!=INVALID_HANDLE) IndicatorRelease(hRSI);
+   ReleaseIndicators(indicators);
 }
 
 //---------------------------- Trading Logic ---------------------------
@@ -199,13 +190,11 @@ int SignalFromClosedBarStrict()
    MqlRates r[]; if(CopyRates(s,t,0,3,r)<3) return 0; ArraySetAsSeries(r,true);
    double o=r[1].open, h=r[1].high, l=r[1].low, c=r[1].close;
 
-   // Bandes à l'index 1 (mêmes bougies)
-   // Buffer 0 = BASE_LINE (médiane), Buffer 1 = UPPER_BAND, Buffer 2 = LOWER_BAND
-   double m1[], u1[], l1[];
-   if(CopyBuffer(hBB,0,1,1,m1)<1) return 0;  // Ligne médiane
-   if(CopyBuffer(hBB,1,1,1,u1)<1) return 0;  // Bande supérieure
-   if(CopyBuffer(hBB,2,1,1,l1)<1) return 0;  // Bande inférieure
-   double upper=u1[0], lower=l1[0];
+   // Récupérer les données BB et RSI via GetIndicatorData
+   if(!GetIndicatorData(indicators, buffers, 3, false)) return 0;
+   
+   double upper = buffers.BBUpper[1];   // Bande supérieure à l'index 1
+   double lower = buffers.BBLower[1];   // Bande inférieure à l'index 1
 
    bool red   = (o>c);
    bool green = (c>o);
@@ -265,13 +254,7 @@ int SignalFromClosedBarStrict()
    
    // Appliquer le filtre RSI si activé
    if(Use_RSI_Filter) {
-      double rsiValue[];
-      if(CopyBuffer(hRSI, 0, 1, 1, rsiValue) < 1) {
-         LogMessage("Erreur lors de la récupération du RSI");
-         return 0;
-      }
-      
-      double currentRSI = rsiValue[0];
+      double currentRSI = buffers.RSI[1];  // RSI de la bougie fermée
       LogMessage("RSI valeur: " + DoubleToString(currentRSI, 2));
       
       // Pour un signal BUY, vérifier que RSI est en survente
@@ -360,8 +343,13 @@ void Process()
       return;
    }
    
-   // Préparer le commentaire avec RR
-   string orderComment = "BB Outside " + dirStr + " | RR:1:" + DoubleToString(rr, 2);
+   // Récupérer la valeur RSI actuelle pour le commentaire
+   double currentRSI = buffers.RSI[1];
+   
+   // Préparer le commentaire avec RR et RSI
+   string orderComment = "BB Outside " + dirStr + 
+                         " | RR:1:" + DoubleToString(rr, 2) + 
+                         " | RSI:" + DoubleToString(currentRSI, 1);
    
    // Ouvrir la position
    if(isBuy){ // BUY
@@ -372,18 +360,16 @@ void Process()
 }
 void ManageOpenPositions(const string s)
 {
-   // Bandes 0 et 1
-   // Buffer 0 = BASE_LINE (médiane), Buffer 1 = UPPER_BAND, Buffer 2 = LOWER_BAND
-   double m0[1], u0[1], l0[1], m1[1], u1[1], l1[1];
-   if(CopyBuffer(hBB,0,0,1,m0)<1) return;  // Médiane bougie 0
-   if(CopyBuffer(hBB,1,0,1,u0)<1) return;  // Bande sup bougie 0
-   if(CopyBuffer(hBB,2,0,1,l0)<1) return;  // Bande inf bougie 0
-   if(CopyBuffer(hBB,0,1,1,m1)<1) return;  // Médiane bougie 1
-   if(CopyBuffer(hBB,1,1,1,u1)<1) return;  // Bande sup bougie 1
-   if(CopyBuffer(hBB,2,1,1,l1)<1) return;  // Bande inf bougie 1
-
-   double upper0=u0[0], middle0=m0[0], lower0=l0[0];
-   double upper1=u1[0], middle1=m1[0], lower1=l1[0];
+   // Récupérer les bandes de Bollinger pour les bougies 0 et 1
+   if(!GetIndicatorData(indicators, buffers, 2, false)) return;
+   
+   double upper0  = buffers.BBUpper[0];   // Bande supérieure bougie 0
+   double middle0 = buffers.BBMiddle[0];  // Médiane bougie 0
+   double lower0  = buffers.BBLower[0];   // Bande inférieure bougie 0
+   
+   double upper1  = buffers.BBUpper[1];   // Bande supérieure bougie 1
+   double middle1 = buffers.BBMiddle[1];  // Médiane bougie 1
+   double lower1  = buffers.BBLower[1];   // Bande inférieure bougie 1
 
    // extrêmes bougie en cours
    MqlRates bar[1]; if(CopyRates(s,TF(),0,1,bar)<1) return;
