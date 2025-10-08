@@ -8,6 +8,7 @@
 
 #include <Trade/Trade.mqh>
 #include "JT_Indicators.mqh"
+#include "JT_Positions.mqh"
 CTrade trade;
 
 //---------------------------- Inputs --------------------------------
@@ -78,37 +79,23 @@ bool NewBar(const string s, ENUM_TIMEFRAMES tf, datetime &last_time)
    return false;
 }
 
-bool InRangeHour(const int hourVal, const int startH, const int endH)
-{
-   if(startH==endH) return (hourVal==startH);
-   if(startH < endH) return (hourVal>=startH && hourVal<=endH);
-   // wrap over midnight
-   return (hourVal>=startH || hourVal<=endH);
-}
-
 bool IsHourAllowed()
 {
-   if(!UseTimeFilter) return true;
-   MqlDateTime dt; TimeToStruct(TimeCurrent(), dt);
-   int h = dt.hour;
-
-   if(InRangeHour(h, Range1StartHour, Range1EndHour)) return true;
-   if(InRangeHour(h, Range2StartHour, Range2EndHour)) return true;
-   if(InRangeHour(h, Range3StartHour, Range3EndHour)) return true;
-   return false;
+   return IsHourAllowed(
+      UseTimeFilter, 
+      Range1StartHour, Range1EndHour,
+      Range2StartHour, Range2EndHour, 
+      Range3StartHour, Range3EndHour
+   );
 }
 
 bool HaveOpenPos(const string s)
 {
    if(!One_Pos_Per_Symbol) return false;
-   for(int i=PositionsTotal()-1;i>=0;i--)
-   {
-      ulong t=PositionGetTicket(i);
-      if(!PositionSelectByTicket(t)) continue;
-      if(PositionGetInteger(POSITION_MAGIC)==(long)Magic &&
-         PositionGetString(POSITION_SYMBOL)==s) return true;
-   }
-   return false;
+   
+   int direction = 0;
+   ulong ticket = 0;
+   return HasOpenPosition(s, Magic, direction, ticket);
 }
 
 double NormalizeVolume(double lots, const string s)
@@ -243,12 +230,12 @@ void Process()
       double sl = bid - ATR_SL_Mult*atr0;
       double tp = bid + RR_TP*(bid - sl);
       double lots = CalcLotsByRisk(s, bid - sl);
-      if(lots>0) trade.Buy(lots,s,ask,sl,tp,"BB Outside BUY");
+      if(lots>0) OpenBuyPosition(trade, s, lots, ask, sl, tp, "BB Outside BUY");
    }else{     // SELL
       double sl = ask + ATR_SL_Mult*atr0;
       double tp = ask - RR_TP*(sl - ask);
       double lots = CalcLotsByRisk(s, sl - ask);
-      if(lots>0) trade.Sell(lots,s,bid,sl,tp,"BB Outside SELL");
+      if(lots>0) OpenSellPosition(trade, s, lots, bid, sl, tp, "BB Outside SELL");
    }
 }
 void ManageOpenPositions(const string s)
@@ -308,11 +295,7 @@ void ManageOpenPositions(const string s)
          
          if(touchedOpposite)
          {
-            if(!trade.PositionClose(s,(double)Slippage))
-            {
-               ulong curT = (ulong)PositionGetInteger(POSITION_TICKET);
-               trade.PositionClose(curT, (double)Slippage);
-            }
+            ClosePosition(trade, tk, "Band touch exit");
             continue;
          }
       }
@@ -322,15 +305,15 @@ void ManageOpenPositions(const string s)
       {
          if(type==POSITION_TYPE_BUY  && (barHigh>=middle1-pad || bid>=middle0-pad)){
             double newSL=op + BE_Offset_Points*point;
-            if(sl<newSL) trade.PositionModify(s,newSL,tp);
+            if(sl<newSL) ModifyPosition(trade, tk, newSL, tp);
          }
          if(type==POSITION_TYPE_SELL && (barLow<=middle1+pad || ask<=middle0+pad)){
             double newSL=op - BE_Offset_Points*point;
-            if(sl==0.0 || sl>newSL) trade.PositionModify(s,newSL,tp);
+            if(sl==0.0 || sl>newSL) ModifyPosition(trade, tk, newSL, tp);
          }
       }
 
-      if(time_to_flat) trade.PositionClose(s,(double)Slippage);
+      if(time_to_flat) ClosePosition(trade, tk, "Flat time");
    }
 }
 
