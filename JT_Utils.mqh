@@ -110,6 +110,7 @@ void LogError(string message, int errorCode = 0) {
 }
 
 // Calcule les niveaux de SL et TP basés sur les plus hauts/plus bas des X dernières bougies
+// Version optimisée utilisant iLowest/iHighest (O(1) au lieu de O(N))
 bool CalculateSwingSLTP(
    string symbol,
    ENUM_TIMEFRAMES timeframe,
@@ -118,112 +119,79 @@ bool CalculateSwingSLTP(
    int tpPeriod,              // Nombre de bougies pour calculer le TP
    double &outSL,             // Valeur du SL calculée (retour par référence)
    double &outTP,             // Valeur du TP calculée (retour par référence)
-   double currentPrice = 0    // Prix actuel, si 0 utilise Ask/Bid
+   double currentPrice = 0.0, // Prix actuel, si 0 utilise Ask/Bid
+   double rrFallback = 1.5,   // RR si aucun TP valide
+   int minPointsFallback = 10 // distance mini si broker ne donne rien
 ) {
-   // Tableau de bougies pour le calcul
-   MqlRates rates[];
-   int maxPeriod = MathMax(slPeriod, tpPeriod);
-   
-   // Récupérer les données des bougies
-   if(CopyRates(symbol, timeframe, 0, maxPeriod + 1, rates) < maxPeriod + 1) {
-      LogError("Erreur lors de la récupération des données de bougies pour calculer SL/TP");
-      return false;
-   }
-   
-   ArraySetAsSeries(rates, true); // 0 = bougie actuelle, 1 = bougie précédente, etc.
-   
-   // Déterminer le prix courant si non fourni
-   if(currentPrice <= 0) {
-      currentPrice = isBuy ? SymbolInfoDouble(symbol, SYMBOL_ASK) : SymbolInfoDouble(symbol, SYMBOL_BID);
-   }
-   
-   // Calculer le SL en fonction de la direction
+   // Prix courant
+   MqlTick tick;
+   if(!SymbolInfoTick(symbol, tick)) return false;
+   if(currentPrice <= 0.0) currentPrice = isBuy ? tick.ask : tick.bid;
+
+   // Contraintes broker
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   double tickSize = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
+   int stopsLvl = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL); // en points
+   // distance minimale en prix
+   double minDist = MathMax(minPointsFallback, stopsLvl) * point;
+
+   // --- SL via extrême récent (on ignore la bougie 0)
    if(isBuy) {
-      // Pour un achat, le SL est le plus bas des slPeriod dernières bougies
-      outSL = rates[1].low;  // Commencer par la bougie précédente
-      for(int i=2; i <= slPeriod; i++) {
-         outSL = MathMin(outSL, rates[i].low);
-      }
-      
-      // Pour un achat, le TP est le plus haut des tpPeriod dernières bougies
-      outTP = rates[1].high;
-      for(int i=2; i <= tpPeriod; i++) {
-         outTP = MathMax(outTP, rates[i].high);
-      }
-      
-      // Vérifier si le SL est trop proche (moins de 10 points)
-      double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-      double minDistance = 10 * point;
-      if(currentPrice - outSL < minDistance) {
-         outSL = currentPrice - minDistance;
-      }
-      
-      // Si le TP n'est pas au-dessus du prix actuel, on cherche le prochain plus haut
+      // Pour un achat, SL = plus bas des slPeriod dernières bougies
+      int slShift = iLowest(symbol, timeframe, MODE_LOW, slPeriod, 1);
+      if(slShift == -1) return false;
+      outSL = iLow(symbol, timeframe, slShift);
+      if(currentPrice - outSL < minDist) outSL = currentPrice - minDist;
+
+      // TP = plus haut des tpPeriod dernières bougies
+      int tpShift = iHighest(symbol, timeframe, MODE_HIGH, tpPeriod, 1);
+      if(tpShift == -1) return false;
+      outTP = iHigh(symbol, timeframe, tpShift);
+
+      // Extension si TP ≤ prix
       if(outTP <= currentPrice) {
-         // On étend la recherche
-         int extendedPeriod = tpPeriod * 2;
-         if(CopyRates(symbol, timeframe, 0, extendedPeriod + 1, rates) >= extendedPeriod + 1) {
-            ArraySetAsSeries(rates, true);
-            for(int i=tpPeriod+1; i <= extendedPeriod; i++) {
-               double high = rates[i].high;
-               if(high > currentPrice) {
-                  outTP = high;
-                  break;
-               }
-            }
-            
-            // Si toujours pas de TP valide, on utilise une valeur par défaut
-            if(outTP <= currentPrice) {
-               outTP = currentPrice + (currentPrice - outSL) * 1.5; // RR par défaut de 1.5
-            }
-         }
+         int extShift = iHighest(symbol, timeframe, MODE_HIGH, tpPeriod*2, 1);
+         if(extShift != -1) outTP = iHigh(symbol, timeframe, extShift);
+         if(outTP <= currentPrice) outTP = currentPrice + (currentPrice - outSL) * rrFallback;
       }
    } else {
-      // Pour une vente, le SL est le plus haut des slPeriod dernières bougies
-      outSL = rates[1].high;
-      for(int i=2; i <= slPeriod; i++) {
-         outSL = MathMax(outSL, rates[i].high);
-      }
-      
-      // Pour une vente, le TP est le plus bas des tpPeriod dernières bougies
-      outTP = rates[1].low;
-      for(int i=2; i <= tpPeriod; i++) {
-         outTP = MathMin(outTP, rates[i].low);
-      }
-      
-      // Vérifier si le SL est trop proche (moins de 10 points)
-      double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-      double minDistance = 10 * point;
-      if(outSL - currentPrice < minDistance) {
-         outSL = currentPrice + minDistance;
-      }
-      
-      // Si le TP n'est pas en-dessous du prix actuel, on cherche le prochain plus bas
+      // Pour une vente, SL = plus haut des slPeriod dernières bougies
+      int slShift = iHighest(symbol, timeframe, MODE_HIGH, slPeriod, 1);
+      if(slShift == -1) return false;
+      outSL = iHigh(symbol, timeframe, slShift);
+      if(outSL - currentPrice < minDist) outSL = currentPrice + minDist;
+
+      // TP = plus bas des tpPeriod dernières bougies
+      int tpShift = iLowest(symbol, timeframe, MODE_LOW, tpPeriod, 1);
+      if(tpShift == -1) return false;
+      outTP = iLow(symbol, timeframe, tpShift);
+
+      // Extension si TP ≥ prix
       if(outTP >= currentPrice) {
-         // On étend la recherche
-         int extendedPeriod = tpPeriod * 2;
-         if(CopyRates(symbol, timeframe, 0, extendedPeriod + 1, rates) >= extendedPeriod + 1) {
-            ArraySetAsSeries(rates, true);
-            for(int i=tpPeriod+1; i <= extendedPeriod; i++) {
-               double low = rates[i].low;
-               if(low < currentPrice) {
-                  outTP = low;
-                  break;
-               }
-            }
-            
-            // Si toujours pas de TP valide, on utilise une valeur par défaut
-            if(outTP >= currentPrice) {
-               outTP = currentPrice - (outSL - currentPrice) * 1.5; // RR par défaut de 1.5
-            }
-         }
+         int extShift = iLowest(symbol, timeframe, MODE_LOW, tpPeriod*2, 1);
+         if(extShift != -1) outTP = iLow(symbol, timeframe, extShift);
+         if(outTP >= currentPrice) outTP = currentPrice - (outSL - currentPrice) * rrFallback;
       }
    }
-   
-   // Arrondir les valeurs au nombre de décimales du symbole
+
+   // Normalisation au tick et décimales
    int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   
+   // Normaliser SL au tick
+   outSL = MathRound(outSL / tickSize) * tickSize;
    outSL = NormalizeDouble(outSL, digits);
+   
+   // Normaliser TP au tick
+   outTP = MathRound(outTP / tickSize) * tickSize;
    outTP = NormalizeDouble(outTP, digits);
+
+   // Sécurité: éviter SL==TP
+   if(MathAbs(outTP - outSL) < tickSize * 2) {
+      outTP = isBuy ? outSL + rrFallback * minDist : outSL - rrFallback * minDist;
+      // Re-normaliser TP
+      outTP = MathRound(outTP / tickSize) * tickSize;
+      outTP = NormalizeDouble(outTP, digits);
+   }
    
    return true;
 }
