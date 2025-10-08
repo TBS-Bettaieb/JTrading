@@ -9,6 +9,7 @@
 #include <Trade/Trade.mqh>
 #include "JT_Indicators.mqh"
 #include "JT_Positions.mqh"
+#include "JT_Utils.mqh"
 CTrade trade;
 
 //---------------------------- Inputs --------------------------------
@@ -28,11 +29,12 @@ input TradeDirection TradeDir      = DIR_BOTH;           // Filtre direction: Bo
 
 // Money management
 input double   Risk_Percent        = 0.1;                // % risque/trade
-input int      ATR_Period          = 14;                 // ATR pour SL
-input double   ATR_SL_Mult         = 4;                // SL = ATR*mult
-input double   RR_TP               = 1.5;                // TP = RR * risque
 input bool     One_Pos_Per_Symbol  = true;               // 1 position par symbole
 input ulong    Magic               = 20251007;           // Magic
+
+// SL/TP basés sur swing points
+input int      SL_Period           = 50;                 // Période pour SL (nombre de bougies)
+input int      TP_Period           = 30;                 // Période pour TP (nombre de bougies)
 
 // Time filter (allow trading only in specific hour ranges)
 input bool     UseTimeFilter       = true;               // Activer filtre horaire
@@ -60,10 +62,9 @@ input int      TouchPadPoints        = 5;                // marge de touche en p
 
 //---------------------------- Handles --------------------------------
 int hBB = INVALID_HANDLE;
-int hATR = INVALID_HANDLE;
 
 //---------------------------- Buffers --------------------------------
-double up[], mid[], lo[], atr[];
+double up[], mid[], lo[];
 
 //---------------------------- Utils ----------------------------------
 string Sym() { return (InpSymbol=="" ? _Symbol : InpSymbol); }
@@ -130,11 +131,7 @@ int OnInit()
    hBB  = iBands(s, t, BB_Period, BB_Shift, BB_Dev, PRICE_CLOSE);
    if(hBB==INVALID_HANDLE) return INIT_FAILED;
 
-   hATR = iATR(s, t, ATR_Period);
-   if(hATR==INVALID_HANDLE) return INIT_FAILED;
-
    ArraySetAsSeries(up,true);  ArraySetAsSeries(mid,true); ArraySetAsSeries(lo,true);
-   ArraySetAsSeries(atr,true);
 
    trade.SetExpertMagicNumber((long)Magic);
    return INIT_SUCCEEDED;
@@ -143,7 +140,6 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    if(hBB!=INVALID_HANDLE)  IndicatorRelease(hBB);
-   if(hATR!=INVALID_HANDLE) IndicatorRelease(hATR);
 }
 
 //---------------------------- Trading Logic ---------------------------
@@ -221,19 +217,37 @@ void Process()
    if(TradeDir==DIR_ONLY_SELL && dir>0) return;
 
    string s=Sym();
+   ENUM_TIMEFRAMES t=TF();
    double ask=SymbolInfoDouble(s,SYMBOL_ASK);
    double bid=SymbolInfoDouble(s,SYMBOL_BID);
-   double a[]; if(CopyBuffer(hATR,0,0,1,a)<1) return; double atr0=a[0];
-
-   if(dir>0){ // BUY
-      double sl = bid - ATR_SL_Mult*atr0;
-      double tp = bid + RR_TP*(bid - sl);
-      double lots = CalcLotsByRisk(s, bid - sl);
+   
+   // Variables pour SL et TP
+   double sl = 0, tp = 0;
+   bool isBuy = (dir > 0);
+   
+   // Calculer SL/TP basés sur les plus hauts/plus bas
+   if(!CalculateSwingSLTP(s, t, isBuy, SL_Period, TP_Period, sl, tp)) {
+      LogError("Erreur lors du calcul des niveaux SL/TP");
+      return;
+   }
+   
+   // Calculer le volume en fonction du risque
+   double riskPrice = isBuy ? (bid - sl) : (sl - ask);
+   if(riskPrice <= 0) {
+      LogError("Distance de SL invalide");
+      return;
+   }
+   
+   double lots = CalcLotsByRisk(s, riskPrice);
+   
+   // Journaliser les niveaux
+   string dirStr = isBuy ? "BUY" : "SELL";
+   LogMessage("Signal " + dirStr + " détecté - SL: " + DoubleToString(sl, 5) + ", TP: " + DoubleToString(tp, 5));
+   
+   // Ouvrir la position
+   if(isBuy){ // BUY
       if(lots>0) OpenBuyPosition(trade, s, lots, ask, sl, tp, "BB Outside BUY");
-   }else{     // SELL
-      double sl = ask + ATR_SL_Mult*atr0;
-      double tp = ask - RR_TP*(sl - ask);
-      double lots = CalcLotsByRisk(s, sl - ask);
+   } else {   // SELL
       if(lots>0) OpenSellPosition(trade, s, lots, bid, sl, tp, "BB Outside SELL");
    }
 }
@@ -294,7 +308,7 @@ void ManageOpenPositions(const string s)
          
          if(touchedOpposite)
          {
-            ClosePosition(trade, tk, "Band touch exit");
+            ClosePosition(trade, tk, "Band touch exit", 0);
             continue;
          }
       }
@@ -312,7 +326,7 @@ void ManageOpenPositions(const string s)
          }
       }
 
-      if(time_to_flat) ClosePosition(trade, tk, "Flat time");
+      if(time_to_flat) ClosePosition(trade, tk, "Flat time", 0);
    }
 }
 

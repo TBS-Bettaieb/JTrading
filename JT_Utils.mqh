@@ -109,6 +109,125 @@ void LogError(string message, int errorCode = 0) {
    LogMessage(errorMessage, "ERROR");
 }
 
+// Calcule les niveaux de SL et TP basés sur les plus hauts/plus bas des X dernières bougies
+bool CalculateSwingSLTP(
+   string symbol,
+   ENUM_TIMEFRAMES timeframe,
+   bool isBuy,                // true pour achat, false pour vente
+   int slPeriod,              // Nombre de bougies pour calculer le SL
+   int tpPeriod,              // Nombre de bougies pour calculer le TP
+   double &outSL,             // Valeur du SL calculée (retour par référence)
+   double &outTP,             // Valeur du TP calculée (retour par référence)
+   double currentPrice = 0    // Prix actuel, si 0 utilise Ask/Bid
+) {
+   // Tableau de bougies pour le calcul
+   MqlRates rates[];
+   int maxPeriod = MathMax(slPeriod, tpPeriod);
+   
+   // Récupérer les données des bougies
+   if(CopyRates(symbol, timeframe, 0, maxPeriod + 1, rates) < maxPeriod + 1) {
+      LogError("Erreur lors de la récupération des données de bougies pour calculer SL/TP");
+      return false;
+   }
+   
+   ArraySetAsSeries(rates, true); // 0 = bougie actuelle, 1 = bougie précédente, etc.
+   
+   // Déterminer le prix courant si non fourni
+   if(currentPrice <= 0) {
+      currentPrice = isBuy ? SymbolInfoDouble(symbol, SYMBOL_ASK) : SymbolInfoDouble(symbol, SYMBOL_BID);
+   }
+   
+   // Calculer le SL en fonction de la direction
+   if(isBuy) {
+      // Pour un achat, le SL est le plus bas des slPeriod dernières bougies
+      outSL = rates[1].low;  // Commencer par la bougie précédente
+      for(int i=2; i <= slPeriod; i++) {
+         outSL = MathMin(outSL, rates[i].low);
+      }
+      
+      // Pour un achat, le TP est le plus haut des tpPeriod dernières bougies
+      outTP = rates[1].high;
+      for(int i=2; i <= tpPeriod; i++) {
+         outTP = MathMax(outTP, rates[i].high);
+      }
+      
+      // Vérifier si le SL est trop proche (moins de 10 points)
+      double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+      double minDistance = 10 * point;
+      if(currentPrice - outSL < minDistance) {
+         outSL = currentPrice - minDistance;
+      }
+      
+      // Si le TP n'est pas au-dessus du prix actuel, on cherche le prochain plus haut
+      if(outTP <= currentPrice) {
+         // On étend la recherche
+         int extendedPeriod = tpPeriod * 2;
+         if(CopyRates(symbol, timeframe, 0, extendedPeriod + 1, rates) >= extendedPeriod + 1) {
+            ArraySetAsSeries(rates, true);
+            for(int i=tpPeriod+1; i <= extendedPeriod; i++) {
+               double high = rates[i].high;
+               if(high > currentPrice) {
+                  outTP = high;
+                  break;
+               }
+            }
+            
+            // Si toujours pas de TP valide, on utilise une valeur par défaut
+            if(outTP <= currentPrice) {
+               outTP = currentPrice + (currentPrice - outSL) * 1.5; // RR par défaut de 1.5
+            }
+         }
+      }
+   } else {
+      // Pour une vente, le SL est le plus haut des slPeriod dernières bougies
+      outSL = rates[1].high;
+      for(int i=2; i <= slPeriod; i++) {
+         outSL = MathMax(outSL, rates[i].high);
+      }
+      
+      // Pour une vente, le TP est le plus bas des tpPeriod dernières bougies
+      outTP = rates[1].low;
+      for(int i=2; i <= tpPeriod; i++) {
+         outTP = MathMin(outTP, rates[i].low);
+      }
+      
+      // Vérifier si le SL est trop proche (moins de 10 points)
+      double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+      double minDistance = 10 * point;
+      if(outSL - currentPrice < minDistance) {
+         outSL = currentPrice + minDistance;
+      }
+      
+      // Si le TP n'est pas en-dessous du prix actuel, on cherche le prochain plus bas
+      if(outTP >= currentPrice) {
+         // On étend la recherche
+         int extendedPeriod = tpPeriod * 2;
+         if(CopyRates(symbol, timeframe, 0, extendedPeriod + 1, rates) >= extendedPeriod + 1) {
+            ArraySetAsSeries(rates, true);
+            for(int i=tpPeriod+1; i <= extendedPeriod; i++) {
+               double low = rates[i].low;
+               if(low < currentPrice) {
+                  outTP = low;
+                  break;
+               }
+            }
+            
+            // Si toujours pas de TP valide, on utilise une valeur par défaut
+            if(outTP >= currentPrice) {
+               outTP = currentPrice - (outSL - currentPrice) * 1.5; // RR par défaut de 1.5
+            }
+         }
+      }
+   }
+   
+   // Arrondir les valeurs au nombre de décimales du symbole
+   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   outSL = NormalizeDouble(outSL, digits);
+   outTP = NormalizeDouble(outTP, digits);
+   
+   return true;
+}
+
 // Récupère la description d'une erreur
 string ErrorDescription(int errorCode) {
    switch(errorCode) {

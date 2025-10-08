@@ -45,31 +45,31 @@ bool HasOpenPosition(
 
 // Ferme une position par ticket
 bool ClosePosition(
-   CTrade &trade,
+   CTrade &tradeObj,
    ulong ticket,
    string comment = "",
    double slippage = 0
 ) {
    if(!PositionSelectByTicket(ticket)) return false;
    
-   return trade.PositionClose(ticket, slippage);
+   return tradeObj.PositionClose(ticket, slippage, comment);
 }
 
 // Modifie le SL/TP d'une position
 bool ModifyPosition(
-   CTrade &trade,
+   CTrade &tradeObj,
    ulong ticket,
    double newSL,
    double newTP
 ) {
    if(!PositionSelectByTicket(ticket)) return false;
    
-   return trade.PositionModify(ticket, newSL, newTP);
+   return tradeObj.PositionModify(ticket, newSL, newTP);
 }
 
 // Ouvre une position d'achat
 bool OpenBuyPosition(
-   CTrade &trade,
+   CTrade &tradeObj,
    string symbol,
    double volume,
    double price,
@@ -77,12 +77,12 @@ bool OpenBuyPosition(
    double tp,
    string comment = ""
 ) {
-   return trade.Buy(volume, symbol, price, sl, tp, comment);
+   return tradeObj.Buy(volume, symbol, price, sl, tp, comment);
 }
 
 // Ouvre une position de vente
 bool OpenSellPosition(
-   CTrade &trade,
+   CTrade &tradeObj,
    string symbol,
    double volume,
    double price,
@@ -90,7 +90,7 @@ bool OpenSellPosition(
    double tp,
    string comment = ""
 ) {
-   return trade.Sell(volume, symbol, price, sl, tp, comment);
+   return tradeObj.Sell(volume, symbol, price, sl, tp, comment);
 }
 
 // Vérifie si l'heure actuelle est dans une plage autorisée
