@@ -19,6 +19,9 @@ input int      BB_Period           = 20;                 // Période Bollinger
 input double   BB_Dev              = 2.0;                // Déviation
 input int      BB_Shift            = 0;                  // Shift
 
+// RSI (indicateur supplémentaire, non utilisé dans la stratégie)
+input int      RSI_Period          = 14;                 // Période RSI
+
 // Entrée
 enum EntryMode { REVERSION=0, BREAKOUT=1 };
 input EntryMode Mode               = REVERSION;          // Type d'entrée
@@ -58,9 +61,11 @@ input int      TouchPadPoints        = 5;                // marge de touche en p
 
 //---------------------------- Handles --------------------------------
 int hBB = INVALID_HANDLE;
+int hRSI = INVALID_HANDLE;
 
 //---------------------------- Buffers --------------------------------
 double up[], mid[], lo[];
+double rsi[];
 
 //---------------------------- Utils ----------------------------------
 string Sym() { return (InpSymbol=="" ? _Symbol : InpSymbol); }
@@ -139,7 +144,11 @@ int OnInit()
    hBB  = iBands(s, t, BB_Period,  BB_Shift, BB_Dev, PRICE_CLOSE);
    if(hBB==INVALID_HANDLE) return INIT_FAILED;
 
+   hRSI = iRSI(s, t, RSI_Period, PRICE_CLOSE);
+   if(hRSI==INVALID_HANDLE) return INIT_FAILED;
+
    ArraySetAsSeries(up,true);  ArraySetAsSeries(mid,true); ArraySetAsSeries(lo,true);
+   ArraySetAsSeries(rsi,true);
 
    trade.SetExpertMagicNumber((long)Magic);
    
@@ -160,6 +169,7 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    if(hBB!=INVALID_HANDLE)  IndicatorRelease(hBB);
+   if(hRSI!=INVALID_HANDLE) IndicatorRelease(hRSI);
 }
 
 //---------------------------- Trading Logic ---------------------------

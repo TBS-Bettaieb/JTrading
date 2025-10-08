@@ -121,7 +121,7 @@ bool CalculateSwingSLTP(
    double &outTP,             // Valeur du TP calculée (retour par référence)
    double currentPrice = 0.0, // Prix actuel, si 0 utilise Ask/Bid
    double rrFallback = 1.5,   // RR si aucun TP valide
-   int minPointsFallback = 10 // distance mini si broker ne donne rien
+   int minPointsFallback = 400 // distance mini si broker ne donne rien
 ) {
    // Prix courant
    MqlTick tick;
