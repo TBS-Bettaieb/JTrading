@@ -135,7 +135,7 @@ int OnInit()
 {
    string s = Sym(); ENUM_TIMEFRAMES t = TF();
 
-   hBB  = iBands(s, t, BB_Period, BB_Shift, BB_Dev, PRICE_CLOSE);
+   hBB  = iBands(s, t, BB_Period, BB_Dev, BB_Shift, PRICE_CLOSE);
    if(hBB==INVALID_HANDLE) return INIT_FAILED;
 
    ArraySetAsSeries(up,true);  ArraySetAsSeries(mid,true); ArraySetAsSeries(lo,true);
