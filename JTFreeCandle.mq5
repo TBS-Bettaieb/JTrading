@@ -220,15 +220,17 @@ int SignalFromClosedBarStrict()
    bool isAboveBand = false;
    bool isBelowBand = false;
    
-   if(BodyMustBeOutside) {
-      double bodyHigh = MathMax(o, c);
-      double bodyLow = MathMin(o, c);
-      isAboveBand = (bodyLow >= upper + OutsidePaddingPoints * _Point);
-      isBelowBand = (bodyHigh <= lower - OutsidePaddingPoints * _Point);
-   } else {
-      isAboveBand = (l >= upper + OutsidePaddingPoints * _Point);
-      isBelowBand = (h <= lower - OutsidePaddingPoints * _Point);
-   }
+  if(BodyMustBeOutside) {
+     double bodyHigh = MathMax(o, c);
+     double bodyLow = MathMin(o, c);
+     // Strict: tout le corps doit être en dehors
+     isAboveBand = (bodyLow > upper + OutsidePaddingPoints * _Point);
+     isBelowBand = (bodyHigh < lower - OutsidePaddingPoints * _Point);
+  } else {
+     // Strict: toute la bougie (mèches comprises) doit être en dehors
+     isAboveBand = (l > upper + OutsidePaddingPoints * _Point);
+     isBelowBand = (h < lower - OutsidePaddingPoints * _Point);
+  }
    
    bool outsideBearAbove = isAboveBand && red;
    bool outsideBullBelow = isBelowBand && green;
