@@ -14,70 +14,67 @@
 CTrade trade;
 
 //---------------------------- Inputs --------------------------------
+input group "═══ Symbole et Timeframe ═══"
 input string   InpSymbol           = "";                 // Symbole (vide = _Symbol)
-input ENUM_TIMEFRAMES InpTF        = PERIOD_CURRENT;     // UT
-input int      BB_Period           = 20;                 // Période Bollinger
+input ENUM_TIMEFRAMES InpTF        = PERIOD_CURRENT;     // Timeframe
+
+input group "═══ Bollinger Bands ═══"
+input int      BB_Period           = 20;                 // Période
 input double   BB_Dev              = 2.0;                // Déviation
 input int      BB_Shift            = 0;                  // Shift
 
-// RSI (filtre de confirmation)
-input bool     Use_RSI_Filter      = true;              // Activer filtre RSI
+input group "═══ RSI - Filtre de confirmation ═══"
+input bool     Use_RSI_Filter      = true;               // Activer filtre RSI
 input int      RSI_Period          = 14;                 // Période RSI
-input double   RSI_Oversold        = 29.0;               // RSI survente (pour BUY)
-input double   RSI_Overbought      = 71.0;               // RSI surachat (pour SELL)
+input double   RSI_Oversold        = 29.0;               // Seuil survente (pour BUY)
+input double   RSI_Overbought      = 71.0;               // Seuil surachat (pour SELL)
 
-// Divergence Validator (validation avancée avec mémoire)
-input bool     Use_Divergence_Validator = true;         // Activer validation par divergence
+input group "═══ Validateur de Divergence ═══"
+input bool     Use_Divergence_Validator = true;          // Activer validation par divergence
 input double   Div_RSI_Buy_Level   = 35.0;               // Seuil RSI pour validation BUY
 input double   Div_RSI_Sell_Level  = 65.0;               // Seuil RSI pour validation SELL
 input int      Div_Swing_Length    = 5;                  // Longueur pivot pour divergence
 
-// Entrée
+input group "═══ Mode d'Entrée ═══"
 enum EntryMode { REVERSION=0, BREAKOUT=1 };
 input EntryMode Mode               = REVERSION;          // Type d'entrée
-
-// Direction filter
 enum TradeDirection { DIR_BOTH=0, DIR_ONLY_BUY=1, DIR_ONLY_SELL=2 };
-input TradeDirection TradeDir      = DIR_BOTH;           // Filtre direction: Both/Only Buy/Only Sell
+input TradeDirection TradeDir      = DIR_BOTH;           // Filtre direction
+input int      OutsidePaddingPoints  = 5;                // Marge mini au-delà de la bande (points)
+input bool     BodyMustBeOutside     = true;             // Seulement le corps hors bande
 
-// Money management
-input double   Risk_Percent        = 0.1;                // % risque/trade
-input bool     One_Pos_Per_Symbol  = true;               // 1 position par symbole
-input ulong    Magic               = 20251007;           // Magic
+input group "═══ Money Management ═══"
+input double   Risk_Percent        = 0.1;                // % risque par trade
+input bool     One_Pos_Per_Symbol  = true;               // 1 position par symbole max
+input ulong    Magic               = 20251007;           // Magic Number
 
-// SL/TP basés sur swing points
-input int      SL_Period           = 50;                 // Période pour SL (nombre de bougies)
-input int      TP_Period           = 30;                 // Période pour TP (nombre de bougies)
-input double   Min_RR              = 2.0;                // Ratio risque/récompense minimum (0 = désactivé)
-input double   ATR_Multiplier      = 2.0;                // Multiplicateur ATR pour SL fallback
-input int      ATR_Period          = 14;                 // Période ATR pour SL fallback
+input group "═══ Stop Loss & Take Profit ═══"
+input int      SL_Period           = 50;                 // Période pour SL (barres)
+input int      TP_Period           = 30;                 // Période pour TP (barres)
+input double   Min_RR              = 2.0;                // Ratio RR minimum (0 = désactivé)
+input double   ATR_Multiplier      = 2.0;                // Multiplicateur ATR (fallback SL)
+input int      ATR_Period          = 14;                 // Période ATR
 
-// Time filter (allow trading only in specific hour ranges)
+input group "═══ Filtre Horaire ═══"
 input bool     UseTimeFilter       = true;               // Activer filtre horaire
 input string   HourRanges          = "8-10;16";          // Plages horaires (ex: 8-10;16)
 
-// Position management
-input bool     Close_On_OppositeBand = true;             // Fermer si touche la bande opposée
-input bool     BE_On_MiddleBand      = true;             // Passer Break-Even sur médiane
-input int      BE_Offset_Points      = 0;                // Offset BE en points (>=0)
-input bool     UseFlatTime           = false;            // Activer la clôture forcée à heure fixe
-input int      Flat_Hour             = 23;               // Forcer clôture à HH:MM
-input int      Flat_Minute           = 40;               // Forcer clôture à HH:MM
+input group "═══ Gestion de Position ═══"
+input bool     Close_On_OppositeBand = true;             // Fermer si touche bande opposée
+input bool     BE_On_MiddleBand      = true;             // Break-Even sur médiane
+input int      BE_Offset_Points      = 0;                // Offset BE (points)
+input bool     UseFlatTime           = false;            // Clôture forcée à heure fixe
+input int      Flat_Hour             = 23;               // Heure de clôture
+input int      Flat_Minute           = 40;               // Minute de clôture
+input bool     Exit_UsePrevBar       = true;             // Utiliser bandes barre fermée
+input int      TouchPadPoints        = 5;                // Marge de touche (points)
 
-// Outside candle strictness
-input int      OutsidePaddingPoints  = 5;                // marge mini au-delà de la bande
-input bool     BodyMustBeOutside     = true;             // seulement le corps hors bande
-
-// Exits threshold options
-input bool     Exit_UsePrevBar       = true;             // utiliser bandes de la bougie fermée
-input int      TouchPadPoints        = 5;                // marge de touche en points
-
-// Marqueurs visuels pour Free Candles
-input bool     Mark_FreeCandles      = true;             // Marquer les Free Candles sur le graphe
-input bool     Mark_DrawVLine        = true;             // Dessiner ligne verticale
-input bool     Mark_DrawArrow        = true;             // Dessiner flèche
-input bool     Mark_DrawBox          = false;            // Dessiner rectangle autour de la bougie
-input bool     Mark_DrawText         = false;            // Dessiner texte
+input group "═══ Marqueurs Visuels ═══"
+input bool     Mark_FreeCandles      = true;             // Marquer les Free Candles
+input bool     Mark_DrawVLine        = true;             // Ligne verticale
+input bool     Mark_DrawArrow        = true;             // Flèche directionnelle
+input bool     Mark_DrawBox          = false;            // Rectangle autour bougie
+input bool     Mark_DrawText         = false;            // Texte d'annotation
 
 //---------------------------- Indicateurs --------------------------------
 IndicatorHandles indicators;
