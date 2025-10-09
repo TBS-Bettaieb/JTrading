@@ -32,7 +32,7 @@ bool InitIndicators(
    int emaPeriod = 0  // Optionnel
 ) {
    // Initialiser Bollinger Bands
-   handles.BB = iBands(symbol, timeframe, bbPeriod, bbDeviation, bbShift, PRICE_CLOSE);
+   handles.BB = iBands(symbol, timeframe, bbPeriod, bbShift, bbDeviation, PRICE_CLOSE);
    if(handles.BB == INVALID_HANDLE) {
       Print("Erreur d'initialisation des Bollinger Bands");
       return false;
