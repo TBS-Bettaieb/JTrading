@@ -10,6 +10,7 @@
 #include "JT_Indicators.mqh"
 #include "JT_Positions.mqh"
 #include "JT_Utils.mqh"
+#include "JT_DivergenceValidator.mqh"
 CTrade trade;
 
 //---------------------------- Inputs --------------------------------
@@ -24,6 +25,12 @@ input bool     Use_RSI_Filter      = true;              // Activer filtre RSI
 input int      RSI_Period          = 14;                 // Période RSI
 input double   RSI_Oversold        = 29.0;               // RSI survente (pour BUY)
 input double   RSI_Overbought      = 71.0;               // RSI surachat (pour SELL)
+
+// Divergence Validator (validation avancée avec mémoire)
+input bool     Use_Divergence_Validator = true;         // Activer validation par divergence
+input double   Div_RSI_Buy_Level   = 35.0;               // Seuil RSI pour validation BUY
+input double   Div_RSI_Sell_Level  = 65.0;               // Seuil RSI pour validation SELL
+input int      Div_Swing_Length    = 5;                  // Longueur pivot pour divergence
 
 // Entrée
 enum EntryMode { REVERSION=0, BREAKOUT=1 };
@@ -68,6 +75,9 @@ input int      TouchPadPoints        = 5;                // marge de touche en p
 //---------------------------- Indicateurs --------------------------------
 IndicatorHandles indicators;
 IndicatorBuffers buffers;
+
+//---------------------------- Divergence Validator -----------------------
+JTDivergenceValidator divValidator;
 
 //---------------------------- Utils ----------------------------------
 string Sym() { return (InpSymbol=="" ? _Symbol : InpSymbol); }
@@ -160,6 +170,16 @@ int OnInit()
 
    trade.SetExpertMagicNumber((long)Magic);
    
+   // Initialiser le validateur de divergence si activé
+   if(Use_Divergence_Validator) {
+      if(!divValidator.Init(s, t, RSI_Period, Div_RSI_Buy_Level, Div_RSI_Sell_Level, Div_Swing_Length)) {
+         LogError("Erreur d'initialisation du validateur de divergence");
+         return INIT_FAILED;
+      }
+      LogMessage("Validateur de divergence activé: RSI Buy<" + DoubleToString(Div_RSI_Buy_Level, 1) + 
+                 ", RSI Sell>" + DoubleToString(Div_RSI_Sell_Level, 1));
+   }
+   
    // Afficher les plages horaires configurées
    if(UseTimeFilter) {
       // Parser les plages horaires pour vérification
@@ -190,6 +210,17 @@ void OnTick()
 
    // Détection de nouvelle bougie + logique d'entrée existante
    if(!NewBar(s,t,last_bar)) return;
+   
+   // Si le validateur de divergence est activé, vérifier d'abord
+   if(Use_Divergence_Validator) {
+      int divSignal = divValidator.ValidateDivergence();
+      if(divSignal != 0) {
+         // Divergence validée, exécuter le trade
+         ExecuteTradeFromDivergence(divSignal);
+         return;
+      }
+   }
+   
    Process();
 }
 
@@ -310,6 +341,18 @@ void Process()
    // Apply direction filter
    if(TradeDir==DIR_ONLY_BUY && dir<0) return;
    if(TradeDir==DIR_ONLY_SELL && dir>0) return;
+   
+   // Si le validateur de divergence est activé, mémoriser le free candle au lieu d'exécuter
+   if(Use_Divergence_Validator) {
+      string s = Sym();
+      MqlTick tick;
+      if(!SymbolInfoTick(s, tick)) return;
+      
+      double priceLevel = (dir > 0) ? tick.bid : tick.ask;
+      divValidator.RememberFreeCandle(1, priceLevel, dir);
+      LogMessage("Free Candle mémorisé pour validation divergence future");
+      return;  // On n'exécute pas immédiatement
+   }
 
    string s=Sym();
    ENUM_TIMEFRAMES t=TF();
@@ -370,6 +413,76 @@ void Process()
       if(lots>0) OpenSellPosition(trade, s, lots, bid, sl, tp, orderComment);
    }
 }
+
+// Fonction pour exécuter un trade validé par divergence
+void ExecuteTradeFromDivergence(int dir)
+{
+   string s = Sym();
+   ENUM_TIMEFRAMES t = TF();
+   
+   if(HaveOpenPos(s)) {
+      LogMessage("Position déjà ouverte - divergence validée mais pas d'entrée");
+      return;
+   }
+   
+   // Apply direction filter
+   if(TradeDir==DIR_ONLY_BUY && dir<0) return;
+   if(TradeDir==DIR_ONLY_SELL && dir>0) return;
+   
+   double ask = SymbolInfoDouble(s, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(s, SYMBOL_BID);
+   
+   // Variables pour SL et TP
+   double sl = 0, tp = 0;
+   bool isBuy = (dir > 0);
+   
+   // Calculer SL/TP basés sur les plus hauts/plus bas avec ATR fallback
+   if(!CalculateSwingSLTP(s, t, isBuy, SL_Period, TP_Period, sl, tp, 0.0, Min_RR, 1000, ATR_Multiplier, ATR_Period)) {
+      LogError("Erreur lors du calcul des niveaux SL/TP pour divergence");
+      return;
+   }
+   
+   // Calculer le volume en fonction du risque
+   double riskPrice = isBuy ? (bid - sl) : (sl - ask);
+   if(riskPrice <= 0) {
+      LogError("Distance de SL invalide pour divergence");
+      return;
+   }
+   
+   double lots = CalcLotsByRisk(s, riskPrice);
+   
+   // Calculer le ratio risque/récompense (RR)
+   double entryPrice = isBuy ? ask : bid;
+   double reward = isBuy ? (tp - entryPrice) : (entryPrice - tp);
+   double risk = isBuy ? (entryPrice - sl) : (sl - entryPrice);
+   double rr = (risk > 0) ? (reward / risk) : 0;
+   
+   // Journaliser les niveaux avec RR
+   string dirStr = isBuy ? "BUY" : "SELL";
+   LogMessage("DIVERGENCE VALIDÉE - Signal " + dirStr + " - Entry: " + DoubleToString(entryPrice, 5) + 
+              ", SL: " + DoubleToString(sl, 5) + 
+              ", TP: " + DoubleToString(tp, 5) + 
+              ", RR: 1:" + DoubleToString(rr, 2) + 
+              ", Lots: " + DoubleToString(lots, 2));
+   
+   // Vérifier le seuil RR minimum
+   if(Min_RR > 0 && rr < Min_RR) {
+      LogMessage("Trade divergence rejeté - RR insuffisant: 1:" + DoubleToString(rr, 2) + 
+                 " < minimum requis: 1:" + DoubleToString(Min_RR, 2));
+      return;
+   }
+   
+   // Préparer le commentaire
+   string orderComment = "DIVERGENCE " + dirStr + " | RR:1:" + DoubleToString(rr, 2);
+   
+   // Ouvrir la position
+   if(isBuy) {
+      if(lots > 0) OpenBuyPosition(trade, s, lots, ask, sl, tp, orderComment);
+   } else {
+      if(lots > 0) OpenSellPosition(trade, s, lots, bid, sl, tp, orderComment);
+   }
+}
+
 void ManageOpenPositions(const string s)
 {
    // Récupérer les bandes de Bollinger pour les bougies 0 et 1
