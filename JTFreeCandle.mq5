@@ -27,10 +27,19 @@ input double   RSI_Oversold        = 29.0;               // RSI survente (pour B
 input double   RSI_Overbought      = 71.0;               // RSI surachat (pour SELL)
 
 // Divergence Validator (validation avancée avec mémoire)
-input bool     Use_Divergence_Validator = true;         // Activer validation par divergence
+input bool     Use_Divergence_Validator = true;          // Activer validation par divergence
 input double   Div_RSI_Buy_Level   = 35.0;               // Seuil RSI pour validation BUY
 input double   Div_RSI_Sell_Level  = 65.0;               // Seuil RSI pour validation SELL
 input int      Div_Swing_Length    = 5;                  // Longueur pivot pour divergence
+
+// Filtres d'inclinaison pour divergence (angles et amplitudes)
+input int      Div_MinBarsBetweenPivots = 5;             // Distance minimale entre pivots (en barres)
+input double   Div_MinAnglePriceDeg = 10.0;              // Angle minimum pente prix (degrés)
+input double   Div_MinAngleRSIDeg   = 10.0;              // Angle minimum pente RSI (degrés)
+input double   Div_MinPricePct      = 0.20;              // Delta prix minimum (%)
+input double   Div_MinRSIPoints     = 4.0;               // Delta RSI minimum (points)
+input bool     Div_UseATRNorm       = true;              // Normaliser delta prix par ATR
+input double   Div_MinATRMult       = 0.5;               // Delta prix >= ATR × multiplicateur
 
 // Entrée
 enum EntryMode { REVERSION=0, BREAKOUT=1 };
@@ -185,12 +194,15 @@ int OnInit()
    
    // Initialiser le validateur de divergence si activé
    if(Use_Divergence_Validator) {
-      if(!divValidator.Init(s, t, RSI_Period, Div_RSI_Buy_Level, Div_RSI_Sell_Level, Div_Swing_Length)) {
+      if(!divValidator.Init(s, t, RSI_Period, Div_RSI_Buy_Level, Div_RSI_Sell_Level, Div_Swing_Length,
+                           Div_MinBarsBetweenPivots, Div_MinAnglePriceDeg, Div_MinAngleRSIDeg,
+                           Div_MinPricePct, Div_MinRSIPoints, Div_UseATRNorm, ATR_Period, Div_MinATRMult)) {
          LogError("Erreur d'initialisation du validateur de divergence");
          return INIT_FAILED;
       }
       LogMessage("Validateur de divergence activé: RSI Buy<" + DoubleToString(Div_RSI_Buy_Level, 1) + 
-                 ", RSI Sell>" + DoubleToString(Div_RSI_Sell_Level, 1));
+                 ", RSI Sell>" + DoubleToString(Div_RSI_Sell_Level, 1) + 
+                 ", Angle min=" + DoubleToString(Div_MinAnglePriceDeg, 1) + "°");
    }
    
    // Afficher les plages horaires configurées
