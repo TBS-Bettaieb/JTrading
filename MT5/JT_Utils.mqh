@@ -345,6 +345,75 @@ bool IsHourAllowedCustom(string hourRangeStr) {
    return false;
 }
 
+// Structure pour représenter une plage de jours
+struct DayRange {
+   int startDay;
+   int endDay;
+};
+
+// Vérifie si le jour actuel est autorisé selon le format de plage de jours spécifié
+// Exemple de formats: "1-5" (Lun-Ven), "1;3;5" (Lun, Mer, Ven), "1-4;6" (Lun-Jeu + Sam)
+// 0=Dimanche, 1=Lundi, 2=Mardi, 3=Mercredi, 4=Jeudi, 5=Vendredi, 6=Samedi
+bool IsDayAllowedCustom(string dayRangeStr) {
+   if(dayRangeStr == "") return true; // Si vide, autorise tous les jours
+   
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   int currentDay = dt.day_of_week;  // 0=Dimanche, 1=Lundi, ..., 6=Samedi
+   
+   // Séparer les différentes plages (séparées par des ";")
+   string ranges[];
+   int rangeCount = StringSplit(dayRangeStr, ';', ranges);
+   
+   for(int i = 0; i < rangeCount; i++) {
+      string range = ranges[i];
+      
+      // Vérifier s'il s'agit d'une plage (contient "-") ou d'un jour unique
+      int dashPos = StringFind(range, "-");
+      
+      if(dashPos > 0) {
+         // Format plage (ex: "1-5" pour Lundi à Vendredi)
+         int startDay = (int)StringToInteger(StringSubstr(range, 0, dashPos));
+         int endDay = (int)StringToInteger(StringSubstr(range, dashPos + 1));
+         
+         // Valider les jours (0-6)
+         if(startDay < 0 || startDay > 6 || endDay < 0 || endDay > 6) {
+            Print("ERREUR: Plage de jours invalide: ", range, " (doit être entre 0 et 6)");
+            continue;
+         }
+         
+         // Vérifier si le jour actuel est dans cette plage
+         if(startDay <= endDay) {
+            // Plage normale (ex: 1-5 pour Lundi à Vendredi)
+            if(currentDay >= startDay && currentDay <= endDay) {
+               return true;
+            }
+         } else {
+            // Plage qui traverse le week-end (ex: 5-1 pour Vendredi à Lundi)
+            if(currentDay >= startDay || currentDay <= endDay) {
+               return true;
+            }
+         }
+      } else {
+         // Format jour unique (ex: "3" pour Mercredi uniquement)
+         int day = (int)StringToInteger(range);
+         
+         // Valider le jour (0-6)
+         if(day < 0 || day > 6) {
+            Print("ERREUR: Jour invalide: ", range, " (doit être entre 0 et 6)");
+            continue;
+         }
+         
+         if(currentDay == day) {
+            return true;
+         }
+      }
+   }
+   
+   // Si aucune plage ne correspond au jour actuel
+   return false;
+}
+
 // Fonction utilitaire pour extraire les plages horaires sous forme de structures
 // Cette fonction est utile si vous avez besoin de stocker les plages pour utilisation future
 bool ParseHourRanges(string hourRangeStr, HourRange &ranges[]) {

@@ -72,6 +72,10 @@ input group "═══ Filtre Horaire ═══"
 input bool     UseTimeFilter       = true;               // Activer filtre horaire
 input string   HourRanges          = "8-10;16";          // Plages horaires (ex: 8-10;16)
 
+input group "═══ Filtre Jours de la Semaine ═══"
+input bool     UseDayFilter        = false;              // Activer filtre par jour
+input string   DayRanges           = "1-5";              // Jours autorisés (0=Dim,1=Lun...6=Sam)
+
 input group "═══ Gestion de Position ═══"
 input bool     Close_On_OppositeBand = true;             // Fermer si touche bande opposée
 input bool     BE_On_MiddleBand      = true;             // Break-Even sur médiane
@@ -132,6 +136,29 @@ bool IsHourAllowed()
       if(lastHourLogged != currentHour) {
          LogMessage("Heure actuelle: " + IntegerToString(currentHour) + ":00 - Trading non autorisé selon les plages configurées: " + HourRanges);
          lastHourLogged = currentHour;
+      }
+   }
+   
+   return isAllowed;
+}
+
+bool IsDayAllowed()
+{
+   if(!UseDayFilter) return true;  // Si le filtre de jour est désactivé, toujours autoriser
+   
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   int currentDay = dt.day_of_week;  // 0=Dimanche, 1=Lundi, 2=Mardi, ..., 6=Samedi
+   
+   bool isAllowed = IsDayAllowedCustom(DayRanges);
+   
+   if(!isAllowed) {
+      // Ne pas afficher ce message à chaque tick pour éviter de spammer le journal
+      static int lastDayLogged = -1;
+      if(lastDayLogged != currentDay) {
+         string dayNames[] = {"Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"};
+         LogMessage("Jour actuel: " + dayNames[currentDay] + " (" + IntegerToString(currentDay) + ") - Trading non autorisé selon les jours configurés: " + DayRanges);
+         lastDayLogged = currentDay;
       }
    }
    
@@ -339,6 +366,38 @@ int OnInit()
       }
    }
    
+   // Afficher les jours de trading configurés
+   if(UseDayFilter) {
+      string dayNames[] = {"Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"};
+      string dayMsg = "Filtre jours activé: " + DayRanges + " (";
+      
+      // Parser et afficher les jours en clair
+      string ranges[];
+      int rangeCount = StringSplit(DayRanges, ';', ranges);
+      
+      for(int i = 0; i < rangeCount; i++) {
+         if(i > 0) dayMsg += ", ";
+         
+         string range = ranges[i];
+         int dashPos = StringFind(range, "-");
+         
+         if(dashPos > 0) {
+            int startDay = (int)StringToInteger(StringSubstr(range, 0, dashPos));
+            int endDay = (int)StringToInteger(StringSubstr(range, dashPos + 1));
+            if(startDay >= 0 && startDay <= 6 && endDay >= 0 && endDay <= 6) {
+               dayMsg += dayNames[startDay] + "-" + dayNames[endDay];
+            }
+         } else {
+            int day = (int)StringToInteger(range);
+            if(day >= 0 && day <= 6) {
+               dayMsg += dayNames[day];
+            }
+         }
+      }
+      dayMsg += ")";
+      LogMessage(dayMsg);
+   }
+   
    // Initialiser le Trade Tracker
    tracker = new JTTradeTracker(
       s,                               // Symbol
@@ -388,6 +447,7 @@ void OnTick()
 {
    string s = Sym(); ENUM_TIMEFRAMES t = TF();
    if(!IsHourAllowed()) return;
+   if(!IsDayAllowed()) return;
    static datetime last_bar=0;
    
    // Suivre les trades actifs pour max profit/DD
