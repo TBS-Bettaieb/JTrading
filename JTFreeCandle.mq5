@@ -527,8 +527,14 @@ void ExecuteTradeFromDivergence(int dir)
       return;
    }
    
-   // Préparer le commentaire
-   string orderComment = "DIVERGENCE " + dirStr + " | RR:1:" + DoubleToString(rr, 2);
+   // Récupérer la valeur RSI actuelle pour le commentaire
+   double currentRSI = 0.0;
+   if(GetIndicatorData(indicators, buffers, 2, false)) {
+      currentRSI = buffers.RSI[1];  // RSI de la bougie fermée
+   }
+   
+   // Préparer le commentaire avec RSI
+   string orderComment = "DIVERGENCE " + dirStr + " | RR:1:" + DoubleToString(rr, 2) + " | RSI:" + DoubleToString(currentRSI, 1);
    
    // Ouvrir la position
    if(isBuy) {
