@@ -29,6 +29,18 @@ input int      RSI_Period          = 14;                 // Période RSI
 input double   RSI_Oversold        = 29.0;               // Seuil survente (pour BUY)
 input double   RSI_Overbought      = 71.0;               // Seuil surachat (pour SELL)
 
+input group "═══ EMA - Filtre de tendance ═══"
+input bool     Use_EMA_Filter      = true;               // Activer filtre EMA
+input int      EMA_Fast_Period     = 50;                 // Période EMA rapide
+input int      EMA_Slow_Period     = 100;                // Période EMA lente
+enum EMA_MODE { 
+   EMA_TREND=0,        // Suivre la tendance
+   EMA_COUNTER=1,      // Contre-tendance
+   EMA_ZONE=2          // Zone dynamique
+};
+input EMA_MODE EMA_Filter_Mode     = EMA_TREND;          // Mode de filtrage
+input double   EMA_Zone_Distance   = 20.0;               // Distance zone (points)
+
 input group "═══ Validateur de Divergence ═══"
 input bool     Use_Divergence_Validator = true;          // Activer validation par divergence
 input double   Div_RSI_Buy_Level   = 35.0;               // Seuil RSI pour validation BUY
@@ -79,6 +91,10 @@ input bool     Mark_DrawText         = false;            // Texte d'annotation
 //---------------------------- Indicateurs --------------------------------
 IndicatorHandles indicators;
 IndicatorBuffers buffers;
+
+//---------------------------- EMA Handles --------------------------------
+int EMA_Fast_Handle = INVALID_HANDLE;
+int EMA_Slow_Handle = INVALID_HANDLE;
 
 //---------------------------- Divergence Validator -----------------------
 JTDivergenceValidator divValidator;
@@ -152,6 +168,95 @@ double risk = eq * (Risk_Percent/100.0);
    return NormalizeVolume(risk / money_per_lot, s);
 }
 
+//---------------------------- Filtre EMA -------------------------------
+bool CheckEMAFilter(int signalDirection)
+{
+   if(!Use_EMA_Filter) return true;
+   
+   double emaFast[], emaSlow[];
+   ArraySetAsSeries(emaFast, true);
+   ArraySetAsSeries(emaSlow, true);
+   
+   if(CopyBuffer(EMA_Fast_Handle, 0, 0, 2, emaFast) < 2) {
+      LogError("Erreur copie EMA Fast");
+      return false;
+   }
+   if(CopyBuffer(EMA_Slow_Handle, 0, 0, 2, emaSlow) < 2) {
+      LogError("Erreur copie EMA Slow");
+      return false;
+   }
+   
+   string s = Sym();
+   double price = SymbolInfoDouble(s, SYMBOL_BID);
+   bool uptrend = (emaFast[0] > emaSlow[0]);
+   double point = SymbolInfoDouble(s, SYMBOL_POINT);
+   
+   string modeStr = "";
+   bool filterPassed = false;
+   
+   switch(EMA_Filter_Mode) {
+      case EMA_TREND: {
+         // Mode TREND : Trade dans le sens de la tendance
+         modeStr = "TREND";
+         if(signalDirection > 0) { // BUY
+            filterPassed = uptrend && (price > emaSlow[0]);
+            if(!filterPassed) {
+               LogMessage("Filtre EMA TREND: Rejet BUY - Tendance=" + (uptrend?"UP":"DOWN") + 
+                         ", Prix=" + DoubleToString(price,5) + " vs EMA100=" + DoubleToString(emaSlow[0],5));
+            }
+         } else { // SELL
+            filterPassed = !uptrend && (price < emaSlow[0]);
+            if(!filterPassed) {
+               LogMessage("Filtre EMA TREND: Rejet SELL - Tendance=" + (uptrend?"UP":"DOWN") + 
+                         ", Prix=" + DoubleToString(price,5) + " vs EMA100=" + DoubleToString(emaSlow[0],5));
+            }
+         }
+         break;
+      }
+         
+      case EMA_COUNTER: {
+         // Mode COUNTER : Trade les retournements aux extrêmes
+         modeStr = "COUNTER";
+         double distance = MathAbs(price - emaFast[0]) / point;
+         if(signalDirection > 0) { // BUY
+            filterPassed = !uptrend && (price < emaFast[0]) && (distance > EMA_Zone_Distance);
+            if(!filterPassed) {
+               LogMessage("Filtre EMA COUNTER: Rejet BUY - Distance=" + DoubleToString(distance,1) + 
+                         "pts < " + DoubleToString(EMA_Zone_Distance,1) + "pts");
+            }
+         } else { // SELL
+            filterPassed = uptrend && (price > emaFast[0]) && (distance > EMA_Zone_Distance);
+            if(!filterPassed) {
+               LogMessage("Filtre EMA COUNTER: Rejet SELL - Distance=" + DoubleToString(distance,1) + 
+                         "pts < " + DoubleToString(EMA_Zone_Distance,1) + "pts");
+            }
+         }
+         break;
+      }
+         
+      case EMA_ZONE: {
+         // Mode ZONE : Évite la zone neutre entre les EMAs
+         modeStr = "ZONE";
+         double maxEMA = MathMax(emaFast[0], emaSlow[0]);
+         double minEMA = MathMin(emaFast[0], emaSlow[0]);
+         bool inZone = (price < maxEMA + EMA_Zone_Distance * point) && 
+                       (price > minEMA - EMA_Zone_Distance * point);
+         filterPassed = !inZone;
+         if(!filterPassed) {
+            LogMessage("Filtre EMA ZONE: Rejet - Prix dans zone neutre [" + 
+                      DoubleToString(minEMA,5) + " - " + DoubleToString(maxEMA,5) + "]");
+         }
+         break;
+      }
+   }
+   
+   if(filterPassed) {
+      LogMessage("✓ Filtre EMA " + modeStr + " passé - Signal " + (signalDirection>0?"BUY":"SELL") + " validé");
+   }
+   
+   return filterPassed;
+}
+
 //---------------------------- Lifecycle -------------------------------
 int OnInit()
 {
@@ -170,6 +275,34 @@ int OnInit()
    // Afficher le RSI dans une sous-fenêtre
    if(!ChartIndicatorAdd(0, ChartWindowFind(), indicators.RSI)) {
       Print("Attention: impossible d'afficher le RSI sur le graphe");
+   }
+   
+   // Initialiser les EMAs si le filtre est activé
+   if(Use_EMA_Filter) {
+      EMA_Fast_Handle = iMA(s, t, EMA_Fast_Period, 0, MODE_EMA, PRICE_CLOSE);
+      EMA_Slow_Handle = iMA(s, t, EMA_Slow_Period, 0, MODE_EMA, PRICE_CLOSE);
+      
+      if(EMA_Fast_Handle == INVALID_HANDLE || EMA_Slow_Handle == INVALID_HANDLE) {
+         LogError("Erreur d'initialisation des EMAs");
+         return INIT_FAILED;
+      }
+      
+      // Afficher les EMAs sur le graphe
+      if(!ChartIndicatorAdd(0, 0, EMA_Fast_Handle)) {
+         Print("Attention: impossible d'afficher EMA" + IntegerToString(EMA_Fast_Period));
+      }
+      if(!ChartIndicatorAdd(0, 0, EMA_Slow_Handle)) {
+         Print("Attention: impossible d'afficher EMA" + IntegerToString(EMA_Slow_Period));
+      }
+      
+      string modeText = "";
+      switch(EMA_Filter_Mode) {
+         case EMA_TREND: modeText = "TREND (suivre tendance)"; break;
+         case EMA_COUNTER: modeText = "COUNTER (contre-tendance)"; break;
+         case EMA_ZONE: modeText = "ZONE (éviter zone neutre)"; break;
+      }
+      LogMessage("Filtre EMA activé: EMA" + IntegerToString(EMA_Fast_Period) + "/EMA" + 
+                 IntegerToString(EMA_Slow_Period) + " - Mode: " + modeText);
    }
 
    trade.SetExpertMagicNumber((long)Magic);
@@ -207,6 +340,16 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    ReleaseIndicators(indicators);
+   
+   // Libérer les handles EMA
+   if(EMA_Fast_Handle != INVALID_HANDLE) {
+      IndicatorRelease(EMA_Fast_Handle);
+      EMA_Fast_Handle = INVALID_HANDLE;
+   }
+   if(EMA_Slow_Handle != INVALID_HANDLE) {
+      IndicatorRelease(EMA_Slow_Handle);
+      EMA_Slow_Handle = INVALID_HANDLE;
+   }
    
    // Nettoyer les marqueurs Free Candles si souhaité
    // Commenté pour garder les marqueurs après déconnexion de l'EA
@@ -309,6 +452,12 @@ int SignalFromClosedBarStrict()
    
    // Si pas de signal, retourner 0
    if(signal == 0) return 0;
+   
+   // Appliquer le filtre EMA AVANT le filtre RSI
+   if(!CheckEMAFilter(signal)) {
+      LogMessage("Signal rejeté par filtre EMA");
+      return 0;
+   }
    
    // Appliquer le filtre RSI si activé
    if(Use_RSI_Filter) {
