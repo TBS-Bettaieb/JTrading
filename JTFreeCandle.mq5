@@ -11,6 +11,7 @@
 #include "JT_Positions.mqh"
 #include "JT_Utils.mqh"
 #include "JT_DivergenceValidator.mqh"
+#include "JT_TradeTracker.mqh"
 CTrade trade;
 
 //---------------------------- Inputs --------------------------------
@@ -98,6 +99,9 @@ int EMA_Slow_Handle = INVALID_HANDLE;
 
 //---------------------------- Divergence Validator -----------------------
 JTDivergenceValidator divValidator;
+
+//---------------------------- Trade Tracker -------------------------------
+JTTradeTracker* tracker = NULL;
 
 //---------------------------- Utils ----------------------------------
 string Sym() { return (InpSymbol=="" ? _Symbol : InpSymbol); }
@@ -334,6 +338,22 @@ int OnInit()
          return INIT_PARAMETERS_INCORRECT;
       }
    }
+   
+   // Initialiser le Trade Tracker
+   tracker = new JTTradeTracker(
+      s,                               // Symbol
+      Magic,                           // Magic number
+      BB_Period,                       // BB period
+      BB_Dev,                          // BB deviation
+      RSI_Period,                      // RSI period
+      Use_EMA_Filter ? EMA_Fast_Period : 50,  // EMA fast
+      Use_EMA_Filter ? EMA_Slow_Period : 100  // EMA slow
+   );
+   
+   if(tracker != NULL) {
+      LogMessage("Trade Tracker activé - Fichier CSV: TradeAnalysis_" + s + "_" + IntegerToString(Magic) + ".csv");
+   }
+   
    return INIT_SUCCEEDED;
 }
 
@@ -351,6 +371,13 @@ void OnDeinit(const int reason)
       EMA_Slow_Handle = INVALID_HANDLE;
    }
    
+   // Afficher le rapport final et libérer le tracker
+   if(tracker != NULL) {
+      tracker.PrintReport();
+      delete tracker;
+      tracker = NULL;
+   }
+   
    // Nettoyer les marqueurs Free Candles si souhaité
    // Commenté pour garder les marqueurs après déconnexion de l'EA
    // DeleteAllFreeCandleMarkers("FreeCandle");
@@ -362,8 +389,24 @@ void OnTick()
    string s = Sym(); ENUM_TIMEFRAMES t = TF();
    if(!IsHourAllowed()) return;
    static datetime last_bar=0;
+   
+   // Suivre les trades actifs pour max profit/DD
+   if(tracker != NULL) {
+      for(int i = PositionsTotal()-1; i >= 0; i--) {
+         ulong ticket = PositionGetTicket(i);
+         if(PositionSelectByTicket(ticket)) {
+            if(PositionGetInteger(POSITION_MAGIC) == Magic) {
+               tracker.UpdateTrade(ticket);
+            }
+         }
+      }
+   }
+   
    // Gestion en continu des positions
    ManageOpenPositions(s);
+   
+   // Vérifier les trades fermés automatiquement
+   CheckClosedTrades();
 
    // Détection de nouvelle bougie + logique d'entrée existante
    if(!NewBar(s,t,last_bar)) return;
@@ -594,9 +637,39 @@ void Process()
    
    // Ouvrir la position
    if(isBuy){ // BUY
-      if(lots>0) OpenBuyPosition(trade, s, lots, ask, sl, tp, orderComment);
+      if(lots>0) {
+         OpenBuyPosition(trade, s, lots, ask, sl, tp, orderComment);
+         // Enregistrer le trade dans le tracker
+         if(trade.ResultOrder() > 0 && tracker != NULL) {
+            string tradeMode = (Mode == REVERSION ? "REVERSION" : "BREAKOUT");
+            string emaMode = "";
+            if(Use_EMA_Filter) {
+               switch(EMA_Filter_Mode) {
+                  case EMA_TREND: emaMode = "TREND"; break;
+                  case EMA_COUNTER: emaMode = "COUNTER"; break;
+                  case EMA_ZONE: emaMode = "ZONE"; break;
+               }
+            }
+            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, false, emaMode);
+         }
+      }
    } else {   // SELL
-      if(lots>0) OpenSellPosition(trade, s, lots, bid, sl, tp, orderComment);
+      if(lots>0) {
+         OpenSellPosition(trade, s, lots, bid, sl, tp, orderComment);
+         // Enregistrer le trade dans le tracker
+         if(trade.ResultOrder() > 0 && tracker != NULL) {
+            string tradeMode = (Mode == REVERSION ? "REVERSION" : "BREAKOUT");
+            string emaMode = "";
+            if(Use_EMA_Filter) {
+               switch(EMA_Filter_Mode) {
+                  case EMA_TREND: emaMode = "TREND"; break;
+                  case EMA_COUNTER: emaMode = "COUNTER"; break;
+                  case EMA_ZONE: emaMode = "ZONE"; break;
+               }
+            }
+            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, false, emaMode);
+         }
+      }
    }
 }
 
@@ -686,9 +759,39 @@ void ExecuteTradeFromDivergence(int dir)
    
    // Ouvrir la position
    if(isBuy) {
-      if(lots > 0) OpenBuyPosition(trade, s, lots, ask, sl, tp, orderComment);
+      if(lots > 0) {
+         OpenBuyPosition(trade, s, lots, ask, sl, tp, orderComment);
+         // Enregistrer le trade divergence dans le tracker
+         if(trade.ResultOrder() > 0 && tracker != NULL) {
+            string tradeMode = (Mode == REVERSION ? "REVERSION" : "BREAKOUT");
+            string emaMode = "";
+            if(Use_EMA_Filter) {
+               switch(EMA_Filter_Mode) {
+                  case EMA_TREND: emaMode = "TREND"; break;
+                  case EMA_COUNTER: emaMode = "COUNTER"; break;
+                  case EMA_ZONE: emaMode = "ZONE"; break;
+               }
+            }
+            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, true, emaMode);
+         }
+      }
    } else {
-      if(lots > 0) OpenSellPosition(trade, s, lots, bid, sl, tp, orderComment);
+      if(lots > 0) {
+         OpenSellPosition(trade, s, lots, bid, sl, tp, orderComment);
+         // Enregistrer le trade divergence dans le tracker
+         if(trade.ResultOrder() > 0 && tracker != NULL) {
+            string tradeMode = (Mode == REVERSION ? "REVERSION" : "BREAKOUT");
+            string emaMode = "";
+            if(Use_EMA_Filter) {
+               switch(EMA_Filter_Mode) {
+                  case EMA_TREND: emaMode = "TREND"; break;
+                  case EMA_COUNTER: emaMode = "COUNTER"; break;
+                  case EMA_ZONE: emaMode = "ZONE"; break;
+               }
+            }
+            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, true, emaMode);
+         }
+      }
    }
 }
 
@@ -749,6 +852,10 @@ void ManageOpenPositions(const string s)
          if(touchedOpposite)
          {
             ClosePosition(trade, tk, "Band touch exit", 0);
+            // Enregistrer la fermeture dans le tracker
+            if(tracker != NULL) {
+               tracker.RecordTradeClose(tk, "Band Touch");
+            }
             continue;
          }
       }
@@ -769,10 +876,57 @@ void ManageOpenPositions(const string s)
       // Fermer à l'heure de flat time si activé
       if(UseFlatTime && time_to_flat) {
          ClosePosition(trade, tk, "Flat time", 0);
+         // Enregistrer la fermeture dans le tracker
+         if(tracker != NULL) {
+            tracker.RecordTradeClose(tk, "Flat Time");
+         }
       }
    }
 }
 
+
+// Vérifier les trades fermés automatiquement (TP/SL)
+void CheckClosedTrades()
+{
+   if(tracker == NULL) return;
+   
+   static datetime lastCheck = 0;
+   datetime currentTime = TimeCurrent();
+   
+   // Vérifier toutes les 30 secondes
+   if(currentTime - lastCheck < 30) return;
+   lastCheck = currentTime;
+   
+   // Sélectionner l'historique récent (dernières 24h)
+   if(!HistorySelect(currentTime - 86400, currentTime)) return;
+   
+   uint totalDeals = HistoryDealsTotal();
+   
+   for(uint i = 0; i < totalDeals; i++) {
+      ulong dealTicket = HistoryDealGetTicket(i);
+      
+      // Vérifier si c'est notre magic et une sortie de position
+      if(HistoryDealGetInteger(dealTicket, DEAL_MAGIC) == Magic &&
+         HistoryDealGetInteger(dealTicket, DEAL_ENTRY) == DEAL_ENTRY_OUT) {
+         
+         ulong posTicket = HistoryDealGetInteger(dealTicket, DEAL_POSITION_ID);
+         
+         // Déterminer la raison de la fermeture
+         string comment = HistoryDealGetString(dealTicket, DEAL_COMMENT);
+         string reason = "";
+         
+         if(StringFind(comment, "tp") >= 0 || StringFind(comment, "TP") >= 0)
+            reason = "TP";
+         else if(StringFind(comment, "sl") >= 0 || StringFind(comment, "SL") >= 0)
+            reason = "SL";
+         else
+            reason = "Auto Close";
+         
+         // Enregistrer la fermeture (la fonction évite les doublons)
+         tracker.RecordTradeClose(posTicket, reason);
+      }
+   }
+}
 
 // relance Process sur chaque nouvelle barre
 void OnTimer(){} // non utilisé
