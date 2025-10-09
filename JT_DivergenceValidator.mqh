@@ -25,16 +25,6 @@ private:
    double  m_rsiSellLevel;     // Seuil pour sell (défaut 65)
    int     m_swingLength;      // Longueur pour détecter les pivots
    
-   // Filtres d'inclinaison et amplitude
-   int     m_minBarsBetweenPivots;
-   double  m_minAnglePriceDeg;
-   double  m_minAngleRSIDeg;
-   double  m_minPricePct;
-   double  m_minRSIPoints;
-   bool    m_useATRNorm;
-   int     m_atrPeriod;
-   double  m_minATRMult;
-   
    FreeCandleMemory m_memory;
 
 public:
@@ -47,17 +37,6 @@ public:
       m_rsiBuyLevel = 35.0;
       m_rsiSellLevel = 65.0;
       m_swingLength = 5;
-      
-      // Filtres par défaut
-      m_minBarsBetweenPivots = 5;
-      m_minAnglePriceDeg = 10.0;
-      m_minAngleRSIDeg = 10.0;
-      m_minPricePct = 0.20;
-      m_minRSIPoints = 4.0;
-      m_useATRNorm = true;
-      m_atrPeriod = 14;
-      m_minATRMult = 0.5;
-      
       ClearMemory();
    }
    
@@ -69,10 +48,7 @@ public:
    }
    
    // Initialisation
-   bool Init(string symbol, ENUM_TIMEFRAMES tf, int rsiPeriod, double rsiBuyLevel, double rsiSellLevel, int swingLength,
-             int minBarsBetweenPivots = 5, double minAnglePriceDeg = 10.0, double minAngleRSIDeg = 10.0,
-             double minPricePct = 0.20, double minRSIPoints = 4.0, bool useATRNorm = true,
-             int atrPeriod = 14, double minATRMult = 0.5)
+   bool Init(string symbol, ENUM_TIMEFRAMES tf, int rsiPeriod, double rsiBuyLevel, double rsiSellLevel, int swingLength)
    {
       m_symbol = symbol;
       m_tf = tf;
@@ -80,16 +56,6 @@ public:
       m_rsiBuyLevel = rsiBuyLevel;
       m_rsiSellLevel = rsiSellLevel;
       m_swingLength = swingLength;
-      
-      // Filtres d'inclinaison
-      m_minBarsBetweenPivots = minBarsBetweenPivots;
-      m_minAnglePriceDeg = minAnglePriceDeg;
-      m_minAngleRSIDeg = minAngleRSIDeg;
-      m_minPricePct = minPricePct;
-      m_minRSIPoints = minRSIPoints;
-      m_useATRNorm = useATRNorm;
-      m_atrPeriod = atrPeriod;
-      m_minATRMult = minATRMult;
       
       // Créer le handle RSI (sera différent du RSI principal si nécessaire)
       m_rsiHandle = iRSI(m_symbol, m_tf, m_rsiPeriod, PRICE_CLOSE);
@@ -191,13 +157,6 @@ public:
    }
 
 private:
-   // Calcule l'angle en degrés à partir de dy/dx
-   double AngleDeg(double dy, double dx)
-   {
-      if(dx == 0) return 0.0;
-      return MathArctan(dy / dx) * 180.0 / M_PI;
-   }
-   
    // Obtenir le low d'une barre
    double GetLow(int shift)
    {
@@ -258,7 +217,6 @@ private:
    }
    
    // Divergence haussière: Prix fait un LL (Lower Low) mais RSI fait un HL (Higher Low)
-   // Avec filtres d'inclinaison et amplitude
    bool IsBullishDivergence()
    {
       int barsAvailable = Bars(m_symbol, m_tf);
@@ -279,93 +237,32 @@ private:
          return false;
       }
       
-      int olderPivot = pivots[1];   // i1 - Plus ancien
-      int recentPivot = pivots[0];  // i2 - Plus récent
+      int recentPivot = pivots[0];  // Plus récent
+      int olderPivot = pivots[1];   // Plus ancien
       
-      // Vérifier distance minimale entre pivots
-      int barsBetween = olderPivot - recentPivot;
-      if(barsBetween < m_minBarsBetweenPivots) {
-         LogMessage("Pivots trop proches: " + IntegerToString(barsBetween) + " < " + 
-                    IntegerToString(m_minBarsBetweenPivots), "DIVERGENCE");
+      double recentLow = GetLow(recentPivot);
+      double olderLow = GetLow(olderPivot);
+      double recentRSI = GetRSI(recentPivot);
+      double olderRSI = GetRSI(olderPivot);
+      
+      if(recentLow == 0.0 || olderLow == 0.0 || recentRSI == 0.0 || olderRSI == 0.0) {
          return false;
       }
       
-      double p1 = GetLow(olderPivot);    // Prix ancien
-      double p2 = GetLow(recentPivot);   // Prix récent
-      double r1 = GetRSI(olderPivot);    // RSI ancien
-      double r2 = GetRSI(recentPivot);   // RSI récent
+      bool priceLowerLow = (recentLow < olderLow);
+      bool rsiHigherLow = (recentRSI > olderRSI);
       
-      if(p1 == 0.0 || p2 == 0.0 || r1 == 0.0 || r2 == 0.0) {
-         return false;
+      if(priceLowerLow && rsiHigherLow) {
+         LogMessage("Divergence haussière détectée: Prix(" + DoubleToString(olderLow, 5) + " → " + 
+                    DoubleToString(recentLow, 5) + "), RSI(" + DoubleToString(olderRSI, 2) + 
+                    " → " + DoubleToString(recentRSI, 2) + ")", "DIVERGENCE");
+         return true;
       }
       
-      // Deltas
-      double dx = (double)barsBetween;     // Espacement en barres
-      double dP = p2 - p1;                 // Delta prix (doit être < 0 pour LL)
-      double dR = r2 - r1;                 // Delta RSI (doit être > 0 pour HL)
-      double pct = 100.0 * (p1 > 0 ? MathAbs(dP) / p1 : 0.0);
-      
-      // Angles (négatif car on va de i1 vers i2, donc dx négatif dans le temps)
-      double aPrice = AngleDeg(dP, -dx);   // Pente prix
-      double aRSI = AngleDeg(dR, -dx);     // Pente RSI
-      
-      // Filtres de base
-      bool priceLowerLow = (p2 < p1);
-      bool rsiHigherLow = (r2 > r1);
-      
-      if(!(priceLowerLow && rsiHigherLow)) {
-         return false;
-      }
-      
-      // Filtres d'inclinaison: Prix descend (angle négatif), RSI monte (angle positif)
-      if(aPrice >= -m_minAnglePriceDeg) {
-         LogMessage("Angle prix insuffisant: " + DoubleToString(aPrice, 2) + "° >= -" + 
-                    DoubleToString(m_minAnglePriceDeg, 1) + "°", "DIVERGENCE");
-         return false;
-      }
-      
-      if(aRSI <= m_minAngleRSIDeg) {
-         LogMessage("Angle RSI insuffisant: " + DoubleToString(aRSI, 2) + "° <= " + 
-                    DoubleToString(m_minAngleRSIDeg, 1) + "°", "DIVERGENCE");
-         return false;
-      }
-      
-      // Filtre amplitude prix
-      if(pct < m_minPricePct) {
-         LogMessage("Delta prix % insuffisant: " + DoubleToString(pct, 3) + "% < " + 
-                    DoubleToString(m_minPricePct, 2) + "%", "DIVERGENCE");
-         return false;
-      }
-      
-      // Filtre amplitude RSI
-      if(MathAbs(dR) < m_minRSIPoints) {
-         LogMessage("Delta RSI insuffisant: " + DoubleToString(MathAbs(dR), 2) + " < " + 
-                    DoubleToString(m_minRSIPoints, 1), "DIVERGENCE");
-         return false;
-      }
-      
-      // Normalisation ATR optionnelle
-      if(m_useATRNorm) {
-         double atr = iATR(m_symbol, m_tf, m_atrPeriod, recentPivot);
-         if(atr > 0) {
-            if(MathAbs(dP) < m_minATRMult * atr) {
-               LogMessage("Delta prix vs ATR insuffisant: " + DoubleToString(MathAbs(dP), 5) + 
-                         " < " + DoubleToString(m_minATRMult * atr, 5), "DIVERGENCE");
-               return false;
-            }
-         }
-      }
-      
-      // Tous les filtres passés !
-      LogMessage("✓ Divergence haussière VALIDE: Prix(" + DoubleToString(p1, 5) + " → " + 
-                 DoubleToString(p2, 5) + " | " + DoubleToString(aPrice, 1) + "°), RSI(" + 
-                 DoubleToString(r1, 2) + " → " + DoubleToString(r2, 2) + " | " + 
-                 DoubleToString(aRSI, 1) + "°)", "DIVERGENCE");
-      return true;
+      return false;
    }
    
    // Divergence baissière: Prix fait un HH (Higher High) mais RSI fait un LH (Lower High)
-   // Avec filtres d'inclinaison et amplitude
    bool IsBearishDivergence()
    {
       int barsAvailable = Bars(m_symbol, m_tf);
@@ -386,89 +283,29 @@ private:
          return false;
       }
       
-      int olderPivot = pivots[1];   // i1 - Plus ancien
-      int recentPivot = pivots[0];  // i2 - Plus récent
+      int recentPivot = pivots[0];  // Plus récent
+      int olderPivot = pivots[1];   // Plus ancien
       
-      // Vérifier distance minimale entre pivots
-      int barsBetween = olderPivot - recentPivot;
-      if(barsBetween < m_minBarsBetweenPivots) {
-         LogMessage("Pivots trop proches: " + IntegerToString(barsBetween) + " < " + 
-                    IntegerToString(m_minBarsBetweenPivots), "DIVERGENCE");
+      double recentHigh = GetHigh(recentPivot);
+      double olderHigh = GetHigh(olderPivot);
+      double recentRSI = GetRSI(recentPivot);
+      double olderRSI = GetRSI(olderPivot);
+      
+      if(recentHigh == 0.0 || olderHigh == 0.0 || recentRSI == 0.0 || olderRSI == 0.0) {
          return false;
       }
       
-      double p1 = GetHigh(olderPivot);   // Prix ancien
-      double p2 = GetHigh(recentPivot);  // Prix récent
-      double r1 = GetRSI(olderPivot);    // RSI ancien
-      double r2 = GetRSI(recentPivot);   // RSI récent
+      bool priceHigherHigh = (recentHigh > olderHigh);
+      bool rsiLowerHigh = (recentRSI < olderRSI);
       
-      if(p1 == 0.0 || p2 == 0.0 || r1 == 0.0 || r2 == 0.0) {
-         return false;
+      if(priceHigherHigh && rsiLowerHigh) {
+         LogMessage("Divergence baissière détectée: Prix(" + DoubleToString(olderHigh, 5) + " → " + 
+                    DoubleToString(recentHigh, 5) + "), RSI(" + DoubleToString(olderRSI, 2) + 
+                    " → " + DoubleToString(recentRSI, 2) + ")", "DIVERGENCE");
+         return true;
       }
       
-      // Deltas
-      double dx = (double)barsBetween;     // Espacement en barres
-      double dP = p2 - p1;                 // Delta prix (doit être > 0 pour HH)
-      double dR = r2 - r1;                 // Delta RSI (doit être < 0 pour LH)
-      double pct = 100.0 * (p1 > 0 ? MathAbs(dP) / p1 : 0.0);
-      
-      // Angles
-      double aPrice = AngleDeg(dP, -dx);   // Pente prix
-      double aRSI = AngleDeg(dR, -dx);     // Pente RSI
-      
-      // Filtres de base
-      bool priceHigherHigh = (p2 > p1);
-      bool rsiLowerHigh = (r2 < r1);
-      
-      if(!(priceHigherHigh && rsiLowerHigh)) {
-         return false;
-      }
-      
-      // Filtres d'inclinaison: Prix monte (angle positif), RSI descend (angle négatif)
-      if(aPrice <= m_minAnglePriceDeg) {
-         LogMessage("Angle prix insuffisant: " + DoubleToString(aPrice, 2) + "° <= " + 
-                    DoubleToString(m_minAnglePriceDeg, 1) + "°", "DIVERGENCE");
-         return false;
-      }
-      
-      if(aRSI >= -m_minAngleRSIDeg) {
-         LogMessage("Angle RSI insuffisant: " + DoubleToString(aRSI, 2) + "° >= -" + 
-                    DoubleToString(m_minAngleRSIDeg, 1) + "°", "DIVERGENCE");
-         return false;
-      }
-      
-      // Filtre amplitude prix
-      if(pct < m_minPricePct) {
-         LogMessage("Delta prix % insuffisant: " + DoubleToString(pct, 3) + "% < " + 
-                    DoubleToString(m_minPricePct, 2) + "%", "DIVERGENCE");
-         return false;
-      }
-      
-      // Filtre amplitude RSI
-      if(MathAbs(dR) < m_minRSIPoints) {
-         LogMessage("Delta RSI insuffisant: " + DoubleToString(MathAbs(dR), 2) + " < " + 
-                    DoubleToString(m_minRSIPoints, 1), "DIVERGENCE");
-         return false;
-      }
-      
-      // Normalisation ATR optionnelle
-      if(m_useATRNorm) {
-         double atr = iATR(m_symbol, m_tf, m_atrPeriod, recentPivot);
-         if(atr > 0) {
-            if(MathAbs(dP) < m_minATRMult * atr) {
-               LogMessage("Delta prix vs ATR insuffisant: " + DoubleToString(MathAbs(dP), 5) + 
-                         " < " + DoubleToString(m_minATRMult * atr, 5), "DIVERGENCE");
-               return false;
-            }
-         }
-      }
-      
-      // Tous les filtres passés !
-      LogMessage("✓ Divergence baissière VALIDE: Prix(" + DoubleToString(p1, 5) + " → " + 
-                 DoubleToString(p2, 5) + " | " + DoubleToString(aPrice, 1) + "°), RSI(" + 
-                 DoubleToString(r1, 2) + " → " + DoubleToString(r2, 2) + " | " + 
-                 DoubleToString(aRSI, 1) + "°)", "DIVERGENCE");
-      return true;
+      return false;
    }
 };
 
