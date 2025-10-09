@@ -109,8 +109,56 @@ void LogError(string message, int errorCode = 0) {
    LogMessage(errorMessage, "ERROR");
 }
 
+// Helpers pour arrondir au pas de cotation (tick)
+double CeilToTick(double price, double tick)
+{
+   return MathCeil(price / tick) * tick;
+}
+
+double FloorToTick(double price, double tick)
+{
+   return MathFloor(price / tick) * tick;
+}
+
+double RoundToTick(double price, double tick)
+{
+   return MathRound(price / tick) * tick;
+}
+
+// Calcule la distance minimale de stop en PRIX alignée sur la grille de cotation
+double MinStopDistPrice(string symbol, int minPointsFallback)
+{
+   double point    = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   double tickSize = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
+   int    stopsLvl = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL); // en points
+   double byBroker = stopsLvl > 0 ? stopsLvl * point : 0.0;
+   double byUser   = minPointsFallback * point;
+   // distance mini en PRIX puis alignée à la grille de cotation
+   return CeilToTick(MathMax(byBroker, byUser), tickSize);
+}
+
+// Calcule l'Average True Range (ATR) avec gestion robuste des erreurs
+double iATR(string symbol, ENUM_TIMEFRAMES timeframe, int period, int shift)
+{
+   int handle = iATR(symbol, timeframe, period);
+   if(handle == INVALID_HANDLE) return 0.0;
+   
+   double atr[];
+   ArraySetAsSeries(atr, true);
+   
+   if(CopyBuffer(handle, 0, shift, 1, atr) <= 0) {
+      IndicatorRelease(handle);
+      return 0.0;
+   }
+   
+   double result = atr[0];
+   IndicatorRelease(handle);
+   return result;
+}
+
 // Calcule les niveaux de SL et TP basés sur les plus hauts/plus bas des X dernières bougies
-// Version optimisée utilisant iLowest/iHighest (O(1) au lieu de O(N))
+// Version robuste : combine swing et ATR, aligne strictement sur grille de cotation
+// Résout : confusion point/tick, stops level, manque de données, normalisation
 bool CalculateSwingSLTP(
    string symbol,
    ENUM_TIMEFRAMES timeframe,
@@ -121,78 +169,119 @@ bool CalculateSwingSLTP(
    double &outTP,             // Valeur du TP calculée (retour par référence)
    double currentPrice = 0.0, // Prix actuel, si 0 utilise Ask/Bid
    double rrFallback = 1.5,   // RR si aucun TP valide
-   int minPointsFallback = 400 // distance mini si broker ne donne rien
-) {
-   // Prix courant
+   int minPointsFallback = 1000, // distance mini si broker ne donne rien
+   double atrMultiplier = 2.0,   // Multiplicateur ATR pour SL (défaut 2.0)
+   int atrPeriod = 14            // Période ATR (défaut 14)
+)
+{
    MqlTick tick;
    if(!SymbolInfoTick(symbol, tick)) return false;
    if(currentPrice <= 0.0) currentPrice = isBuy ? tick.ask : tick.bid;
 
-   // Contraintes broker
-   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-   double tickSize = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
-   int stopsLvl = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL); // en points
-   // distance minimale en prix
-   double minDist = MathMax(minPointsFallback, stopsLvl) * point;
+   const int digits   = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   const double tickSz = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
+   if(tickSz <= 0.0) return false;
 
-   // --- SL via extrême récent (on ignore la bougie 0)
-   if(isBuy) {
-      // Pour un achat, SL = plus bas des slPeriod dernières bougies
-      int slShift = iLowest(symbol, timeframe, MODE_LOW, slPeriod, 1);
-      if(slShift == -1) return false;
-      outSL = iLow(symbol, timeframe, slShift);
-      if(currentPrice - outSL < minDist) outSL = currentPrice - minDist;
+   // Charger les données nécessaires une fois
+   int need = MathMax(slPeriod, tpPeriod) + 2; // marge
+   double lows[], highs[];
+   if(CopyLow(symbol, timeframe, 0, need, lows)  < need) return false;
+   if(CopyHigh(symbol, timeframe, 0, need, highs) < need) return false;
 
-      // TP = plus haut des tpPeriod dernières bougies
-      int tpShift = iHighest(symbol, timeframe, MODE_HIGH, tpPeriod, 1);
-      if(tpShift == -1) return false;
-      outTP = iHigh(symbol, timeframe, tpShift);
+   // Vérifier assez de barres fermées
+   if(Bars(symbol, timeframe) < need) return false;
 
-      // Extension si TP ≤ prix
-      if(outTP <= currentPrice) {
-         int extShift = iHighest(symbol, timeframe, MODE_HIGH, tpPeriod*2, 1);
-         if(extShift != -1) outTP = iHigh(symbol, timeframe, extShift);
-         if(outTP <= currentPrice) outTP = currentPrice + (currentPrice - outSL) * rrFallback;
-      }
-   } else {
-      // Pour une vente, SL = plus haut des slPeriod dernières bougies
-      int slShift = iHighest(symbol, timeframe, MODE_HIGH, slPeriod, 1);
-      if(slShift == -1) return false;
-      outSL = iHigh(symbol, timeframe, slShift);
-      if(outSL - currentPrice < minDist) outSL = currentPrice + minDist;
+   // Extrêmes "swing" sur barres 1..N (on ignore la 0)
+   int loShift = ArrayMinimum(lows, 1, slPeriod);
+   int hiShift = ArrayMaximum(highs, 1, slPeriod);
+   double swingLow  = (loShift >= 1) ? lows[loShift] : 0.0;
+   double swingHigh = (hiShift >= 1) ? highs[hiShift] : 0.0;
 
-      // TP = plus bas des tpPeriod dernières bougies
-      int tpShift = iLowest(symbol, timeframe, MODE_LOW, tpPeriod, 1);
-      if(tpShift == -1) return false;
-      outTP = iLow(symbol, timeframe, tpShift);
+   // ATR floor
+   double atr = iATR(symbol, timeframe, atrPeriod, 1);
+   if(atr <= 0.0) atr = 0.0; // on reste tolérant, mais on garde minDist
 
-      // Extension si TP ≥ prix
-      if(outTP >= currentPrice) {
-         int extShift = iLowest(symbol, timeframe, MODE_LOW, tpPeriod*2, 1);
-         if(extShift != -1) outTP = iLow(symbol, timeframe, extShift);
-         if(outTP >= currentPrice) outTP = currentPrice - (outSL - currentPrice) * rrFallback;
-      }
+   // Distance minimale broker alignée sur tick
+   double minDist = MinStopDistPrice(symbol, minPointsFallback);
+
+   // --------- SL
+   double slBySwing, slByAtr, slCandidate;
+
+   if(isBuy)
+   {
+      // swing peut être nul si data manquante
+      slBySwing = (swingLow > 0.0 && swingLow < currentPrice) ? swingLow : currentPrice - 10.0 * minDist;
+      slByAtr   = (atr > 0.0) ? (currentPrice - atrMultiplier * atr) : (currentPrice - minDist);
+
+      // garder le PLUS LOIN du prix parmi les deux (plus protecteur pour un buy = plus bas)
+      slCandidate = MathMin(slBySwing, slByAtr);
+
+      // appliquer minDist
+      if(currentPrice - slCandidate < minDist) slCandidate = currentPrice - minDist;
+
+      // aligner à la grille
+      outSL = FloorToTick(slCandidate, tickSz);
+      if(outSL >= currentPrice) outSL = currentPrice - CeilToTick(minDist, tickSz);
    }
+   else
+   {
+      slBySwing = (swingHigh > 0.0 && swingHigh > currentPrice) ? swingHigh : currentPrice + 10.0 * minDist;
+      slByAtr   = (atr > 0.0) ? (currentPrice + atrMultiplier * atr) : (currentPrice + minDist);
 
-   // Normalisation au tick et décimales
-   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
-   
-   // Normaliser SL au tick
-   outSL = MathRound(outSL / tickSize) * tickSize;
+      // pour un sell, garder le PLUS LOIN au-dessus du prix
+      slCandidate = MathMax(slBySwing, slByAtr);
+
+      if(slCandidate - currentPrice < minDist) slCandidate = currentPrice + minDist;
+
+      outSL = CeilToTick(slCandidate, tickSz);
+      if(outSL <= currentPrice) outSL = currentPrice + CeilToTick(minDist, tickSz);
+   }
    outSL = NormalizeDouble(outSL, digits);
-   
-   // Normaliser TP au tick
-   outTP = MathRound(outTP / tickSize) * tickSize;
+
+   // --------- TP
+   // 1) cible swing opposée si valide, sinon RR fallback
+   double tpSwing, tpRR, slDist = MathAbs(currentPrice - outSL);
+
+   if(isBuy)
+   {
+      int hi2 = ArrayMaximum(highs, 1, tpPeriod);
+      tpSwing = (hi2 >= 1) ? highs[hi2] : 0.0;
+
+      if(tpSwing <= currentPrice) tpSwing = 0.0; // invalide
+      tpRR = currentPrice + rrFallback * slDist;
+
+      double tpRaw = (tpSwing > 0.0) ? MathMax(tpSwing, currentPrice + minDist) : tpRR;
+      outTP = CeilToTick(tpRaw, tickSz);
+   }
+   else
+   {
+      int lo2 = ArrayMinimum(lows, 1, tpPeriod);
+      tpSwing = (lo2 >= 1) ? lows[lo2] : 0.0;
+
+      if(tpSwing >= currentPrice) tpSwing = 0.0;
+      tpRR = currentPrice - rrFallback * slDist;
+
+      double tpRaw = (tpSwing > 0.0) ? MathMin(tpSwing, currentPrice - minDist) : tpRR;
+      outTP = FloorToTick(tpRaw, tickSz);
+   }
    outTP = NormalizeDouble(outTP, digits);
 
-   // Sécurité: éviter SL==TP
-   if(MathAbs(outTP - outSL) < tickSize * 2) {
-      outTP = isBuy ? outSL + rrFallback * minDist : outSL - rrFallback * minDist;
-      // Re-normaliser TP
-      outTP = MathRound(outTP / tickSize) * tickSize;
+   // Sécurité: TP doit être au moins à minDist du prix et ≠ SL
+   if(isBuy)
+   {
+      if(outTP - currentPrice < minDist) outTP = CeilToTick(currentPrice + minDist, tickSz);
+   }
+   else
+   {
+      if(currentPrice - outTP < minDist) outTP = FloorToTick(currentPrice - minDist, tickSz);
+   }
+   if(MathAbs(outTP - outSL) < 2.0 * tickSz)
+   {
+      outTP = isBuy ? CeilToTick(outSL + rrFallback * MathMax(slDist, minDist), tickSz)
+                    : FloorToTick(outSL - rrFallback * MathMax(slDist, minDist), tickSz);
       outTP = NormalizeDouble(outTP, digits);
    }
-   
+
    return true;
 }
 

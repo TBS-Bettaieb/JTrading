@@ -42,6 +42,8 @@ input ulong    Magic               = 20251007;           // Magic
 input int      SL_Period           = 50;                 // Période pour SL (nombre de bougies)
 input int      TP_Period           = 30;                 // Période pour TP (nombre de bougies)
 input double   Min_RR              = 2.0;                // Ratio risque/récompense minimum (0 = désactivé)
+input double   ATR_Multiplier      = 2.0;                // Multiplicateur ATR pour SL fallback
+input int      ATR_Period          = 14;                 // Période ATR pour SL fallback
 
 // Time filter (allow trading only in specific hour ranges)
 input bool     UseTimeFilter       = true;               // Activer filtre horaire
@@ -51,6 +53,7 @@ input string   HourRanges          = "8-10;16";          // Plages horaires (ex:
 input bool     Close_On_OppositeBand = true;             // Fermer si touche la bande opposée
 input bool     BE_On_MiddleBand      = true;             // Passer Break-Even sur médiane
 input int      BE_Offset_Points      = 0;                // Offset BE en points (>=0)
+input bool     UseFlatTime           = false;            // Activer la clôture forcée à heure fixe
 input int      Flat_Hour             = 23;               // Forcer clôture à HH:MM
 input int      Flat_Minute           = 40;               // Forcer clôture à HH:MM
 
@@ -317,8 +320,8 @@ void Process()
    double sl = 0, tp = 0;
    bool isBuy = (dir > 0);
    
-   // Calculer SL/TP basés sur les plus hauts/plus bas
-   if(!CalculateSwingSLTP(s, t, isBuy, SL_Period, TP_Period, sl, tp)) {
+   // Calculer SL/TP basés sur les plus hauts/plus bas avec ATR fallback
+   if(!CalculateSwingSLTP(s, t, isBuy, SL_Period, TP_Period, sl, tp, 0.0, Min_RR, 1000, ATR_Multiplier, ATR_Period)) {
       LogError("Erreur lors du calcul des niveaux SL/TP");
       return;
    }
@@ -358,8 +361,7 @@ void Process()
    
    // Préparer le commentaire avec RR et RSI
    string orderComment = "BB Outside " + dirStr + 
-                         " | RR:1:" + DoubleToString(rr, 2) + 
-                         " | RSI:" + DoubleToString(currentRSI, 1);
+                         " | RR:1:" + DoubleToString(rr, 2) + " | RSI:" + DoubleToString(currentRSI, 1);
    
    // Ouvrir la position
    if(isBuy){ // BUY
@@ -442,7 +444,10 @@ void ManageOpenPositions(const string s)
          }
       }
 
-      if(time_to_flat) ClosePosition(trade, tk, "Flat time", 0);
+      // Fermer à l'heure de flat time si activé
+      if(UseFlatTime && time_to_flat) {
+         ClosePosition(trade, tk, "Flat time", 0);
+      }
    }
 }
 
