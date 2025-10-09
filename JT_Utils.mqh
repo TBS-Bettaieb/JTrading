@@ -418,3 +418,209 @@ string ErrorDescription(int errorCode) {
       default:                            return "Erreur inconnue";
    }
 }
+
+//+------------------------------------------------------------------+
+//| Marqueurs visuels pour Free Candles                              |
+//+------------------------------------------------------------------+
+
+// Dessine une ligne verticale pour marquer un Free Candle
+bool DrawFreeCandleVerticalLine(
+   datetime time,
+   int direction,        // +1 pour BUY, -1 pour SELL
+   string prefix = "FreeCandle"
+)
+{
+   string objectName = prefix + "_VLine_" + TimeToString(time, TIME_DATE|TIME_SECONDS);
+   
+   // Supprimer si existe déjà
+   if(ObjectFind(0, objectName) >= 0) {
+      ObjectDelete(0, objectName);
+   }
+   
+   // Créer la ligne verticale
+   if(!ObjectCreate(0, objectName, OBJ_VLINE, 0, time, 0)) {
+      LogError("Erreur création ligne verticale: " + objectName);
+      return false;
+   }
+   
+   // Couleur selon direction
+   color lineColor = (direction > 0) ? clrLime : clrRed;
+   
+   // Propriétés de la ligne
+   ObjectSetInteger(0, objectName, OBJPROP_COLOR, lineColor);
+   ObjectSetInteger(0, objectName, OBJPROP_STYLE, STYLE_DOT);
+   ObjectSetInteger(0, objectName, OBJPROP_WIDTH, 1);
+   ObjectSetInteger(0, objectName, OBJPROP_BACK, true);  // En arrière-plan
+   ObjectSetInteger(0, objectName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, objectName, OBJPROP_SELECTED, false);
+   ObjectSetString(0, objectName, OBJPROP_TOOLTIP, "Free Candle " + (direction > 0 ? "BUY" : "SELL"));
+   
+   return true;
+}
+
+// Dessine une flèche pour marquer un Free Candle
+bool DrawFreeCandleArrow(
+   datetime time,
+   double price,
+   int direction,        // +1 pour BUY, -1 pour SELL
+   string prefix = "FreeCandle"
+)
+{
+   string objectName = prefix + "_Arrow_" + TimeToString(time, TIME_DATE|TIME_SECONDS);
+   
+   // Supprimer si existe déjà
+   if(ObjectFind(0, objectName) >= 0) {
+      ObjectDelete(0, objectName);
+   }
+   
+   // Code de flèche selon direction
+   int arrowCode = (direction > 0) ? 233 : 234;  // 233=flèche haut, 234=flèche bas
+   color arrowColor = (direction > 0) ? clrLime : clrRed;
+   
+   // Créer la flèche
+   if(!ObjectCreate(0, objectName, OBJ_ARROW, 0, time, price)) {
+      LogError("Erreur création flèche: " + objectName);
+      return false;
+   }
+   
+   // Propriétés de la flèche
+   ObjectSetInteger(0, objectName, OBJPROP_ARROWCODE, arrowCode);
+   ObjectSetInteger(0, objectName, OBJPROP_COLOR, arrowColor);
+   ObjectSetInteger(0, objectName, OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, objectName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, objectName, OBJPROP_SELECTED, false);
+   ObjectSetString(0, objectName, OBJPROP_TOOLTIP, "Free Candle " + (direction > 0 ? "BUY" : "SELL"));
+   
+   return true;
+}
+
+// Dessine un rectangle pour mettre en évidence la bougie
+bool DrawFreeCandleBox(
+   datetime time,
+   double high,
+   double low,
+   int direction,        // +1 pour BUY, -1 pour SELL
+   ENUM_TIMEFRAMES tf,
+   string prefix = "FreeCandle"
+)
+{
+   string objectName = prefix + "_Box_" + TimeToString(time, TIME_DATE|TIME_SECONDS);
+   
+   // Supprimer si existe déjà
+   if(ObjectFind(0, objectName) >= 0) {
+      ObjectDelete(0, objectName);
+   }
+   
+   // Calculer la durée d'une bougie
+   int periodSeconds = PeriodSeconds(tf);
+   datetime time2 = time + periodSeconds;
+   
+   // Créer le rectangle
+   if(!ObjectCreate(0, objectName, OBJ_RECTANGLE, 0, time, high, time2, low)) {
+      LogError("Erreur création rectangle: " + objectName);
+      return false;
+   }
+   
+   // Couleur selon direction (transparent)
+   color boxColor = (direction > 0) ? clrLime : clrRed;
+   
+   // Propriétés du rectangle
+   ObjectSetInteger(0, objectName, OBJPROP_COLOR, boxColor);
+   ObjectSetInteger(0, objectName, OBJPROP_STYLE, STYLE_SOLID);
+   ObjectSetInteger(0, objectName, OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, objectName, OBJPROP_FILL, false);  // Pas de remplissage
+   ObjectSetInteger(0, objectName, OBJPROP_BACK, true);   // En arrière-plan
+   ObjectSetInteger(0, objectName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, objectName, OBJPROP_SELECTED, false);
+   ObjectSetString(0, objectName, OBJPROP_TOOLTIP, "Free Candle " + (direction > 0 ? "BUY" : "SELL"));
+   
+   return true;
+}
+
+// Dessine un texte pour identifier le Free Candle
+bool DrawFreeCandleText(
+   datetime time,
+   double price,
+   int direction,
+   string customText = "",
+   string prefix = "FreeCandle"
+)
+{
+   string objectName = prefix + "_Text_" + TimeToString(time, TIME_DATE|TIME_SECONDS);
+   
+   // Supprimer si existe déjà
+   if(ObjectFind(0, objectName) >= 0) {
+      ObjectDelete(0, objectName);
+   }
+   
+   // Texte à afficher
+   string text = (customText == "") ? (direction > 0 ? "FC↑" : "FC↓") : customText;
+   color textColor = (direction > 0) ? clrLime : clrRed;
+   
+   // Créer le texte
+   if(!ObjectCreate(0, objectName, OBJ_TEXT, 0, time, price)) {
+      LogError("Erreur création texte: " + objectName);
+      return false;
+   }
+   
+   // Propriétés du texte
+   ObjectSetString(0, objectName, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, objectName, OBJPROP_COLOR, textColor);
+   ObjectSetInteger(0, objectName, OBJPROP_FONTSIZE, 10);
+   ObjectSetString(0, objectName, OBJPROP_FONT, "Arial Bold");
+   ObjectSetInteger(0, objectName, OBJPROP_ANCHOR, ANCHOR_CENTER);
+   ObjectSetInteger(0, objectName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, objectName, OBJPROP_SELECTED, false);
+   
+   return true;
+}
+
+// Fonction combinée pour marquer un Free Candle
+bool MarkFreeCandle(
+   datetime time,
+   double high,
+   double low,
+   double price,        // Prix pour la flèche
+   int direction,       // +1 pour BUY, -1 pour SELL
+   ENUM_TIMEFRAMES tf,
+   bool drawVLine = true,
+   bool drawArrow = true,
+   bool drawBox = false,
+   bool drawText = false,
+   string prefix = "FreeCandle"
+)
+{
+   bool success = true;
+   
+   if(drawVLine) {
+      success = success && DrawFreeCandleVerticalLine(time, direction, prefix);
+   }
+   
+   if(drawArrow) {
+      success = success && DrawFreeCandleArrow(time, price, direction, prefix);
+   }
+   
+   if(drawBox) {
+      success = success && DrawFreeCandleBox(time, high, low, direction, tf, prefix);
+   }
+   
+   if(drawText) {
+      success = success && DrawFreeCandleText(time, price, direction, "", prefix);
+   }
+   
+   return success;
+}
+
+// Supprime tous les marqueurs de Free Candles
+void DeleteAllFreeCandleMarkers(string prefix = "FreeCandle")
+{
+   int total = ObjectsTotal(0, 0, -1);
+   
+   for(int i = total - 1; i >= 0; i--) {
+      string name = ObjectName(0, i, 0, -1);
+      
+      if(StringFind(name, prefix) == 0) {
+         ObjectDelete(0, name);
+      }
+   }
+}

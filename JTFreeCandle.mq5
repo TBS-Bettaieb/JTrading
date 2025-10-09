@@ -72,6 +72,13 @@ input bool     BodyMustBeOutside     = true;             // seulement le corps h
 input bool     Exit_UsePrevBar       = true;             // utiliser bandes de la bougie fermée
 input int      TouchPadPoints        = 5;                // marge de touche en points
 
+// Marqueurs visuels pour Free Candles
+input bool     Mark_FreeCandles      = true;             // Marquer les Free Candles sur le graphe
+input bool     Mark_DrawVLine        = true;             // Dessiner ligne verticale
+input bool     Mark_DrawArrow        = true;             // Dessiner flèche
+input bool     Mark_DrawBox          = false;            // Dessiner rectangle autour de la bougie
+input bool     Mark_DrawText         = false;            // Dessiner texte
+
 //---------------------------- Indicateurs --------------------------------
 IndicatorHandles indicators;
 IndicatorBuffers buffers;
@@ -170,6 +177,12 @@ int OnInit()
 
    trade.SetExpertMagicNumber((long)Magic);
    
+   // Nettoyer les anciens marqueurs Free Candles
+   if(Mark_FreeCandles) {
+      DeleteAllFreeCandleMarkers("FreeCandle");
+      LogMessage("Marqueurs Free Candles activés");
+   }
+   
    // Initialiser le validateur de divergence si activé
    if(Use_Divergence_Validator) {
       if(!divValidator.Init(s, t, RSI_Period, Div_RSI_Buy_Level, Div_RSI_Sell_Level, Div_Swing_Length)) {
@@ -197,6 +210,10 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    ReleaseIndicators(indicators);
+   
+   // Nettoyer les marqueurs Free Candles si souhaité
+   // Commenté pour garder les marqueurs après déconnexion de l'EA
+   // DeleteAllFreeCandleMarkers("FreeCandle");
 }
 
 //---------------------------- Trading Logic ---------------------------
@@ -342,6 +359,30 @@ void Process()
    if(TradeDir==DIR_ONLY_BUY && dir<0) return;
    if(TradeDir==DIR_ONLY_SELL && dir>0) return;
    
+   // Marquer le Free Candle sur le graphique
+   if(Mark_FreeCandles) {
+      string s = Sym();
+      ENUM_TIMEFRAMES t = TF();
+      
+      // Récupérer les données de la bougie fermée (index 1)
+      MqlRates rates[];
+      if(CopyRates(s, t, 1, 1, rates) > 0) {
+         double high = rates[0].high;
+         double low = rates[0].low;
+         double close = rates[0].close;
+         datetime time = rates[0].time;
+         
+         // Position de la flèche
+         double arrowPrice = (dir > 0) ? low : high;
+         
+         // Dessiner les marqueurs
+         MarkFreeCandle(time, high, low, arrowPrice, dir, t, 
+                       Mark_DrawVLine, Mark_DrawArrow, Mark_DrawBox, Mark_DrawText, "FreeCandle");
+         
+         LogMessage("Free Candle marqué sur le graphique à " + TimeToString(time));
+      }
+   }
+   
    // Si le validateur de divergence est activé, mémoriser le free candle au lieu d'exécuter
    if(Use_Divergence_Validator) {
       string s = Sym();
@@ -428,6 +469,23 @@ void ExecuteTradeFromDivergence(int dir)
    // Apply direction filter
    if(TradeDir==DIR_ONLY_BUY && dir<0) return;
    if(TradeDir==DIR_ONLY_SELL && dir>0) return;
+   
+   // Marquer la divergence validée sur le graphique
+   if(Mark_FreeCandles) {
+      MqlRates rates[];
+      if(CopyRates(s, t, 1, 1, rates) > 0) {
+         double high = rates[0].high;
+         double low = rates[0].low;
+         datetime time = rates[0].time;
+         double arrowPrice = (dir > 0) ? low : high;
+         
+         // Utiliser un préfixe différent pour les divergences validées
+         MarkFreeCandle(time, high, low, arrowPrice, dir, t, 
+                       true, true, Mark_DrawBox, true, "FreeCandleDIV");
+         
+         LogMessage("Divergence validée marquée sur le graphique");
+      }
+   }
    
    double ask = SymbolInfoDouble(s, SYMBOL_ASK);
    double bid = SymbolInfoDouble(s, SYMBOL_BID);
