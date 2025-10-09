@@ -438,11 +438,10 @@ void Process()
    }
    
    // Récupérer la valeur RSI actuelle pour le commentaire
-   double currentRSI = buffers.RSI[1];
+   int rsiI = (int)MathRound(buffers.RSI[1]);
    
-   // Préparer le commentaire avec RR et RSI
-   string orderComment = "BB Outside " + dirStr + 
-                         " | RR:1:" + DoubleToString(rr, 2) + " | RSI:" + DoubleToString(currentRSI, 1);
+   // Préparer le commentaire compact
+   string orderComment = StringFormat("BB %s|R:%.2f|I:%d", dirStr, rr, rsiI);
    
    // Ouvrir la position
    if(isBuy){ // BUY
@@ -528,13 +527,13 @@ void ExecuteTradeFromDivergence(int dir)
    }
    
    // Récupérer la valeur RSI actuelle pour le commentaire
-   double currentRSI = 0.0;
+   int rsiI = 0;
    if(GetIndicatorData(indicators, buffers, 2, false)) {
-      currentRSI = buffers.RSI[1];  // RSI de la bougie fermée
+      rsiI = (int)MathRound(buffers.RSI[1]);  // RSI de la bougie fermée (arrondi)
    }
    
-   // Préparer le commentaire avec RSI
-   string orderComment = "DIVERGENCE " + dirStr + " | RR:1:" + DoubleToString(rr, 2) + " | RSI:" + DoubleToString(currentRSI, 1);
+   // Préparer le commentaire compact
+   string orderComment = StringFormat("DIV %s|R:%.2f|I:%d", dirStr, rr, rsiI);
    
    // Ouvrir la position
    if(isBuy) {
