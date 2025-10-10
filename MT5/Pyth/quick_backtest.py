@@ -187,7 +187,7 @@ class QuickBacktest:
 def main():
     """Point d'entrée principal"""
     # Créer et exécuter le backtest avec configuration centralisée
-    backtest = QuickBacktest(symbol="USDJPY", timeframe="M3", year=2023)
+    backtest = QuickBacktest(symbol="EURUSD", timeframe="M3", year=2023)
     backtest.run()
 
 
