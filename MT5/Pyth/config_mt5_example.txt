@@ -1,0 +1,30 @@
+# Configuration MetaTrader 5 pour Trading Live
+# Créez un fichier .env à la racine avec ces informations
+
+# Identifiants MT5
+MT5_LOGIN=12345678
+MT5_PASSWORD=your_password_here
+MT5_SERVER=YourBroker-Demo
+
+# Timeout de connexion (millisecondes)
+MT5_TIMEOUT=60000
+
+# Paramètres de trading
+MT5_MAGIC_NUMBER=123456
+MT5_DEVIATION=20
+
+# Logging
+LOG_LEVEL=INFO
+LOG_FILE=trading_log.txt
+
+# Alertes (optionnel)
+ENABLE_EMAIL_ALERTS=false
+EMAIL_FROM=your_email@gmail.com
+EMAIL_TO=alerts@gmail.com
+EMAIL_PASSWORD=your_app_password
+
+# Telegram (optionnel)
+ENABLE_TELEGRAM=false
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
+

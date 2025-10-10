@@ -1,25 +1,63 @@
-# Compiled files
-*.ex4
-*.ex5
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# MetaEditor backups
-*.mq4.bak
-*.mq5.bak
-*.mqh.bak
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
 
-# MetaTrader logs and reports
-*.log
-*.htm
-*.gif
-
-# Temporary files
-*.tmp
-
-# Windows specific files
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-
-# User-specific files
+# IDE
+.vscode/
+.idea/
 *.swp
-*.user
+*.swo
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Data and Cache
+MT5/Pyth/data_cache/*.pkl
+MT5/Pyth/data_cache/*.csv
+MT5/Pyth/logs/*.log
+MT5/Pyth/reports/*.txt
+MT5/Pyth/plots/*.png
+*.pkl
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# MetaTrader
+*.ex5
+*.ex4
+MQL5/Logs/
+MQL5/Files/
