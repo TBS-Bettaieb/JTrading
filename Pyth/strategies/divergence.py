@@ -52,9 +52,9 @@ class DivergenceValidator:
         # Si config fourni, utiliser ses paramètres
         if config:
             self.rsi_period = config.rsi.period
-            self.rsi_buy_level = config.rsi.oversold
-            self.rsi_sell_level = config.rsi.overbought
-            self.swing_length = config.divergence.min_bars
+            self.rsi_buy_level = config.divergence.rsi_buy_level
+            self.rsi_sell_level = config.divergence.rsi_sell_level
+            self.swing_length = config.divergence.swing_length
         else:
             self.rsi_period = rsi_period
             self.rsi_buy_level = rsi_buy_level
