@@ -26,6 +26,52 @@ class Signal:
     confidence: float
     indicators: Dict[str, float]
     reason: str = ""  # Raison du signal
+    
+    def validate(self) -> tuple:
+        """
+        Valide que le signal est cohérent
+        
+        Returns:
+            Tuple (is_valid, error_message)
+        """
+        errors = []
+        
+        # Vérifier la direction
+        if self.direction not in [-1, 1]:
+            errors.append(f"Direction invalide: {self.direction} (doit être 1 ou -1)")
+        
+        # Vérifier les prix positifs
+        if self.entry_price <= 0:
+            errors.append(f"Entry price invalide: {self.entry_price}")
+        if self.sl_price <= 0:
+            errors.append(f"SL price invalide: {self.sl_price}")
+        if self.tp_price <= 0:
+            errors.append(f"TP price invalide: {self.tp_price}")
+        
+        # Vérifier la logique SL/TP selon la direction
+        if self.direction == 1:  # BUY
+            if self.sl_price >= self.entry_price:
+                errors.append(f"BUY: SL ({self.sl_price}) doit être < entry ({self.entry_price})")
+            if self.tp_price <= self.entry_price:
+                errors.append(f"BUY: TP ({self.tp_price}) doit être > entry ({self.entry_price})")
+        else:  # SELL
+            if self.sl_price <= self.entry_price:
+                errors.append(f"SELL: SL ({self.sl_price}) doit être > entry ({self.entry_price})")
+            if self.tp_price >= self.entry_price:
+                errors.append(f"SELL: TP ({self.tp_price}) doit être < entry ({self.entry_price})")
+        
+        # Vérifier RR ratio
+        if self.rr_ratio <= 0:
+            errors.append(f"RR ratio invalide: {self.rr_ratio} (doit être > 0)")
+        
+        # Vérifier confidence
+        if not (0 <= self.confidence <= 1):
+            errors.append(f"Confidence invalide: {self.confidence} (doit être entre 0 et 1)")
+        
+        if errors:
+            return False, "; ".join(errors)
+        
+        return True, ""
 
 
 class FreeCandleStrategy:
@@ -64,23 +110,25 @@ class FreeCandleStrategy:
         # Variable pour la divergence (si activée)
         self.divergence_memory = None
     
-    def prepare_data(self, df: pd.DataFrame) -> pd.DataFrame:
+    def prepare_data(self, df: pd.DataFrame, inplace: bool = False) -> pd.DataFrame:
         """
         Prépare les données avec tous les indicateurs
         
         Args:
             df: DataFrame avec colonnes OHLCV
+            inplace: Si True, modifie le DataFrame original (économie mémoire)
         
         Returns:
             DataFrame avec tous les indicateurs calculés
         """
-        df = df.copy()
+        if not inplace:
+            df = df.copy()
         
-        # Calculer les indicateurs
-        df = self.bb.calculate(df)
-        df = self.rsi.calculate_dataframe(df)
-        df = self.ema.calculate(df)
-        df = self.atr.calculate_dataframe(df)
+        # Calculer les indicateurs (inplace pour éviter les copies multiples)
+        self.bb.calculate(df, inplace=True)
+        self.rsi.calculate_dataframe(df, inplace=True)
+        self.ema.calculate(df, inplace=True)
+        self.atr.calculate_dataframe(df, inplace=True)
         
         return df
     
@@ -441,7 +489,12 @@ class FreeCandleStrategy:
                 reason=f"FreeCandle_{self.config.entry.entry_mode.name}"
             )
             
-            signals.append(signal)
+            # Valider le signal avant de l'ajouter
+            is_valid, error_msg = signal.validate()
+            if is_valid:
+                signals.append(signal)
+            else:
+                print(f"⚠️ Signal invalide ignoré à {signal.timestamp}: {error_msg}")
         
         return signals
     

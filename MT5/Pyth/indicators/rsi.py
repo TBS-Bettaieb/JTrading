@@ -52,18 +52,20 @@ class RSI:
         
         return rsi
     
-    def calculate_dataframe(self, df: pd.DataFrame, price_column: str = 'close') -> pd.DataFrame:
+    def calculate_dataframe(self, df: pd.DataFrame, price_column: str = 'close', inplace: bool = False) -> pd.DataFrame:
         """
         Calcule le RSI et l'ajoute au DataFrame
         
         Args:
             df: DataFrame avec les données de prix
             price_column: Colonne de prix à utiliser
+            inplace: Si True, modifie le DataFrame original (plus rapide)
         
         Returns:
             DataFrame avec colonne 'rsi' ajoutée
         """
-        df = df.copy()
+        if not inplace:
+            df = df.copy()
         df['rsi'] = self.calculate(df[price_column])
         return df
     

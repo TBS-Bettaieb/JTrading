@@ -43,17 +43,19 @@ class ATR:
         
         return atr
     
-    def calculate_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+    def calculate_dataframe(self, df: pd.DataFrame, inplace: bool = False) -> pd.DataFrame:
         """
         Calcule l'ATR et l'ajoute au DataFrame
         
         Args:
             df: DataFrame avec colonnes high, low, close
+            inplace: Si True, modifie le DataFrame original (plus rapide)
         
         Returns:
             DataFrame avec colonne 'atr' ajoutée
         """
-        df = df.copy()
+        if not inplace:
+            df = df.copy()
         df['atr'] = self.calculate(df)
         return df
     

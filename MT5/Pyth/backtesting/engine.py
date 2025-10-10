@@ -179,11 +179,12 @@ class BacktestEngine:
         signal_idx = 0
         
         # Barre de progression
-        iterator = tqdm(range(len(df)), desc="Backtesting") if verbose else range(len(df))
+        df_iterator = df.itertuples()
+        if verbose:
+            df_iterator = tqdm(df_iterator, total=len(df), desc="Backtesting")
         
-        for i in iterator:
-            row = df.iloc[i]
-            current_time = row.name
+        for row in df_iterator:
+            current_time = row.Index
             
             # Gérer les positions ouvertes
             self._manage_open_positions(row, current_time)
@@ -261,36 +262,36 @@ class BacktestEngine:
         # Ajouter aux positions ouvertes
         self.open_positions.append(trade)
     
-    def _manage_open_positions(self, row: pd.Series, current_time: datetime):
+    def _manage_open_positions(self, row, current_time: datetime):
         """Gère les positions ouvertes (vérifier SL/TP)"""
         for pos in self.open_positions[:]:
             # Calculer le profit actuel
             if pos.direction > 0:  # BUY
                 # Vérifier SL (avec le low)
-                if row['low'] <= pos.sl:
+                if row.low <= pos.sl:
                     self._close_position(pos, row, "SL", exit_price=pos.sl)
                     continue
                 
                 # Vérifier TP (avec le high)
-                if row['high'] >= pos.tp:
+                if row.high >= pos.tp:
                     self._close_position(pos, row, "TP", exit_price=pos.tp)
                     continue
                 
                 # Mettre à jour max profit/drawdown
-                current_profit = (row['close'] - pos.entry_price) * pos.volume * self.point_value
+                current_profit = (row.close - pos.entry_price) * pos.volume * self.point_value
             else:  # SELL
                 # Vérifier SL (avec le high)
-                if row['high'] >= pos.sl:
+                if row.high >= pos.sl:
                     self._close_position(pos, row, "SL", exit_price=pos.sl)
                     continue
                 
                 # Vérifier TP (avec le low)
-                if row['low'] <= pos.tp:
+                if row.low <= pos.tp:
                     self._close_position(pos, row, "TP", exit_price=pos.tp)
                     continue
                 
                 # Mettre à jour max profit/drawdown
-                current_profit = (pos.entry_price - row['close']) * pos.volume * self.point_value
+                current_profit = (pos.entry_price - row.close) * pos.volume * self.point_value
             
             # Mettre à jour les extrêmes
             if current_profit > pos.max_profit:
@@ -301,14 +302,14 @@ class BacktestEngine:
     def _close_position(
         self,
         trade: Trade,
-        row: pd.Series,
+        row,
         reason: str,
         exit_price: Optional[float] = None
     ):
         """Ferme une position"""
         # Prix de sortie
         if exit_price is None:
-            exit_price = row['close']
+            exit_price = row.close
         
         # Appliquer le slippage
         slippage = self.slippage_points * self.point_size
@@ -318,7 +319,7 @@ class BacktestEngine:
             exit_price += slippage
         
         trade.exit_price = exit_price
-        trade.exit_time = row.name
+        trade.exit_time = row.Index
         trade.exit_reason = reason
         
         # Calculer le profit
@@ -332,15 +333,16 @@ class BacktestEngine:
         trade.profit_pct = profit_pct
         trade.pips = pips
         
-        # Profit en capital
-        trade.profit = profit_pct * trade.volume * trade.entry_price * self.point_value
+        # Profit brut en capital
+        gross_profit = profit_pct * trade.volume * trade.entry_price * self.point_value
         
         # Commission de sortie
         exit_commission = trade.volume * exit_price * self.commission
         trade.commission += exit_commission
         
-        # Profit net
-        net_profit = trade.profit - trade.commission
+        # Profit net (après commissions)
+        net_profit = gross_profit - trade.commission
+        trade.profit = net_profit
         
         # Mettre à jour le capital
         self.capital += net_profit
@@ -350,9 +352,6 @@ class BacktestEngine:
         reward = abs(exit_price - trade.entry_price)
         trade.actual_rr = reward / risk if risk > 0 else 0
         
-        # Finaliser le trade
-        trade.profit = net_profit
-        
         # Retirer des positions ouvertes
         if trade in self.open_positions:
             self.open_positions.remove(trade)
@@ -360,7 +359,7 @@ class BacktestEngine:
         # Ajouter aux trades fermés
         self.trades.append(trade)
     
-    def _update_equity(self, row: pd.Series):
+    def _update_equity(self, row):
         """Met à jour la courbe d'equity"""
         # Capital réalisé
         current_equity = self.capital
@@ -368,14 +367,14 @@ class BacktestEngine:
         # Ajouter les profits non réalisés
         for pos in self.open_positions:
             if pos.direction > 0:  # BUY
-                unrealized_profit = (row['close'] - pos.entry_price) * pos.volume * self.point_value
+                unrealized_profit = (row.close - pos.entry_price) * pos.volume * self.point_value
             else:  # SELL
-                unrealized_profit = (pos.entry_price - row['close']) * pos.volume * self.point_value
+                unrealized_profit = (pos.entry_price - row.close) * pos.volume * self.point_value
             
             current_equity += unrealized_profit
         
         self.equity_curve.append(current_equity)
-        self.timestamps.append(row.name)
+        self.timestamps.append(row.Index)
     
     def _calculate_results(self) -> BacktestResults:
         """Calcule toutes les métriques de performance"""
@@ -422,6 +421,8 @@ class BacktestEngine:
         # Profit factor
         if results.total_loss > 0:
             results.profit_factor = results.total_profit / results.total_loss
+        else:
+            results.profit_factor = 0.0 if results.total_profit == 0 else float('inf')
         
         # Net profit
         results.net_profit = results.total_profit - results.total_loss

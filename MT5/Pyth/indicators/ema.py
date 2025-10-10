@@ -21,18 +21,20 @@ class EMA:
             periods = [50, 100]
         self.periods = periods
     
-    def calculate(self, df: pd.DataFrame, price_column: str = 'close') -> pd.DataFrame:
+    def calculate(self, df: pd.DataFrame, price_column: str = 'close', inplace: bool = False) -> pd.DataFrame:
         """
         Calcule les EMAs et les ajoute au DataFrame
         
         Args:
             df: DataFrame avec les données de prix
             price_column: Colonne de prix à utiliser
+            inplace: Si True, modifie le DataFrame original (plus rapide)
         
         Returns:
             DataFrame avec colonnes 'ema_X' ajoutées pour chaque période
         """
-        df = df.copy()
+        if not inplace:
+            df = df.copy()
         
         for period in self.periods:
             col_name = f'ema_{period}'

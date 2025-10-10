@@ -24,18 +24,20 @@ class BollingerBands:
         self.shift = shift
         self._last_values = {}
     
-    def calculate(self, df: pd.DataFrame, price_column: str = 'close') -> pd.DataFrame:
+    def calculate(self, df: pd.DataFrame, price_column: str = 'close', inplace: bool = False) -> pd.DataFrame:
         """
         Calcule les Bollinger Bands sur un DataFrame
         
         Args:
             df: DataFrame avec colonnes OHLCV
             price_column: Colonne de prix à utiliser (défaut: 'close')
+            inplace: Si True, modifie le DataFrame original (plus rapide)
         
         Returns:
             DataFrame avec colonnes bb_upper, bb_middle, bb_lower ajoutées
         """
-        df = df.copy()
+        if not inplace:
+            df = df.copy()
         
         # Calculer la moyenne mobile (ligne médiane)
         df['bb_middle'] = df[price_column].rolling(window=self.period).mean()

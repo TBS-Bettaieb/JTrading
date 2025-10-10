@@ -10,6 +10,45 @@ import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 import time
+import threading
+from functools import wraps
+
+
+def retry_on_failure(max_retries: int = 3, delay: float = 1.0, backoff: float = 2.0):
+    """
+    Décorateur pour retry avec backoff exponentiel
+    
+    Args:
+        max_retries: Nombre maximum de tentatives
+        delay: Délai initial en secondes
+        backoff: Multiplicateur de délai (exponentiel)
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            current_delay = delay
+            last_exception = None
+            
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    if attempt < max_retries - 1:
+                        print(f"⚠️ Tentative {attempt + 1}/{max_retries} échouée: {e}")
+                        print(f"   Nouvelle tentative dans {current_delay:.1f}s...")
+                        time.sleep(current_delay)
+                        current_delay *= backoff
+                    else:
+                        print(f"❌ Échec après {max_retries} tentatives")
+            
+            # Si toutes les tentatives échouent, relancer la dernière exception
+            if last_exception:
+                raise last_exception
+            return None
+        
+        return wrapper
+    return decorator
 
 
 class MT5Connector:
@@ -43,10 +82,12 @@ class MT5Connector:
         self.server = server
         self.timeout = timeout
         self.connected = False
+        self._connection_lock = threading.RLock()  # Lock pour thread-safety
         
         # Timeframe mapping
         self.timeframes = {
             'M1': mt5.TIMEFRAME_M1,
+            'M3': mt5.TIMEFRAME_M5,  # M3 n'existe pas dans MT5, fallback vers M5
             'M5': mt5.TIMEFRAME_M5,
             'M15': mt5.TIMEFRAME_M15,
             'M30': mt5.TIMEFRAME_M30,
@@ -59,53 +100,59 @@ class MT5Connector:
     
     def connect(self) -> bool:
         """
-        Connexion à MetaTrader 5
+        Connexion à MetaTrader 5 (thread-safe)
         
         Returns:
             True si connexion réussie
         """
-        # Initialiser MT5
-        if not mt5.initialize(timeout=self.timeout):
-            error = mt5.last_error()
-            print(f"❌ Erreur initialisation MT5: {error}")
-            return False
-        
-        # Si credentials fournis, se connecter
-        if self.login and self.password and self.server:
-            authorized = mt5.login(
-                login=self.login,
-                password=self.password,
-                server=self.server,
-                timeout=self.timeout
-            )
+        with self._connection_lock:
+            # Si déjà connecté, retourner True
+            if self.connected:
+                return True
             
-            if not authorized:
+            # Initialiser MT5
+            if not mt5.initialize(timeout=self.timeout):
                 error = mt5.last_error()
-                print(f"❌ Erreur login MT5: {error}")
-                mt5.shutdown()
+                print(f"❌ Erreur initialisation MT5: {error}")
                 return False
             
-            print(f"✅ Connecté à MT5 - Compte: {self.login} | Serveur: {self.server}")
-        else:
-            print(f"✅ MT5 initialisé (sans login)")
-        
-        self.connected = True
-        
-        # Afficher les infos du compte
-        account_info = mt5.account_info()
-        if account_info:
-            print(f"   Balance: ${account_info.balance:.2f}")
-            print(f"   Equity: ${account_info.equity:.2f}")
-            print(f"   Margin Free: ${account_info.margin_free:.2f}")
-        
-        return True
+            # Si credentials fournis, se connecter
+            if self.login and self.password and self.server:
+                authorized = mt5.login(
+                    login=self.login,
+                    password=self.password,
+                    server=self.server,
+                    timeout=self.timeout
+                )
+                
+                if not authorized:
+                    error = mt5.last_error()
+                    print(f"❌ Erreur login MT5: {error}")
+                    mt5.shutdown()
+                    return False
+                
+                print(f"✅ Connecté à MT5 - Compte: {self.login} | Serveur: {self.server}")
+            else:
+                print(f"✅ MT5 initialisé (sans login)")
+            
+            self.connected = True
+            
+            # Afficher les infos du compte
+            account_info = mt5.account_info()
+            if account_info:
+                print(f"   Balance: ${account_info.balance:.2f}")
+                print(f"   Equity: ${account_info.equity:.2f}")
+                print(f"   Margin Free: ${account_info.margin_free:.2f}")
+            
+            return True
     
     def disconnect(self):
-        """Déconnexion de MT5"""
-        if self.connected:
-            mt5.shutdown()
-            self.connected = False
-            print("🔌 Déconnecté de MT5")
+        """Déconnexion de MT5 (thread-safe)"""
+        with self._connection_lock:
+            if self.connected:
+                mt5.shutdown()
+                self.connected = False
+                print("🔌 Déconnecté de MT5")
     
     def ensure_connected(self) -> bool:
         """Vérifie la connexion, reconnecte si nécessaire"""
@@ -185,6 +232,7 @@ class MT5Connector:
             'spread': (tick.ask - tick.bid) / mt5.symbol_info(symbol).point
         }
     
+    @retry_on_failure(max_retries=3, delay=0.5)
     def get_ohlcv(
         self,
         symbol: str,
@@ -193,7 +241,7 @@ class MT5Connector:
         start_pos: int = 0
     ) -> Optional[pd.DataFrame]:
         """
-        Récupère les données OHLCV
+        Récupère les données OHLCV avec retry automatique
         
         Args:
             symbol: Symbole
@@ -205,12 +253,11 @@ class MT5Connector:
             DataFrame avec OHLCV
         """
         if not self.ensure_connected():
-            return None
+            raise ConnectionError("Impossible de se connecter à MT5")
         
         # Vérifier que le symbole est visible
         if not mt5.symbol_select(symbol, True):
-            print(f"⚠️ Impossible de sélectionner {symbol}")
-            return None
+            raise ValueError(f"Impossible de sélectionner le symbole {symbol}")
         
         # Convertir le timeframe
         tf = self.timeframes.get(timeframe, mt5.TIMEFRAME_H1)
@@ -220,8 +267,7 @@ class MT5Connector:
         
         if rates is None or len(rates) == 0:
             error = mt5.last_error()
-            print(f"⚠️ Erreur récupération données: {error}")
-            return None
+            raise RuntimeError(f"Erreur récupération données: {error}")
         
         # Convertir en DataFrame
         df = pd.DataFrame(rates)

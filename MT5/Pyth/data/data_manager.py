@@ -222,7 +222,7 @@ class DataManager:
         
         return summary
     
-    def validate_ohlcv(self, df: pd.DataFrame) -> bool:
+    def validate_ohlcv(self, df: pd.DataFrame) -> tuple:
         """
         Valide que le DataFrame contient les colonnes OHLCV
         
@@ -230,30 +230,45 @@ class DataManager:
             df: DataFrame à valider
         
         Returns:
-            True si valide
+            Tuple (is_valid, errors) où errors est une liste de messages d'erreur
         """
+        errors = []
         required_cols = ['open', 'high', 'low', 'close']
         
+        # Vérifier les colonnes requises
         for col in required_cols:
             if col not in df.columns:
-                print(f"❌ Colonne manquante: {col}")
-                return False
+                errors.append(f"Colonne manquante: {col}")
+        
+        if errors:
+            return False, errors
+        
+        # Vérifier les valeurs négatives
+        for col in required_cols:
+            if (df[col] < 0).any():
+                errors.append(f"Valeurs négatives détectées dans {col}")
         
         # Vérifier que high >= low
         if (df['high'] < df['low']).any():
-            print(f"❌ Incohérence: High < Low détecté")
-            return False
+            errors.append("Incohérence: High < Low détecté")
         
         # Vérifier que open/close sont entre high et low
         if ((df['open'] > df['high']) | (df['open'] < df['low'])).any():
-            print(f"❌ Incohérence: Open hors de la plage High/Low")
-            return False
+            errors.append("Incohérence: Open hors de la plage High/Low")
         
         if ((df['close'] > df['high']) | (df['close'] < df['low'])).any():
-            print(f"❌ Incohérence: Close hors de la plage High/Low")
-            return False
+            errors.append("Incohérence: Close hors de la plage High/Low")
         
-        return True
+        # Vérifier les valeurs NaN
+        if df[required_cols].isnull().any().any():
+            errors.append("Valeurs NaN détectées dans les colonnes OHLC")
+        
+        if errors:
+            for error in errors:
+                print(f"❌ {error}")
+            return False, errors
+        
+        return True, []
     
     def __repr__(self) -> str:
         return f"DataManager(cache_dir='{self.cache_dir}')"
@@ -279,8 +294,10 @@ if __name__ == "__main__":
     
     # Valider
     print("\n✓ Validation OHLCV:")
-    is_valid = dm.validate_ohlcv(df_test)
+    is_valid, errors = dm.validate_ohlcv(df_test)
     print(f"  Résultat: {'✅ Valide' if is_valid else '❌ Invalide'}")
+    if errors:
+        print(f"  Erreurs: {errors}")
     
     # Résumé
     print("\n📊 Résumé des données:")
