@@ -5,6 +5,11 @@ import pytest
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import sys
+from pathlib import Path
+
+# Ajouter le répertoire Pyth au path
+sys.path.insert(0, str(Path(__file__).parent.parent / 'Pyth'))
 
 from indicators.bollinger_bands import BollingerBands
 from indicators.rsi import RSI

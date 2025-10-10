@@ -8,8 +8,9 @@ from datetime import datetime, timedelta
 import sys
 import os
 
-# Ajouter le répertoire parent au path pour les imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Ajouter le répertoire Pyth au path pour les imports
+pyth_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'Pyth')
+sys.path.insert(0, pyth_dir)
 
 from config import StrategyConfig
 

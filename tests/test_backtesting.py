@@ -5,6 +5,11 @@ import pytest
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import sys
+from pathlib import Path
+
+# Ajouter le répertoire Pyth au path
+sys.path.insert(0, str(Path(__file__).parent.parent / 'Pyth'))
 
 from backtesting.engine import BacktestEngine, Trade, BacktestResults
 from strategies.free_candle import Signal

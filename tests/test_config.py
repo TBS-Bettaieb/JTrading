@@ -2,6 +2,12 @@
 Tests unitaires pour la configuration
 """
 import pytest
+import sys
+from pathlib import Path
+
+# Ajouter le répertoire Pyth au path
+sys.path.insert(0, str(Path(__file__).parent.parent / 'Pyth'))
+
 from config import StrategyConfig, EntryMode
 
 

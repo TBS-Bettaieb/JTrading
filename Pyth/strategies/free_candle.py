@@ -107,8 +107,45 @@ class FreeCandleStrategy:
         
         self.atr = ATR(period=config.stop_loss.atr_period)
         
+        # Point size dynamique (depuis constants.py ou MT5)
+        self.point_size = self._get_point_size(config.symbol.symbol)
+        
         # Variable pour la divergence (si activée)
         self.divergence_memory = None
+    
+    def _get_point_size(self, symbol: str) -> float:
+        """
+        Récupère le point size pour un symbole
+        Essaie d'abord MT5, puis constants.py, puis valeur par défaut
+        
+        Args:
+            symbol: Symbole (ex: "EURUSD")
+        
+        Returns:
+            Point size pour ce symbole
+        """
+        # 1. Essayer depuis MT5 (le plus fiable)
+        try:
+            import MetaTrader5 as mt5
+            if mt5.initialize():
+                symbol_info = mt5.symbol_info(symbol)
+                if symbol_info:
+                    point_size = symbol_info.point
+                    mt5.shutdown()
+                    return point_size
+        except:
+            pass
+        
+        # 2. Utiliser constants.py
+        try:
+            from config.constants import POINT_SIZE_MAP
+            if symbol in POINT_SIZE_MAP:
+                return POINT_SIZE_MAP[symbol]
+        except:
+            pass
+        
+        # 3. Valeur par défaut (Forex 5 digits)
+        return 0.00001
     
     def prepare_data(self, df: pd.DataFrame, inplace: bool = False) -> pd.DataFrame:
         """
@@ -166,6 +203,7 @@ class FreeCandleStrategy:
     def check_day_filter(self, timestamp: datetime) -> bool:
         """
         Vérifie si le jour est autorisé pour le trading
+        Compatible avec la numérotation MQL5 (0=Dimanche)
         
         Args:
             timestamp: Timestamp à vérifier
@@ -176,20 +214,22 @@ class FreeCandleStrategy:
         if not self.config.time_filter.use_day_filter:
             return True
         
-        day_of_week = timestamp.weekday()  # 0=Lundi, 6=Dimanche
+        # Convertir Python weekday (0=Lundi) vers MQL5 format (0=Dimanche)
+        python_weekday = timestamp.weekday()  # 0=Lundi, 6=Dimanche
+        mql5_day = (python_weekday + 1) % 7   # 0=Dimanche, 1=Lundi, ..., 6=Samedi
         
-        # Parser les plages de jours
+        # Parser les plages de jours (format MQL5)
         day_ranges = self.config.time_filter.day_ranges.split(';')
         
         for day_range in day_ranges:
             if '-' in day_range:
-                # Plage (ex: "1-5")
+                # Plage (ex: "1-5" = Lundi à Vendredi en format MQL5)
                 start, end = map(int, day_range.split('-'))
-                if start <= day_of_week <= end:
+                if start <= mql5_day <= end:
                     return True
             else:
                 # Jour unique
-                if int(day_range) == day_of_week:
+                if int(day_range) == mql5_day:
                     return True
         
         return False
@@ -248,9 +288,6 @@ class FreeCandleStrategy:
         uptrend = ema_fast > ema_slow
         downtrend = ema_fast < ema_slow
         
-        # Taille d'un point (à ajuster selon le symbole)
-        point_size = 0.0001  # Pour EURUSD
-        
         if self.config.ema.filter_mode == EMAMode.TREND:
             # Mode TREND : Trade dans le sens de la tendance
             if direction > 0:  # BUY
@@ -260,7 +297,7 @@ class FreeCandleStrategy:
         
         elif self.config.ema.filter_mode == EMAMode.COUNTER:
             # Mode COUNTER : Trade les retournements aux extrêmes
-            distance_points = abs(price - ema_fast) / point_size
+            distance_points = abs(price - ema_fast) / self.point_size
             
             if direction > 0:  # BUY
                 return downtrend and (price < ema_fast) and (distance_points > self.config.ema.zone_distance)
@@ -271,7 +308,7 @@ class FreeCandleStrategy:
             # Mode ZONE : Évite la zone neutre entre les EMAs
             max_ema = max(ema_fast, ema_slow)
             min_ema = min(ema_fast, ema_slow)
-            zone_margin = self.config.ema.zone_distance * point_size
+            zone_margin = self.config.ema.zone_distance * self.point_size
             
             # Prix dans la zone neutre?
             in_zone = (price < max_ema + zone_margin) and (price > min_ema - zone_margin)
@@ -284,17 +321,16 @@ class FreeCandleStrategy:
         self, 
         df: pd.DataFrame, 
         idx: int, 
-        direction: int,
-        point_size: float = 0.0001
+        direction: int
     ) -> Tuple[float, float, float]:
         """
         Calcule SL et TP basés sur swing et ATR
+        Compatible avec la logique MQL5 CalculateSwingSLTP
         
         Args:
             df: DataFrame avec données et indicateurs
             idx: Index de la bougie courante
             direction: 1 pour BUY, -1 pour SELL
-            point_size: Taille d'un point
         
         Returns:
             Tuple (sl, tp, rr_ratio)
@@ -398,15 +434,14 @@ class FreeCandleStrategy:
     
     def generate_signals(
         self, 
-        df: pd.DataFrame, 
-        point_size: float = 0.0001
+        df: pd.DataFrame
     ) -> List[Signal]:
         """
         Génère les signaux de trading
+        Utilise self.point_size (dynamique selon symbole)
         
         Args:
             df: DataFrame avec données OHLCV
-            point_size: Taille d'un point pour le symbole
         
         Returns:
             Liste de signaux générés
@@ -440,7 +475,7 @@ class FreeCandleStrategy:
                 prev_row,
                 padding_points=self.config.entry.outside_padding_points,
                 body_only=self.config.entry.body_must_be_outside,
-                point_size=point_size
+                point_size=self.point_size
             )
             
             if not is_free or direction == 0:
@@ -464,7 +499,7 @@ class FreeCandleStrategy:
                 continue
             
             # Calculer SL et TP
-            sl, tp, rr = self.calculate_stops(df, i, direction, point_size)
+            sl, tp, rr = self.calculate_stops(df, i, direction)
             
             # Vérifier RR minimum
             if rr < self.config.stop_loss.min_rr:

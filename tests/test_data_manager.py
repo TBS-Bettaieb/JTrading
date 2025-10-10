@@ -7,6 +7,11 @@ import numpy as np
 from datetime import datetime
 import tempfile
 import os
+import sys
+from pathlib import Path
+
+# Ajouter le répertoire Pyth au path
+sys.path.insert(0, str(Path(__file__).parent.parent / 'Pyth'))
 
 from data.data_manager import DataManager
 
