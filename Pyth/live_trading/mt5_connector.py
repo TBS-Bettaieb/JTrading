@@ -307,8 +307,8 @@ class MT5Connector:
         Args:
             symbol: Symbole
             timeframe: Timeframe
-            date_from: Date de début
-            date_to: Date de fin
+            date_from: Date de début (datetime)
+            date_to: Date de fin (datetime)
         
         Returns:
             DataFrame avec OHLCV
@@ -324,12 +324,28 @@ class MT5Connector:
         # Convertir le timeframe
         tf = self.timeframes.get(timeframe, mt5.TIMEFRAME_H1)
         
+        # Convertir les dates pandas en datetime Python natif (sans timezone)
+        if hasattr(date_from, 'to_pydatetime'):
+            date_from = date_from.to_pydatetime().replace(tzinfo=None)
+        if hasattr(date_to, 'to_pydatetime'):
+            date_to = date_to.to_pydatetime().replace(tzinfo=None)
+        
         # Récupérer les données
         rates = mt5.copy_rates_range(symbol, tf, date_from, date_to)
         
         if rates is None or len(rates) == 0:
             error = mt5.last_error()
             print(f"⚠️ Erreur récupération données: {error}")
+            print(f"   Debug: symbol={symbol}, tf={timeframe} ({tf}), from={date_from}, to={date_to}")
+            
+            # Essayer avec des données récentes si erreur
+            if error[0] == -2:
+                print(f"   Essai avec données récentes (dernier mois)...")
+                recent_rates = mt5.copy_rates_from_pos(symbol, tf, 0, 10000)
+                if recent_rates is not None and len(recent_rates) > 0:
+                    print(f"   ✅ {len(recent_rates)} barres récentes disponibles")
+                    print(f"   💡 Le broker ne fournit peut-être pas les données historiques pour cette période")
+                    return None
             return None
         
         # Convertir en DataFrame

@@ -14,20 +14,29 @@
 
 ### **Causes Possibles**
 
-#### **A. Données historiques non disponibles**
-Certains brokers ne fournissent pas toutes les données historiques anciennes pour tous les timeframes.
+#### **A. Données historiques non disponibles** ⭐ **CAUSE PRINCIPALE**
+Les brokers (comme FTMO) ne fournissent généralement que **3-6 mois** de données historiques pour les timeframes courts.
 
-**Solution**:
+**Solution**: Utiliser le script de téléchargement de données récentes
 ```bash
-# 1. Tester avec données récentes
-python diagnose_mt5.py
+# Télécharger toutes les données disponibles (automatique)
+python download_recent_data.py --batch
 
-# 2. Utiliser un timeframe plus standard
-python backtest.py --symbol EURUSD --timeframe H1  # Au lieu de M3
+# Ou télécharger un symbole spécifique
+python download_recent_data.py --symbol EURUSD --timeframe H1 --days 180
 
-# 3. Ou télécharger manuellement dans MT5
-# Ouvrir graphique EURUSD M3 dans MT5
-# Faire défiler vers le passé pour forcer le téléchargement
+# Puis lancer le backtest sur les données disponibles
+python quick_backtest.py  # Utilisera automatiquement les données récentes
+```
+
+**Données disponibles par broker FTMO**:
+- **Forex** (EURUSD, GBPUSD): ~180 jours
+- **Indices** (US100.cash): ~30-60 jours
+- **Or** (XAUUSD): ~120 jours
+
+**Alternative**: Utiliser un timeframe plus standard
+```bash
+python backtest.py --symbol EURUSD --timeframe H1  # Plus fiable que M3
 ```
 
 #### **B. Symbole non activé**

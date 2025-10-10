@@ -12,7 +12,7 @@ import pandas as pd
 class QuickBacktest:
     """Classe pour gérer le backtest rapide avec configuration unifiée"""
     
-    def __init__(self, symbol: str = "EURUSD", timeframe: str = "M3", year: int = 2023):
+    def __init__(self, symbol: str = "USDJPY", timeframe: str = "M3", year: int = 2025):
         """
         Initialise le backtest avec une configuration simple
         
