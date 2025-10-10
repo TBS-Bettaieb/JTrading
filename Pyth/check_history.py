@@ -15,15 +15,29 @@ def check_available_history(symbol: str, timeframe: str = "M5"):
     print(f"🔍 DIAGNOSTIC HISTORIQUE: {symbol} {timeframe}")
     print(f"{'='*70}\n")
     
-    # Mapping timeframes
+    # Mapping timeframes complet (tous les TF MT5)
     TF_MAP = {
         'M1': mt5.TIMEFRAME_M1,
+        'M2': mt5.TIMEFRAME_M2,
+        'M3': mt5.TIMEFRAME_M3,
+        'M4': mt5.TIMEFRAME_M4,
         'M5': mt5.TIMEFRAME_M5,
+        'M6': mt5.TIMEFRAME_M6,
+        'M10': mt5.TIMEFRAME_M10,
+        'M12': mt5.TIMEFRAME_M12,
         'M15': mt5.TIMEFRAME_M15,
+        'M20': mt5.TIMEFRAME_M20,
         'M30': mt5.TIMEFRAME_M30,
         'H1': mt5.TIMEFRAME_H1,
+        'H2': mt5.TIMEFRAME_H2,
+        'H3': mt5.TIMEFRAME_H3,
         'H4': mt5.TIMEFRAME_H4,
+        'H6': mt5.TIMEFRAME_H6,
+        'H8': mt5.TIMEFRAME_H8,
+        'H12': mt5.TIMEFRAME_H12,
         'D1': mt5.TIMEFRAME_D1,
+        'W1': mt5.TIMEFRAME_W1,
+        'MN1': mt5.TIMEFRAME_MN1,
     }
     
     if not mt5.initialize():
@@ -208,14 +222,27 @@ def check_available_history(symbol: str, timeframe: str = "M5"):
     }
 
 
-def quick_check(symbol: str = "EURUSD"):
-    """Vérifie rapidement plusieurs timeframes pour un symbole"""
+def quick_check(symbol: str = "EURUSD", mode: str = "standard"):
+    """
+    Vérifie rapidement plusieurs timeframes pour un symbole
+    
+    Args:
+        symbol: Symbole à vérifier
+        mode: "standard" (5 TF) ou "all" (tous les TF)
+    """
     
     print(f"\n{'='*70}")
     print(f"⚡ VÉRIFICATION RAPIDE: {symbol}")
     print(f"{'='*70}\n")
     
-    timeframes = ["M5", "M15", "H1", "H4", "D1"]
+    # Timeframes selon le mode
+    if mode == "all":
+        timeframes = ["M1", "M2", "M3", "M4", "M5", "M6", "M10", "M12", "M15", 
+                     "M20", "M30", "H1", "H2", "H3", "H4", "H6", "H8", "H12", 
+                     "D1", "W1", "MN1"]
+    else:
+        timeframes = ["M5", "M15", "H1", "H4", "D1"]
+    
     results = []
     
     for tf in timeframes:
@@ -223,11 +250,27 @@ def quick_check(symbol: str = "EURUSD"):
             continue
         
         TF_MAP = {
+            'M1': mt5.TIMEFRAME_M1,
+            'M2': mt5.TIMEFRAME_M2,
+            'M3': mt5.TIMEFRAME_M3,
+            'M4': mt5.TIMEFRAME_M4,
             'M5': mt5.TIMEFRAME_M5,
+            'M6': mt5.TIMEFRAME_M6,
+            'M10': mt5.TIMEFRAME_M10,
+            'M12': mt5.TIMEFRAME_M12,
             'M15': mt5.TIMEFRAME_M15,
+            'M20': mt5.TIMEFRAME_M20,
+            'M30': mt5.TIMEFRAME_M30,
             'H1': mt5.TIMEFRAME_H1,
+            'H2': mt5.TIMEFRAME_H2,
+            'H3': mt5.TIMEFRAME_H3,
             'H4': mt5.TIMEFRAME_H4,
+            'H6': mt5.TIMEFRAME_H6,
+            'H8': mt5.TIMEFRAME_H8,
+            'H12': mt5.TIMEFRAME_H12,
             'D1': mt5.TIMEFRAME_D1,
+            'W1': mt5.TIMEFRAME_W1,
+            'MN1': mt5.TIMEFRAME_MN1,
         }
         
         # Activer symbole
@@ -269,6 +312,10 @@ if __name__ == "__main__":
             # Mode rapide
             symbol = sys.argv[2] if len(sys.argv) >= 3 else "EURUSD"
             quick_check(symbol)
+        elif sys.argv[1] == "--all":
+            # Mode rapide avec TOUS les timeframes
+            symbol = sys.argv[2] if len(sys.argv) >= 3 else "EURUSD"
+            quick_check(symbol, mode="all")
         else:
             # Mode complet
             symbol = sys.argv[1]
@@ -277,16 +324,22 @@ if __name__ == "__main__":
     else:
         # Mode interactif
         print("\n🔍 Vérification de l'historique MT5\n")
-        print("1. Vérification rapide (tous timeframes)")
-        print("2. Vérification détaillée (un timeframe)")
+        print("1. Vérification rapide (5 timeframes standards)")
+        print("2. Vérification complète (21 timeframes)")
+        print("3. Vérification détaillée (un timeframe)")
         
-        choice = input("\nChoix (1 ou 2): ").strip()
+        choice = input("\nChoix (1, 2 ou 3): ").strip()
         
         if choice == "1":
             symbol = input("Symbole (ex: EURUSD): ").strip().upper()
             if not symbol:
                 symbol = "EURUSD"
             quick_check(symbol)
+        elif choice == "2":
+            symbol = input("Symbole (ex: EURUSD): ").strip().upper()
+            if not symbol:
+                symbol = "EURUSD"
+            quick_check(symbol, mode="all")
         else:
             symbol = input("Symbole (ex: EURUSD): ").strip().upper()
             timeframe = input("Timeframe (ex: M5, H1): ").strip().upper()
