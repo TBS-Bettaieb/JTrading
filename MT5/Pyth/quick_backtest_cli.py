@@ -1,5 +1,5 @@
 """
-Quick Backtest CLI - Version avec arguments ligne de commande
+Quick Backtest CLI - Version avec arguments ligne de commande et menu interactif
 """
 from config_simple import get_simple_config
 from strategies import FreeCandleStrategy
@@ -8,7 +8,8 @@ from data import DataManager
 from utils import setup_logger
 import pandas as pd
 import argparse
-from typing import Optional
+from typing import Optional, List
+import os
 
 
 class QuickBacktest:
@@ -237,26 +238,332 @@ class QuickBacktest:
         }
 
 
+# ========== LISTES DE SYMBOLES ET TIMEFRAMES ==========
+
+AVAILABLE_SYMBOLS = {
+    'Forex Majors': ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'USDCAD', 'NZDUSD'],
+    'Forex Minors': ['EURGBP', 'EURJPY', 'GBPJPY', 'EURCHF', 'AUDJPY', 'CADJPY'],
+    'Indices': ['US100.cash', 'US30.cash', 'US500.cash', 'GER40.cash', 'UK100.cash'],
+    'Commodities': ['XAUUSD', 'XAGUSD', 'USOIL', 'UKOIL'],
+    'Crypto': ['BTCUSD', 'ETHUSD', 'LTCUSD', 'XRPUSD']
+}
+
+AVAILABLE_TIMEFRAMES = {
+    'Ultra-Court': ['M1', 'M3', 'M5'],
+    'Court Terme': ['M15', 'M30'],
+    'Moyen Terme': ['H1', 'H4'],
+    'Long Terme': ['D1', 'W1', 'MN1']
+}
+
+
+def display_menu_symbols() -> str:
+    """Affiche le menu de sélection de symboles"""
+    print("\n" + "=" * 70)
+    print("📊 SÉLECTION DU SYMBOLE")
+    print("=" * 70)
+    
+    all_symbols = []
+    category_idx = 1
+    
+    for category, symbols in AVAILABLE_SYMBOLS.items():
+        print(f"\n{category_idx}. {category}:")
+        for i, symbol in enumerate(symbols, 1):
+            symbol_idx = len(all_symbols) + 1
+            all_symbols.append(symbol)
+            print(f"   {symbol_idx}. {symbol}")
+        category_idx += 1
+    
+    print(f"\n0. Entrer un symbole personnalisé")
+    print("=" * 70)
+    
+    while True:
+        try:
+            choice = input("\nChoisissez un symbole (numéro ou 0 pour custom): ").strip()
+            
+            if choice == '0':
+                custom = input("Entrez le symbole: ").strip().upper()
+                return custom
+            
+            choice_num = int(choice)
+            if 1 <= choice_num <= len(all_symbols):
+                return all_symbols[choice_num - 1]
+            else:
+                print(f"❌ Choix invalide. Choisissez entre 1 et {len(all_symbols)}")
+        except ValueError:
+            print("❌ Veuillez entrer un numéro valide")
+
+
+def display_menu_timeframes() -> str:
+    """Affiche le menu de sélection de timeframes"""
+    print("\n" + "=" * 70)
+    print("⏰ SÉLECTION DU TIMEFRAME")
+    print("=" * 70)
+    
+    all_timeframes = []
+    
+    for category, timeframes in AVAILABLE_TIMEFRAMES.items():
+        print(f"\n{category}:")
+        for tf in timeframes:
+            tf_idx = len(all_timeframes) + 1
+            all_timeframes.append(tf)
+            print(f"   {tf_idx}. {tf}")
+    
+    print("=" * 70)
+    
+    while True:
+        try:
+            choice = input("\nChoisissez un timeframe (numéro): ").strip()
+            choice_num = int(choice)
+            
+            if 1 <= choice_num <= len(all_timeframes):
+                return all_timeframes[choice_num - 1]
+            else:
+                print(f"❌ Choix invalide. Choisissez entre 1 et {len(all_timeframes)}")
+        except ValueError:
+            print("❌ Veuillez entrer un numéro valide")
+
+
+def display_menu_years() -> int:
+    """Affiche le menu de sélection d'année"""
+    print("\n" + "=" * 70)
+    print("📅 SÉLECTION DE L'ANNÉE")
+    print("=" * 70)
+    
+    current_year = 2025
+    available_years = list(range(2020, current_year + 1))
+    
+    print("\nAnnées disponibles:")
+    for i, year in enumerate(available_years, 1):
+        print(f"   {i}. {year}")
+    
+    print("=" * 70)
+    
+    while True:
+        try:
+            choice = input("\nChoisissez une année (numéro): ").strip()
+            choice_num = int(choice)
+            
+            if 1 <= choice_num <= len(available_years):
+                return available_years[choice_num - 1]
+            else:
+                print(f"❌ Choix invalide. Choisissez entre 1 et {len(available_years)}")
+        except ValueError:
+            print("❌ Veuillez entrer un numéro valide")
+
+
+def interactive_mode() -> dict:
+    """Mode interactif avec menus"""
+    print("\n" + "=" * 70)
+    print("🎯 MODE INTERACTIF - QUICK BACKTEST")
+    print("=" * 70)
+    
+    # Sélection du symbole
+    symbol = display_menu_symbols()
+    
+    # Sélection du timeframe
+    timeframe = display_menu_timeframes()
+    
+    # Sélection de l'année
+    year = display_menu_years()
+    
+    # Capital
+    print("\n" + "=" * 70)
+    print("💰 CAPITAL INITIAL")
+    print("=" * 70)
+    capital_input = input("\nCapital initial (défaut: 10000): ").strip()
+    capital = float(capital_input) if capital_input else 10000
+    
+    # Commission
+    print("\n" + "=" * 70)
+    print("💳 COMMISSION")
+    print("=" * 70)
+    print("Exemples: 0.0002 (0.02%), 0.0001 (0.01%), 0.0005 (0.05%)")
+    commission_input = input("\nCommission par trade (défaut: 0.0002): ").strip()
+    commission = float(commission_input) if commission_input else 0.0002
+    
+    return {
+        'symbol': symbol,
+        'timeframe': timeframe,
+        'year': year,
+        'capital': capital,
+        'commission': commission
+    }
+
+
+def batch_mode(symbols: List[str], timeframes: List[str], years: List[int]) -> List[dict]:
+    """Mode batch pour tester plusieurs configurations"""
+    print("\n" + "=" * 70)
+    print("🔄 MODE BATCH - BACKTESTS MULTIPLES")
+    print("=" * 70)
+    
+    results = []
+    total_tests = len(symbols) * len(timeframes) * len(years)
+    
+    print(f"\n📊 {total_tests} backtests à exécuter")
+    print(f"   Symboles: {', '.join(symbols)}")
+    print(f"   Timeframes: {', '.join(timeframes)}")
+    print(f"   Années: {', '.join(map(str, years))}")
+    
+    confirm = input("\n▶️  Continuer ? (o/n): ").strip().lower()
+    if confirm not in ['o', 'y', 'oui', 'yes']:
+        print("❌ Annulé")
+        return []
+    
+    current = 0
+    for symbol in symbols:
+        for timeframe in timeframes:
+            for year in years:
+                current += 1
+                print(f"\n{'='*70}")
+                print(f"📊 Test {current}/{total_tests}: {symbol} {timeframe} {year}")
+                print(f"{'='*70}")
+                
+                backtest = QuickBacktest(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    year=year,
+                    verbose=False  # Mode silencieux pour batch
+                )
+                
+                if backtest.run():
+                    summary = backtest.get_summary()
+                    results.append(summary)
+                    
+                    # Afficher résumé compact
+                    print(f"✅ Profit: ${summary['net_profit']:+,.2f} ({summary['return_pct']:+.2f}%) | "
+                          f"Trades: {summary['total_trades']} | Win Rate: {summary['win_rate']:.1f}%")
+                else:
+                    print(f"❌ Échec (pas de données ou signaux)")
+    
+    return results
+
+
+def display_batch_comparison(results: List[dict]):
+    """Affiche la comparaison des résultats batch"""
+    if not results:
+        return
+    
+    print("\n" + "=" * 70)
+    print("📊 COMPARAISON DES RÉSULTATS")
+    print("=" * 70)
+    
+    # Créer un DataFrame pour l'affichage
+    df_results = pd.DataFrame(results)
+    
+    # Trier par profit
+    df_results = df_results.sort_values('return_pct', ascending=False)
+    
+    print("\n🏆 CLASSEMENT PAR PERFORMANCE:")
+    print("-" * 70)
+    
+    for i, row in df_results.iterrows():
+        print(f"{i+1}. {row['symbol']:12} {row['timeframe']:4} {row['year']} | "
+              f"Return: {row['return_pct']:+7.2f}% | "
+              f"Trades: {row['total_trades']:3} | "
+              f"Win Rate: {row['win_rate']:5.1f}%")
+    
+    print("\n" + "=" * 70)
+    print("📈 STATISTIQUES GLOBALES:")
+    print("-" * 70)
+    print(f"Total backtests: {len(results)}")
+    print(f"Rentables: {sum(1 for r in results if r['net_profit'] > 0)}")
+    print(f"Perdants: {sum(1 for r in results if r['net_profit'] < 0)}")
+    print(f"\nMeilleure performance: {df_results.iloc[0]['symbol']} {df_results.iloc[0]['timeframe']} "
+          f"({df_results.iloc[0]['return_pct']:+.2f}%)")
+    print(f"Pire performance: {df_results.iloc[-1]['symbol']} {df_results.iloc[-1]['timeframe']} "
+          f"({df_results.iloc[-1]['return_pct']:+.2f}%)")
+    print(f"\nReturn moyen: {df_results['return_pct'].mean():+.2f}%")
+    print(f"Win rate moyen: {df_results['win_rate'].mean():.1f}%")
+    print("=" * 70)
+
+
+def check_available_data() -> List[tuple]:
+    """Vérifie quelles données sont disponibles en cache"""
+    cache_dir = "data_cache"
+    available = []
+    
+    if not os.path.exists(cache_dir):
+        return available
+    
+    for filename in os.listdir(cache_dir):
+        if filename.endswith('.pkl'):
+            # Format: SYMBOL_TIMEFRAME.pkl
+            parts = filename.replace('.pkl', '').split('_')
+            if len(parts) == 2:
+                symbol, timeframe = parts
+                available.append((symbol, timeframe))
+    
+    return available
+
+
+def display_available_data():
+    """Affiche les données disponibles en cache"""
+    print("\n" + "=" * 70)
+    print("💾 DONNÉES DISPONIBLES EN CACHE")
+    print("=" * 70)
+    
+    available = check_available_data()
+    
+    if not available:
+        print("\n❌ Aucune donnée en cache")
+        print("\n💡 Téléchargez des données avec:")
+        print("   python backtest.py --symbol EURUSD --timeframe M3")
+        return
+    
+    print(f"\n✅ {len(available)} datasets disponibles:\n")
+    
+    for i, (symbol, timeframe) in enumerate(sorted(available), 1):
+        print(f"   {i}. {symbol:15} {timeframe:5}")
+    
+    print("=" * 70)
+
+
 def main():
-    """Point d'entrée principal avec arguments CLI"""
+    """Point d'entrée principal avec arguments CLI et menu interactif"""
     parser = argparse.ArgumentParser(
         description='Quick Backtest - Test rapide avec configuration simple',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Exemples:
-  # Backtest basique
-  python quick_backtest_cli.py
+Modes d'utilisation:
+  1. Mode CLI (arguments):
+     python quick_backtest_cli.py --symbol EURUSD --timeframe M3 --year 2023
   
-  # Backtest personnalisé
+  2. Mode interactif (menu):
+     python quick_backtest_cli.py --interactive
+  
+  3. Mode batch (plusieurs symboles):
+     python quick_backtest_cli.py --batch
+  
+  4. Lister les données disponibles:
+     python quick_backtest_cli.py --list
+
+Exemples CLI:
   python quick_backtest_cli.py --symbol GBPUSD --timeframe H1 --year 2022
-  
-  # Backtest multi-symboles
-  python quick_backtest_cli.py --symbol EURUSD --year 2023
-  python quick_backtest_cli.py --symbol GBPUSD --year 2023
-  python quick_backtest_cli.py --symbol USDJPY --year 2023
+  python quick_backtest_cli.py --symbol US100.cash --capital 20000
+  python quick_backtest_cli.py --quiet
         """
     )
     
+    # Mode de fonctionnement
+    parser.add_argument(
+        '--interactive', '-i',
+        action='store_true',
+        help='Mode interactif avec menus'
+    )
+    
+    parser.add_argument(
+        '--batch', '-b',
+        action='store_true',
+        help='Mode batch pour tester plusieurs configurations'
+    )
+    
+    parser.add_argument(
+        '--list', '-l',
+        action='store_true',
+        help='Lister les données disponibles en cache'
+    )
+    
+    # Paramètres de backtest
     parser.add_argument(
         '--symbol', 
         type=str, 
@@ -293,41 +600,109 @@ Exemples:
     )
     
     parser.add_argument(
-        '--quiet', 
+        '--quiet', '-q',
         action='store_true',
         help='Mode silencieux (moins de détails)'
     )
     
     args = parser.parse_args()
     
-    # Afficher le header
-    print("\n" + "=" * 70)
-    print("QUICK BACKTEST - Configuration Simple")
-    print("=" * 70)
-    print(f"\n🎯 Paramètres:")
-    print(f"   Symbole: {args.symbol}")
-    print(f"   Timeframe: {args.timeframe}")
-    print(f"   Année: {args.year}")
-    print(f"   Capital: ${args.capital:,.2f}")
-    print(f"   Commission: {args.commission:.4f}")
+    # Mode liste
+    if args.list:
+        display_available_data()
+        return
     
-    # Créer et exécuter le backtest avec configuration centralisée
-    backtest = QuickBacktest(
-        symbol=args.symbol,
-        timeframe=args.timeframe,
-        year=args.year,
-        initial_capital=args.capital,
-        commission=args.commission,
-        verbose=not args.quiet
-    )
+    # Mode batch
+    if args.batch:
+        print("\n" + "=" * 70)
+        print("🔄 MODE BATCH - Configuration")
+        print("=" * 70)
+        
+        # Menu pour sélectionner plusieurs symboles
+        print("\n📊 Sélection des symboles (séparés par des virgules):")
+        print("Exemples: EURUSD,GBPUSD,USDJPY ou tapez 'all' pour tous les Forex majors")
+        
+        symbols_input = input("\nSymboles: ").strip()
+        if symbols_input.lower() == 'all':
+            symbols = AVAILABLE_SYMBOLS['Forex Majors']
+        else:
+            symbols = [s.strip().upper() for s in symbols_input.split(',')]
+        
+        print(f"\n⏰ Sélection des timeframes (séparés par des virgules):")
+        print("Exemples: M3,H1,D1 ou tapez 'all' pour M3,H1")
+        
+        timeframes_input = input("\nTimeframes: ").strip()
+        if timeframes_input.lower() == 'all':
+            timeframes = ['M3', 'H1']
+        else:
+            timeframes = [tf.strip().upper() for tf in timeframes_input.split(',')]
+        
+        print(f"\n📅 Sélection des années (séparées par des virgules):")
+        print("Exemples: 2023,2024 ou tapez '2023' pour une seule année")
+        
+        years_input = input("\nAnnées: ").strip()
+        years = [int(y.strip()) for y in years_input.split(',')]
+        
+        # Exécuter batch
+        results = batch_mode(symbols, timeframes, years)
+        
+        # Afficher comparaison
+        if results:
+            display_batch_comparison(results)
+            
+            # Proposer sauvegarde
+            save = input("\n💾 Sauvegarder les résultats en CSV ? (o/n): ").strip().lower()
+            if save in ['o', 'y', 'oui', 'yes']:
+                filename = f"batch_results_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                df_results = pd.DataFrame(results)
+                df_results.to_csv(filename, index=False)
+                print(f"✅ Résultats sauvegardés: {filename}")
+        
+        return
     
+    # Mode interactif
+    if args.interactive:
+        params = interactive_mode()
+        
+        # Créer le backtest avec les paramètres du menu
+        backtest = QuickBacktest(
+            symbol=params['symbol'],
+            timeframe=params['timeframe'],
+            year=params['year'],
+            initial_capital=params['capital'],
+            commission=params['commission'],
+            verbose=True
+        )
+    else:
+        # Mode CLI classique
+        print("\n" + "=" * 70)
+        print("QUICK BACKTEST - Configuration Simple")
+        print("=" * 70)
+        print(f"\n🎯 Paramètres:")
+        print(f"   Symbole: {args.symbol}")
+        print(f"   Timeframe: {args.timeframe}")
+        print(f"   Année: {args.year}")
+        print(f"   Capital: ${args.capital:,.2f}")
+        print(f"   Commission: {args.commission:.4f}")
+        
+        backtest = QuickBacktest(
+            symbol=args.symbol,
+            timeframe=args.timeframe,
+            year=args.year,
+            initial_capital=args.capital,
+            commission=args.commission,
+            verbose=not args.quiet
+        )
+    
+    # Exécuter le backtest
     success = backtest.run()
     
     if success and not args.quiet:
         # Afficher le résumé structuré
         summary = backtest.get_summary()
         print(f"\n📊 Résumé exportable:")
-        print(f"   {summary}")
+        for key, value in summary.items():
+            print(f"   {key}: {value}")
 
 
 if __name__ == "__main__":

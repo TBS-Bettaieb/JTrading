@@ -207,7 +207,9 @@ class BacktestEngine:
         
         # Fermer toutes les positions restantes
         if len(self.open_positions) > 0:
-            last_row = df.iloc[-1]
+            # Convertir last_row en namedtuple pour cohérence
+            last_idx = len(df) - 1
+            last_row = list(df.itertuples())[last_idx]
             for pos in self.open_positions[:]:
                 self._close_position(pos, last_row, "End of data")
         
