@@ -110,8 +110,11 @@ class FreeCandleStrategy:
         # Point size dynamique (depuis constants.py ou MT5)
         self.point_size = self._get_point_size(config.symbol.symbol)
         
-        # Variable pour la divergence (si activée)
-        self.divergence_memory = None
+        # Divergence validator (si activé)
+        self.divergence_validator = None
+        if config.divergence.use_validator:
+            from strategies.divergence import DivergenceValidator
+            self.divergence_validator = DivergenceValidator(config)
     
     def _get_point_size(self, symbol: str) -> float:
         """
@@ -325,7 +328,7 @@ class FreeCandleStrategy:
     ) -> Tuple[float, float, float]:
         """
         Calcule SL et TP basés sur swing et ATR
-        Compatible avec la logique MQL5 CalculateSwingSLTP
+        EXACTEMENT selon la logique MQL5 CalculateSwingSLTP (JT_Utils.mqh:162-286)
         
         Args:
             df: DataFrame avec données et indicateurs
@@ -338,51 +341,125 @@ class FreeCandleStrategy:
         current_row = df.iloc[idx]
         entry_price = current_row['close']
         
-        # Période de lookback pour swing
+        # Paramètres
         sl_period = self.config.stop_loss.sl_period
         tp_period = self.config.stop_loss.tp_period
+        atr_multiplier = self.config.stop_loss.atr_multiplier
+        min_rr = self.config.stop_loss.min_rr
+        atr_value = current_row['atr']
         
-        # Calculer SL basé sur swing
-        start_idx = max(0, idx - sl_period)
+        # Distance minimale (1000 points en MQL5)
+        min_dist = 1000 * self.point_size
+        
+        # Charger les données nécessaires (ignorer barre 0)
+        need = max(sl_period, tp_period) + 2
+        start_idx = max(1, idx - need)  # Commencer à 1, pas 0
+        
+        lows = df.iloc[start_idx:idx]['low'].values
+        highs = df.iloc[start_idx:idx]['high'].values
+        
+        # Extrêmes "swing" (ignorer la barre actuelle)
+        if len(lows) > 0 and len(highs) > 0:
+            swing_low = lows.min()
+            swing_high = highs.max()
+        else:
+            swing_low = entry_price - 10.0 * min_dist
+            swing_high = entry_price + 10.0 * min_dist
+        
+        # ========== CALCUL SL (ligne 207-239 MQL5) ==========
+        if direction > 0:  # BUY
+            # Swing SL
+            sl_by_swing = swing_low if (swing_low > 0 and swing_low < entry_price) else entry_price - 10.0 * min_dist
+            
+            # ATR SL
+            sl_by_atr = (entry_price - atr_multiplier * atr_value) if atr_value > 0 else (entry_price - min_dist)
+            
+            # Prendre le PLUS BAS des deux (plus protecteur pour BUY = MIN)
+            sl_candidate = min(sl_by_swing, sl_by_atr)
+            
+            # Appliquer distance minimale
+            if entry_price - sl_candidate < min_dist:
+                sl_candidate = entry_price - min_dist
+            
+            sl = sl_candidate
+            
+            # Sécurité finale
+            if sl >= entry_price:
+                sl = entry_price - min_dist
+        
+        else:  # SELL
+            # Swing SL
+            sl_by_swing = swing_high if (swing_high > 0 and swing_high > entry_price) else entry_price + 10.0 * min_dist
+            
+            # ATR SL
+            sl_by_atr = (entry_price + atr_multiplier * atr_value) if atr_value > 0 else (entry_price + min_dist)
+            
+            # Prendre le PLUS HAUT des deux (plus protecteur pour SELL = MAX)
+            sl_candidate = max(sl_by_swing, sl_by_atr)
+            
+            # Appliquer distance minimale
+            if sl_candidate - entry_price < min_dist:
+                sl_candidate = entry_price + min_dist
+            
+            sl = sl_candidate
+            
+            # Sécurité finale
+            if sl <= entry_price:
+                sl = entry_price + min_dist
+        
+        # ========== CALCUL TP (ligne 241-267 MQL5) ==========
+        sl_dist = abs(entry_price - sl)
         
         if direction > 0:  # BUY
-            # SL au swing low
-            swing_sl = df.iloc[start_idx:idx]['low'].min()
-            # SL basé sur ATR
-            atr_sl = entry_price - (self.config.stop_loss.atr_multiplier * current_row['atr'])
-            # Prendre le plus protecteur
-            sl = min(swing_sl, atr_sl)
+            # Chercher le swing high sur TP period
+            tp_start = max(1, idx - tp_period)
+            tp_highs = df.iloc[tp_start:idx]['high'].values
+            tp_swing = tp_highs.max() if len(tp_highs) > 0 else 0.0
+            
+            # Si swing TP invalide (≤ entry), utiliser 0
+            if tp_swing <= entry_price:
+                tp_swing = 0.0
+            
+            # RR fallback
+            tp_rr = entry_price + min_rr * sl_dist
+            
+            # Prendre swing si valide, sinon RR
+            tp_raw = max(tp_swing, entry_price + min_dist) if tp_swing > 0 else tp_rr
+            tp = tp_raw
+            
+            # Sécurité: TP au moins à min_dist
+            if tp - entry_price < min_dist:
+                tp = entry_price + min_dist
+        
         else:  # SELL
-            # SL au swing high
-            swing_sl = df.iloc[start_idx:idx]['high'].max()
-            # SL basé sur ATR
-            atr_sl = entry_price + (self.config.stop_loss.atr_multiplier * current_row['atr'])
-            # Prendre le plus protecteur
-            sl = max(swing_sl, atr_sl)
+            # Chercher le swing low sur TP period
+            tp_start = max(1, idx - tp_period)
+            tp_lows = df.iloc[tp_start:idx]['low'].values
+            tp_swing = tp_lows.min() if len(tp_lows) > 0 else 0.0
+            
+            # Si swing TP invalide (≥ entry), utiliser 0
+            if tp_swing >= entry_price:
+                tp_swing = 0.0
+            
+            # RR fallback
+            tp_rr = entry_price - min_rr * sl_dist
+            
+            # Prendre swing si valide, sinon RR
+            tp_raw = min(tp_swing, entry_price - min_dist) if tp_swing > 0 else tp_rr
+            tp = tp_raw
+            
+            # Sécurité: TP au moins à min_dist
+            if entry_price - tp < min_dist:
+                tp = entry_price - min_dist
         
-        # Calculer TP basé sur swing opposé ou ratio RR
-        tp_start_idx = max(0, idx - tp_period)
-        
-        if direction > 0:  # BUY
-            swing_tp = df.iloc[tp_start_idx:idx]['high'].max()
-            # Vérifier si le TP swing est valide
-            if swing_tp <= entry_price:
-                # Utiliser ratio RR
-                risk = abs(entry_price - sl)
-                tp = entry_price + (risk * self.config.stop_loss.min_rr)
+        # Sécurité finale: TP ≠ SL (ligne 278-283 MQL5)
+        if abs(tp - sl) < 2.0 * self.point_size:
+            if direction > 0:
+                tp = sl + min_rr * max(sl_dist, min_dist)
             else:
-                tp = max(swing_tp, entry_price + abs(entry_price - sl) * self.config.stop_loss.min_rr)
-        else:  # SELL
-            swing_tp = df.iloc[tp_start_idx:idx]['low'].min()
-            # Vérifier si le TP swing est valide
-            if swing_tp >= entry_price:
-                # Utiliser ratio RR
-                risk = abs(sl - entry_price)
-                tp = entry_price - (risk * self.config.stop_loss.min_rr)
-            else:
-                tp = min(swing_tp, entry_price - abs(sl - entry_price) * self.config.stop_loss.min_rr)
+                tp = sl - min_rr * max(sl_dist, min_dist)
         
-        # Calculer RR ratio
+        # Calculer RR ratio final
         risk = abs(entry_price - sl)
         reward = abs(tp - entry_price)
         rr_ratio = reward / risk if risk > 0 else 0
@@ -530,6 +607,13 @@ class FreeCandleStrategy:
                 signals.append(signal)
             else:
                 print(f"⚠️ Signal invalide ignoré à {signal.timestamp}: {error_msg}")
+        
+        # Appliquer le validateur de divergence si activé
+        if self.divergence_validator and signals:
+            print(f"🔍 Validation des signaux avec divergence...")
+            validated_signals = self.divergence_validator.validate_signals(signals, df)
+            print(f"✅ {len(validated_signals)}/{len(signals)} signaux validés par divergence")
+            return validated_signals
         
         return signals
     

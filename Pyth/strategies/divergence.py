@@ -35,6 +35,7 @@ class DivergenceValidator:
     
     def __init__(
         self,
+        config=None,
         rsi_period: int = 14,
         rsi_buy_level: float = 35.0,
         rsi_sell_level: float = 65.0,
@@ -42,18 +43,26 @@ class DivergenceValidator:
     ):
         """
         Args:
+            config: StrategyConfig (optionnel)
             rsi_period: Période du RSI
             rsi_buy_level: Seuil RSI pour validation BUY
             rsi_sell_level: Seuil RSI pour validation SELL
             swing_length: Longueur pour détecter les pivots (swings)
         """
-        self.rsi_period = rsi_period
-        self.rsi_buy_level = rsi_buy_level
-        self.rsi_sell_level = rsi_sell_level
-        self.swing_length = swing_length
+        # Si config fourni, utiliser ses paramètres
+        if config:
+            self.rsi_period = config.rsi.period
+            self.rsi_buy_level = config.rsi.oversold
+            self.rsi_sell_level = config.rsi.overbought
+            self.swing_length = config.divergence.min_bars
+        else:
+            self.rsi_period = rsi_period
+            self.rsi_buy_level = rsi_buy_level
+            self.rsi_sell_level = rsi_sell_level
+            self.swing_length = swing_length
         
         # RSI indicator
-        self.rsi_indicator = RSI(period=rsi_period)
+        self.rsi_indicator = RSI(period=self.rsi_period)
         
         # Mémoire du Free Candle
         self.memory = FreeCandleMemory()
@@ -317,6 +326,54 @@ class DivergenceValidator:
                 divergences.append(('bearish', i, df.iloc[i]['high'], df.iloc[i]['rsi']))
         
         return divergences
+    
+    def validate_signals(self, signals: List, df: pd.DataFrame) -> List:
+        """
+        Valide les signaux avec la divergence
+        Compatible avec la logique MQL5 ValidateDivergence
+        
+        Args:
+            signals: Liste de Signal objects
+            df: DataFrame avec données et indicateurs
+        
+        Returns:
+            Liste de signaux validés (peut être vide si tous rejetés)
+        """
+        if not signals:
+            return []
+        
+        # Assurer que le RSI est calculé
+        if 'rsi' not in df.columns:
+            df = self.rsi_indicator.calculate_dataframe(df)
+        
+        validated_signals = []
+        
+        for signal in signals:
+            # Trouver l'index correspondant au signal
+            try:
+                idx = df.index.get_loc(signal.timestamp)
+            except:
+                # Si timestamp pas trouvé, garder le signal
+                validated_signals.append(signal)
+                continue
+            
+            # Valider avec divergence
+            has_divergence, div_direction = self.validate_divergence(df, idx)
+            
+            # Si divergence confirmée dans la bonne direction, augmenter confidence
+            if has_divergence and div_direction == signal.direction:
+                # Augmenter la confidence du signal
+                signal.confidence = min(signal.confidence + 0.3, 1.0)
+                signal.reason += "_DIV_CONFIRMED"
+                validated_signals.append(signal)
+            elif has_divergence and div_direction != signal.direction:
+                # Divergence contraire, rejeter le signal
+                continue
+            else:
+                # Pas de divergence, garder le signal tel quel
+                validated_signals.append(signal)
+        
+        return validated_signals
     
     def __repr__(self) -> str:
         return (f"DivergenceValidator(rsi_period={self.rsi_period}, "
