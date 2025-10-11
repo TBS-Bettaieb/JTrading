@@ -250,6 +250,15 @@ void OnTick()
       if(divSignal != 0) {
          // Divergence validée, exécuter le trade
          ExecuteTradeFromDivergence(divSignal);
+         
+         // Enregistrer les métriques de divergence dans le tracker
+         if(tracker != NULL) {
+            tracker.SetDivergenceData(
+               divValidator.GetLastDivergenceAngle(),
+               divValidator.GetLastDivergenceStrength(),
+               divValidator.GetLastDivergenceBars()
+            );
+         }
          return;
       }
    }

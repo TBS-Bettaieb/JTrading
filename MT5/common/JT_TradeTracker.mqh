@@ -33,6 +33,17 @@ struct TradeRecord {
    double   distToUpperBB;  // Distance à BB supérieure
    double   distToLowerBB;  // Distance à BB inférieure
    
+   // Métriques EMA enrichies
+   double   distEMAFastSlow; // Distance EMA50-EMA100 en points
+   double   emaSpread;       // (EMA50-EMA100)/EMA100 en %
+   string   emaTrend;        // "UP" si EMA50>EMA100, "DOWN" sinon
+   string   priceVsEMA;      // ABOVE_BOTH, BETWEEN, BELOW_BOTH
+   
+   // Données divergence
+   double   divAngle;        // Angle d'inclinaison en degrés
+   double   divStrength;     // Force: diff RSI / diff prix
+   int      divBars;         // Nombre de barres entre pivots
+   
    // Contexte temporel
    int      hour;
    int      dayOfWeek;
@@ -62,9 +73,13 @@ class JTTradeTracker {
 private:
    TradeRecord m_records[];
    string      m_csvFile;
+   string      m_csvFileTemp;     // Nom temporaire avant renommage
    string      m_symbol;
    ulong       m_magic;
    int         m_fileHandle;
+   ENUM_TIMEFRAMES m_timeframe;
+   datetime    m_firstTradeTime;
+   datetime    m_lastTradeTime;
    
    // Handles des indicateurs pour tracking
    int         m_bbHandle;
@@ -98,6 +113,85 @@ private:
    
    // Pour éviter les doublons de fermeture
    ulong m_closedTickets[];
+   
+   // Convertir le timeframe en string
+   string TimeframeToString(ENUM_TIMEFRAMES tf) {
+      switch(tf) {
+         case PERIOD_M1:  return "M1";
+         case PERIOD_M2:  return "M2";
+         case PERIOD_M3:  return "M3";
+         case PERIOD_M4:  return "M4";
+         case PERIOD_M5:  return "M5";
+         case PERIOD_M6:  return "M6";
+         case PERIOD_M10: return "M10";
+         case PERIOD_M12: return "M12";
+         case PERIOD_M15: return "M15";
+         case PERIOD_M20: return "M20";
+         case PERIOD_M30: return "M30";
+         case PERIOD_H1:  return "H1";
+         case PERIOD_H2:  return "H2";
+         case PERIOD_H3:  return "H3";
+         case PERIOD_H4:  return "H4";
+         case PERIOD_H6:  return "H6";
+         case PERIOD_H8:  return "H8";
+         case PERIOD_H12: return "H12";
+         case PERIOD_D1:  return "D1";
+         case PERIOD_W1:  return "W1";
+         case PERIOD_MN1: return "MN1";
+         default:         return "UNKNOWN";
+      }
+   }
+   
+   // Renommer le fichier CSV avec les dates
+   void RenameCSVWithDates() {
+      if(m_firstTradeTime == 0 || m_lastTradeTime == 0) return;
+      
+      MqlDateTime dtFirst, dtLast;
+      TimeToStruct(m_firstTradeTime, dtFirst);
+      TimeToStruct(m_lastTradeTime, dtLast);
+      
+      string dateFirst = StringFormat("%04d%02d%02d", dtFirst.year, dtFirst.mon, dtFirst.day);
+      string dateLast = StringFormat("%04d%02d%02d", dtLast.year, dtLast.mon, dtLast.day);
+      string tfStr = TimeframeToString(m_timeframe);
+      
+      string newFileName = "TradeAnalysis_" + m_symbol + "_" + tfStr + "_" + 
+                          dateFirst + "_" + dateLast + ".csv";
+      
+      // Si le nom n'a pas changé ou si c'est le premier renommage
+      if(newFileName == m_csvFile) return;
+      
+      // Copier le contenu vers le nouveau fichier
+      int oldHandle = FileOpen(m_csvFile, FILE_READ|FILE_ANSI);
+      if(oldHandle == INVALID_HANDLE) return;
+      
+      int newHandle = FileOpen(newFileName, FILE_WRITE|FILE_ANSI);
+      if(newHandle == INVALID_HANDLE) {
+         FileClose(oldHandle);
+         return;
+      }
+      
+      // Copier tout le contenu ligne par ligne
+      while(!FileIsEnding(oldHandle)) {
+         string line = FileReadString(oldHandle);
+         if(StringLen(line) > 0) {
+            // Ajouter \n seulement si la ligne n'en a pas déjà
+            if(StringFind(line, "\n") < 0)
+               FileWriteString(newHandle, line + "\n");
+            else
+               FileWriteString(newHandle, line);
+         }
+      }
+      
+      FileClose(oldHandle);
+      FileClose(newHandle);
+      
+      // Supprimer l'ancien fichier
+      FileDelete(m_csvFile);
+      
+      // Mettre à jour le nom
+      m_csvFile = newFileName;
+      Print("CSV renommé en: ", m_csvFile);
+   }
 
 public:
    // Constructeur avec paramètres
@@ -107,7 +201,13 @@ public:
       m_magic = magic;
       m_bbPeriod = bbPeriod;
       m_bbDev = bbDev;
-      m_csvFile = "TradeAnalysis_" + symbol + "_" + IntegerToString(magic) + ".csv";
+      m_timeframe = (ENUM_TIMEFRAMES)_Period;
+      m_firstTradeTime = 0;
+      m_lastTradeTime = 0;
+      
+      // Créer un nom temporaire basé sur le magic number
+      m_csvFileTemp = "TradeAnalysis_" + symbol + "_" + IntegerToString(magic) + ".csv";
+      m_csvFile = m_csvFileTemp; // Sera renommé après le premier trade
       
       // Initialiser les handles d'indicateurs pour le tracking
       m_bbHandle = iBands(symbol, PERIOD_CURRENT, bbPeriod, 0, bbDev, PRICE_CLOSE);
@@ -129,6 +229,19 @@ public:
       if(m_rsiHandle != INVALID_HANDLE) IndicatorRelease(m_rsiHandle);
       if(m_emaFastHandle != INVALID_HANDLE) IndicatorRelease(m_emaFastHandle);
       if(m_emaSlowHandle != INVALID_HANDLE) IndicatorRelease(m_emaSlowHandle);
+   }
+
+   // Définir les données de divergence pour le prochain trade
+   void SetDivergenceData(double angle, double strength, int bars) {
+      // Chercher le dernier trade ouvert (pas encore fermé)
+      for(int i = ArraySize(m_records) - 1; i >= 0; i--) {
+         if(m_records[i].closeTime == 0) {
+            m_records[i].divAngle = angle;
+            m_records[i].divStrength = strength;
+            m_records[i].divBars = bars;
+            break;
+         }
+      }
    }
 
    // Enregistrer l'ouverture d'un trade avec TOUTES les données
@@ -177,6 +290,13 @@ public:
       rec.mode = "";
       rec.divergence = false;
       rec.emaMode = "";
+      rec.distEMAFastSlow = 0;
+      rec.emaSpread = 0;
+      rec.emaTrend = "";
+      rec.priceVsEMA = "";
+      rec.divAngle = 0;
+      rec.divStrength = 0;
+      rec.divBars = 0;
       
       // Données de position
       rec.ticket = ticket;
@@ -210,6 +330,17 @@ public:
       rec.plannedRR = (rec.slDistance > 0) ? rec.tpDistance / rec.slDistance : 0;
       
       m_records[idx] = rec;
+      
+      // Gérer le premier trade
+      if(m_firstTradeTime == 0) {
+         m_firstTradeTime = rec.openTime;
+         RenameCSVWithDates(); // Premier renommage
+      }
+      
+      // Mettre à jour la date du dernier trade
+      if(rec.openTime > m_lastTradeTime) {
+         m_lastTradeTime = rec.openTime;
+      }
       
       // Log immédiat
       LogTradeOpen(rec);
@@ -249,6 +380,29 @@ public:
          rec.emaFast = emaFast[0];
       if(CopyBuffer(m_emaSlowHandle, 0, 0, 1, emaSlow) > 0)
          rec.emaSlow = emaSlow[0];
+      
+      // Calculer les métriques EMA enrichies
+      if(rec.emaFast > 0 && rec.emaSlow > 0) {
+         // Distance entre EMAs en points
+         rec.distEMAFastSlow = MathAbs(rec.emaFast - rec.emaSlow) / point;
+         
+         // Spread EMA en pourcentage
+         rec.emaSpread = ((rec.emaFast - rec.emaSlow) / rec.emaSlow) * 100.0;
+         
+         // Tendance EMA
+         rec.emaTrend = (rec.emaFast > rec.emaSlow) ? "UP" : "DOWN";
+         
+         // Position du prix par rapport aux EMAs
+         double maxEMA = MathMax(rec.emaFast, rec.emaSlow);
+         double minEMA = MathMin(rec.emaFast, rec.emaSlow);
+         
+         if(rec.openPrice > maxEMA)
+            rec.priceVsEMA = "ABOVE_BOTH";
+         else if(rec.openPrice < minEMA)
+            rec.priceVsEMA = "BELOW_BOTH";
+         else
+            rec.priceVsEMA = "BETWEEN";
+      }
       
       // ATR
       int atrHandle = iATR(m_symbol, PERIOD_CURRENT, 14);
@@ -364,6 +518,12 @@ public:
       ArrayResize(m_closedTickets, size + 1);
       m_closedTickets[size] = ticket;
       
+      // Mettre à jour la date du dernier trade
+      if(rec.closeTime > m_lastTradeTime) {
+         m_lastTradeTime = rec.closeTime;
+         RenameCSVWithDates(); // Renommer après chaque fermeture
+      }
+      
       // Sauvegarder et mettre à jour stats
       SaveToCSV(rec, false);
       UpdateStatistics();
@@ -372,19 +532,22 @@ public:
 
    // Initialiser le fichier CSV
    void InitializeCSV() {
-      m_fileHandle = FileOpen(m_csvFile, FILE_WRITE|FILE_CSV|FILE_READ|FILE_ANSI, ",");
+      m_fileHandle = FileOpen(m_csvFile, FILE_WRITE|FILE_ANSI, ",");
       
       if(m_fileHandle != INVALID_HANDLE) {
          if(FileSize(m_fileHandle) == 0) {
-            // Écrire l'en-tête complet
+            // Écrire l'en-tête complet avec les nouvelles colonnes
             string header = "Ticket,OpenTime,CloseTime,Symbol,Type,Volume," +
                "OpenPrice,ClosePrice,SL,TP,Profit,Pips," +
                "Commission,Swap,PlannedRR,ActualRR," +
                "RSI,ATR,Spread,BBWidth,DistUpperBB,DistLowerBB," +
-               "EMA50,EMA100,Hour,Minute,DayOfWeek," +
-               "Duration,MaxProfit,MaxDD,ExitReason,Mode,Divergence,EMAMode";
+               "EMA50,EMA100," +
+               "DistEMAFastSlow,EMASpread,EMATrend,PriceVsEMA," +
+               "DivAngle,DivStrength,DivBars," +
+               "Hour,Minute,DayOfWeek," +
+               "Duration,MaxProfit,MaxDD,ExitReason,Mode,Divergence,EMAMode\n";
             
-            FileWriteString(m_fileHandle, header + "\n");
+            FileWriteString(m_fileHandle, header);
          }
          FileClose(m_fileHandle);
       } else {
@@ -394,12 +557,12 @@ public:
 
    // Sauvegarder dans CSV
    void SaveToCSV(const TradeRecord &rec, bool isOpen) {
-      int handle = FileOpen(m_csvFile, FILE_WRITE|FILE_CSV|FILE_READ|FILE_ANSI, ",");
+      int handle = FileOpen(m_csvFile, FILE_WRITE|FILE_READ|FILE_ANSI);
       
       if(handle != INVALID_HANDLE) {
          FileSeek(handle, 0, SEEK_END);
          
-         string row = StringFormat("%d,%s,%s,%s,%s,%.2f,%.5f,%.5f,%.5f,%.5f,%.2f,%.1f,%.2f,%.2f,%.2f,%.2f,%.2f,%.5f,%.1f,%.1f,%.1f,%.1f,%.5f,%.5f,%d,%d,%d,%d,%.2f,%.2f,%s,%s,%s,%s",
+         string row = StringFormat("%d,%s,%s,%s,%s,%.2f,%.5f,%.5f,%.5f,%.5f,%.2f,%.1f,%.2f,%.2f,%.2f,%.2f,%.2f,%.5f,%.1f,%.1f,%.1f,%.1f,%.5f,%.5f,%.1f,%.4f,%s,%s,%.2f,%.6f,%d,%d,%d,%d,%d,%.2f,%.2f,%s,%s,%s,%s\n",
             rec.ticket,
             TimeToString(rec.openTime, TIME_DATE|TIME_SECONDS),
             isOpen ? "" : TimeToString(rec.closeTime, TIME_DATE|TIME_SECONDS),
@@ -424,6 +587,13 @@ public:
             rec.distToLowerBB,
             rec.emaFast,
             rec.emaSlow,
+            rec.distEMAFastSlow,
+            rec.emaSpread,
+            rec.emaTrend,
+            rec.priceVsEMA,
+            rec.divAngle,
+            rec.divStrength,
+            rec.divBars,
             rec.hour,
             rec.minute,
             rec.dayOfWeek,
@@ -436,7 +606,7 @@ public:
             rec.emaMode
          );
          
-         FileWriteString(handle, row + "\n");
+         FileWriteString(handle, row);
          FileClose(handle);
       }
    }
@@ -451,6 +621,13 @@ public:
       Print("RSI: ", DoubleToString(rec.rsi, 2), 
             " | Spread: ", DoubleToString(rec.spread, 1), " pts");
       Print("BB Width: ", DoubleToString(rec.bbWidth, 1), " pts");
+      Print("EMA: Dist=", DoubleToString(rec.distEMAFastSlow, 1), "pts | Spread=", 
+            DoubleToString(rec.emaSpread, 4), "% | Trend=", rec.emaTrend, 
+            " | Price=", rec.priceVsEMA);
+      if(rec.divergence) {
+         Print("Divergence: Angle=", DoubleToString(rec.divAngle, 2), "° | Strength=", 
+               DoubleToString(rec.divStrength, 6), " | Bars=", rec.divBars);
+      }
       Print("Heure: ", rec.hour, ":", rec.minute, 
             " | Jour: ", rec.dayOfWeek);
       Print("Mode: ", rec.mode, " | Divergence: ", rec.divergence ? "OUI" : "NON",

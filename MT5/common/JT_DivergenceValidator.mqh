@@ -26,6 +26,11 @@ private:
    int     m_swingLength;      // Longueur pour détecter les pivots
    
    FreeCandleMemory m_memory;
+   
+   // Données de la dernière divergence détectée
+   double  m_lastDivAngle;
+   double  m_lastDivStrength;
+   int     m_lastDivBars;
 
 public:
    JTDivergenceValidator()
@@ -37,6 +42,9 @@ public:
       m_rsiBuyLevel = 35.0;
       m_rsiSellLevel = 65.0;
       m_swingLength = 5;
+      m_lastDivAngle = 0.0;
+      m_lastDivStrength = 0.0;
+      m_lastDivBars = 0;
       ClearMemory();
    }
    
@@ -101,6 +109,11 @@ public:
    // Obtenir la direction du Free Candle en mémoire
    int GetMemorizedDirection() { return m_memory.direction; }
    
+   // Getters pour les métriques de la dernière divergence
+   double GetLastDivergenceAngle() { return m_lastDivAngle; }
+   double GetLastDivergenceStrength() { return m_lastDivStrength; }
+   int GetLastDivergenceBars() { return m_lastDivBars; }
+   
    // Validation principale: à appeler sur nouvelle barre
    // Retourne: 0 = pas de signal, +1 = buy validé, -1 = sell validé
    int ValidateDivergence()
@@ -157,6 +170,32 @@ public:
    }
 
 private:
+   // Calculer l'angle de la divergence en degrés
+   double CalculateDivergenceAngle(double price1, double price2, int bars)
+   {
+      if(bars == 0) return 0.0;
+      
+      double priceDiff = MathAbs(price2 - price1);
+      double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+      double priceDiffPoints = priceDiff / point;
+      
+      // Angle = arctan(hauteur / largeur) converti en degrés
+      double angle = MathArctan(priceDiffPoints / bars) * 180.0 / M_PI;
+      return angle;
+   }
+   
+   // Calculer la force de la divergence
+   double CalculateDivergenceStrength(double rsiDiff, double priceDiff)
+   {
+      if(priceDiff == 0.0) return 0.0;
+      
+      double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+      double priceDiffPoints = priceDiff / point;
+      
+      // Force = différence RSI / différence prix en points
+      return rsiDiff / priceDiffPoints;
+   }
+   
    // Obtenir le low d'une barre
    double GetLow(int shift)
    {
@@ -253,9 +292,19 @@ private:
       bool rsiHigherLow = (recentRSI > olderRSI);
       
       if(priceLowerLow && rsiHigherLow) {
+         // Calculer les métriques de divergence
+         double priceDiff = MathAbs(olderLow - recentLow);
+         double rsiDiff = MathAbs(recentRSI - olderRSI);
+         int bars = olderPivot - recentPivot;
+         
+         m_lastDivAngle = CalculateDivergenceAngle(olderLow, recentLow, bars);
+         m_lastDivStrength = CalculateDivergenceStrength(rsiDiff, priceDiff);
+         m_lastDivBars = bars;
+         
          LogMessage("Divergence haussière détectée: Prix(" + DoubleToString(olderLow, 5) + " → " + 
                     DoubleToString(recentLow, 5) + "), RSI(" + DoubleToString(olderRSI, 2) + 
-                    " → " + DoubleToString(recentRSI, 2) + ")", "DIVERGENCE");
+                    " → " + DoubleToString(recentRSI, 2) + "), Angle=" + DoubleToString(m_lastDivAngle, 2) + 
+                    "°, Force=" + DoubleToString(m_lastDivStrength, 6) + ", Bars=" + IntegerToString(m_lastDivBars), "DIVERGENCE");
          return true;
       }
       
@@ -299,9 +348,19 @@ private:
       bool rsiLowerHigh = (recentRSI < olderRSI);
       
       if(priceHigherHigh && rsiLowerHigh) {
+         // Calculer les métriques de divergence
+         double priceDiff = MathAbs(recentHigh - olderHigh);
+         double rsiDiff = MathAbs(olderRSI - recentRSI);
+         int bars = olderPivot - recentPivot;
+         
+         m_lastDivAngle = CalculateDivergenceAngle(olderHigh, recentHigh, bars);
+         m_lastDivStrength = CalculateDivergenceStrength(rsiDiff, priceDiff);
+         m_lastDivBars = bars;
+         
          LogMessage("Divergence baissière détectée: Prix(" + DoubleToString(olderHigh, 5) + " → " + 
                     DoubleToString(recentHigh, 5) + "), RSI(" + DoubleToString(olderRSI, 2) + 
-                    " → " + DoubleToString(recentRSI, 2) + ")", "DIVERGENCE");
+                    " → " + DoubleToString(recentRSI, 2) + "), Angle=" + DoubleToString(m_lastDivAngle, 2) + 
+                    "°, Force=" + DoubleToString(m_lastDivStrength, 6) + ", Bars=" + IntegerToString(m_lastDivBars), "DIVERGENCE");
          return true;
       }
       
