@@ -94,13 +94,10 @@ class JTTradeTracker {
 private:
    TradeRecord m_records[];
    string      m_csvFile;
-   string      m_csvFileTemp;     // Nom temporaire avant renommage
    string      m_symbol;
    ulong       m_magic;
    int         m_fileHandle;
    ENUM_TIMEFRAMES m_timeframe;
-   datetime    m_firstTradeTime;
-   datetime    m_lastTradeTime;
    
    // Handles des indicateurs pour tracking
    int         m_bbHandle;
@@ -162,57 +159,6 @@ private:
          default:         return "UNKNOWN";
       }
    }
-   
-   // Renommer le fichier CSV avec les dates
-   void RenameCSVWithDates() {
-      if(m_firstTradeTime == 0 || m_lastTradeTime == 0) return;
-      
-      MqlDateTime dtFirst, dtLast;
-      TimeToStruct(m_firstTradeTime, dtFirst);
-      TimeToStruct(m_lastTradeTime, dtLast);
-      
-      string dateFirst = StringFormat("%04d%02d%02d", dtFirst.year, dtFirst.mon, dtFirst.day);
-      string dateLast = StringFormat("%04d%02d%02d", dtLast.year, dtLast.mon, dtLast.day);
-      string tfStr = TimeframeToString(m_timeframe);
-      
-      string newFileName = "TradeAnalysis_" + m_symbol + "_" + tfStr + "_" + 
-                          dateFirst + "_" + dateLast + ".csv";
-      
-      // Si le nom n'a pas changé ou si c'est le premier renommage
-      if(newFileName == m_csvFile) return;
-      
-      // Copier le contenu vers le nouveau fichier
-      int oldHandle = FileOpen(m_csvFile, FILE_READ|FILE_ANSI);
-      if(oldHandle == INVALID_HANDLE) return;
-      
-      int newHandle = FileOpen(newFileName, FILE_WRITE|FILE_ANSI);
-      if(newHandle == INVALID_HANDLE) {
-         FileClose(oldHandle);
-         return;
-      }
-      
-      // Copier tout le contenu ligne par ligne
-      while(!FileIsEnding(oldHandle)) {
-         string line = FileReadString(oldHandle);
-         if(StringLen(line) > 0) {
-            // Ajouter \n seulement si la ligne n'en a pas déjà
-            if(StringFind(line, "\n") < 0)
-               FileWriteString(newHandle, line + "\n");
-            else
-               FileWriteString(newHandle, line);
-         }
-      }
-      
-      FileClose(oldHandle);
-      FileClose(newHandle);
-      
-      // Supprimer l'ancien fichier
-      FileDelete(m_csvFile);
-      
-      // Mettre à jour le nom
-      m_csvFile = newFileName;
-      Print("CSV renommé en: ", m_csvFile);
-   }
 
 public:
    // Constructeur avec paramètres
@@ -223,12 +169,10 @@ public:
       m_bbPeriod = bbPeriod;
       m_bbDev = bbDev;
       m_timeframe = (ENUM_TIMEFRAMES)_Period;
-      m_firstTradeTime = 0;
-      m_lastTradeTime = 0;
       
-      // Créer un nom temporaire basé sur le magic number
-      m_csvFileTemp = "TradeAnalysis_" + symbol + "_" + IntegerToString(magic) + ".csv";
-      m_csvFile = m_csvFileTemp; // Sera renommé après le premier trade
+      // Format simple du nom de fichier : TradeAnalysis_[Symbol]_[Timeframe].csv
+      string tfStr = TimeframeToString(m_timeframe);
+      m_csvFile = "TradeAnalysis_" + symbol + "_" + tfStr + ".csv";
       
       // Initialiser les handles d'indicateurs pour le tracking
       m_bbHandle = iBands(symbol, PERIOD_CURRENT, bbPeriod, 0, bbDev, PRICE_CLOSE);
@@ -389,17 +333,6 @@ public:
       rec.plannedRR = (rec.slDistance > 0) ? rec.tpDistance / rec.slDistance : 0;
       
       m_records[idx] = rec;
-      
-      // Gérer le premier trade
-      if(m_firstTradeTime == 0) {
-         m_firstTradeTime = rec.openTime;
-         RenameCSVWithDates(); // Premier renommage
-      }
-      
-      // Mettre à jour la date du dernier trade
-      if(rec.openTime > m_lastTradeTime) {
-         m_lastTradeTime = rec.openTime;
-      }
       
       // Log immédiat
       LogTradeOpen(rec);
@@ -577,12 +510,6 @@ public:
       ArrayResize(m_closedTickets, size + 1);
       m_closedTickets[size] = ticket;
       
-      // Mettre à jour la date du dernier trade
-      if(rec.closeTime > m_lastTradeTime) {
-         m_lastTradeTime = rec.closeTime;
-         RenameCSVWithDates(); // Renommer après chaque fermeture
-      }
-      
       // Sauvegarder et mettre à jour stats
       SaveToCSV(rec, false);
       UpdateStatistics();
@@ -591,29 +518,40 @@ public:
 
    // Initialiser le fichier CSV
    void InitializeCSV() {
-      m_fileHandle = FileOpen(m_csvFile, FILE_WRITE|FILE_ANSI, ",");
+      // Vérifier si le fichier existe déjà
+      m_fileHandle = FileOpen(m_csvFile, FILE_READ|FILE_ANSI);
+      bool fileExists = (m_fileHandle != INVALID_HANDLE);
+      
+      if(fileExists) {
+         FileClose(m_fileHandle);
+         Print("✅ Fichier CSV existant trouvé: ", m_csvFile, " - Mode APPEND activé");
+         return; // Le fichier existe déjà avec son en-tête, ne rien faire
+      }
+      
+      // Le fichier n'existe pas, le créer avec l'en-tête
+      m_fileHandle = FileOpen(m_csvFile, FILE_WRITE|FILE_ANSI);
       
       if(m_fileHandle != INVALID_HANDLE) {
-         if(FileSize(m_fileHandle) == 0) {
-            // Écrire l'en-tête complet avec les nouvelles colonnes
-            string header = "Ticket,OpenTime,CloseTime,Symbol,Type,Volume," +
-               "OpenPrice,ClosePrice,SL,TP,Profit,Pips," +
-               "Commission,Swap,PlannedRR,ActualRR," +
-               "RSI,ATR,Spread,BBWidth,DistUpperBB,DistLowerBB," +
-               "EMA50,EMA100," +
-               "DistEMAFastSlow,EMASpread,EMATrend,PriceVsEMA," +
-               "DivAngle,DivStrength,DivBars," +
-               "Hour,Minute,DayOfWeek," +
-               "Duration,MaxProfit,MaxDD,ExitReason,Mode,Divergence,EMAMode," +
-               "BB_Period,BB_Dev,RSI_Period,RSI_Oversold,RSI_Overbought," +
-               "EMA_Fast,EMA_Slow,EMA_ZoneDist,Risk%,MinRR," +
-               "SL_Period,TP_Period,ATR_Mult,ATR_Period,OutsidePad,BodyOnly,UseRSI,UseEMA,UseDiv\n";
-            
-            FileWriteString(m_fileHandle, header);
-         }
+         // Écrire l'en-tête complet avec les nouvelles colonnes
+         string header = "Ticket,OpenTime,CloseTime,Symbol,Type,Volume," +
+            "OpenPrice,ClosePrice,SL,TP,Profit,Pips," +
+            "Commission,Swap,PlannedRR,ActualRR," +
+            "RSI,ATR,Spread,BBWidth,DistUpperBB,DistLowerBB," +
+            "EMA50,EMA100," +
+            "DistEMAFastSlow,EMASpread,EMATrend,PriceVsEMA," +
+            "DivAngle,DivStrength,DivBars," +
+            "Hour,Minute,DayOfWeek," +
+            "Duration,MaxProfit,MaxDD,ExitReason,Mode,Divergence,EMAMode," +
+            "BB_Period,BB_Dev,RSI_Period,RSI_Oversold,RSI_Overbought," +
+            "EMA_Fast,EMA_Slow,EMA_ZoneDist,Risk%,MinRR," +
+            "SL_Period,TP_Period,ATR_Mult,ATR_Period,OutsidePad,BodyOnly,UseRSI,UseEMA,UseDiv\n";
+         
+         FileWriteString(m_fileHandle, header);
          FileClose(m_fileHandle);
+         
+         Print("✅ Nouveau fichier CSV créé: ", m_csvFile);
       } else {
-         Print("ERREUR: Impossible de créer le fichier CSV: ", m_csvFile);
+         Print("❌ ERREUR: Impossible de créer le fichier CSV: ", m_csvFile);
       }
    }
 
