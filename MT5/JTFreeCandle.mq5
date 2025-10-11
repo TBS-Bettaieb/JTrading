@@ -477,15 +477,6 @@ void OnTick()
       if(divSignal != 0) {
          // Divergence validée, exécuter le trade
          ExecuteTradeFromDivergence(divSignal);
-         
-         // Enregistrer les métriques de divergence dans le tracker
-         if(tracker != NULL) {
-            tracker.SetDivergenceData(
-               divValidator.GetLastDivergenceAngle(),
-               divValidator.GetLastDivergenceStrength(),
-               divValidator.GetLastDivergenceBars()
-            );
-         }
          return;
       }
    }
@@ -708,7 +699,7 @@ void Process()
    if(isBuy){ // BUY
       if(lots>0) {
          OpenBuyPosition(trade, s, lots, ask, sl, tp, orderComment);
-         // Enregistrer le trade dans le tracker
+         // Enregistrer le trade dans le tracker (sans divergence)
          if(trade.ResultOrder() > 0 && tracker != NULL) {
             string tradeMode = (Mode == REVERSION ? "REVERSION" : "BREAKOUT");
             string emaMode = "";
@@ -719,13 +710,22 @@ void Process()
                   case EMA_ZONE: emaMode = "ZONE"; break;
                }
             }
-            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, false, emaMode);
+            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, false, emaMode,
+                                   0.0, 0.0, 0,  // Pas de divergence
+                                   // Config EA
+                                   BB_Period, BB_Dev, RSI_Period,
+                                   RSI_Oversold, RSI_Overbought,
+                                   EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
+                                   Risk_Percent, Min_RR,
+                                   SL_Period, TP_Period, ATR_Multiplier,
+                                   OutsidePaddingPoints, BodyMustBeOutside,
+                                   Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
          }
       }
    } else {   // SELL
       if(lots>0) {
          OpenSellPosition(trade, s, lots, bid, sl, tp, orderComment);
-         // Enregistrer le trade dans le tracker
+         // Enregistrer le trade dans le tracker (sans divergence)
          if(trade.ResultOrder() > 0 && tracker != NULL) {
             string tradeMode = (Mode == REVERSION ? "REVERSION" : "BREAKOUT");
             string emaMode = "";
@@ -736,7 +736,16 @@ void Process()
                   case EMA_ZONE: emaMode = "ZONE"; break;
                }
             }
-            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, false, emaMode);
+            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, false, emaMode,
+                                   0.0, 0.0, 0,  // Pas de divergence
+                                   // Config EA
+                                   BB_Period, BB_Dev, RSI_Period,
+                                   RSI_Oversold, RSI_Overbought,
+                                   EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
+                                   Risk_Percent, Min_RR,
+                                   SL_Period, TP_Period, ATR_Multiplier,
+                                   OutsidePaddingPoints, BodyMustBeOutside,
+                                   Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
          }
       }
    }
@@ -756,6 +765,11 @@ void ExecuteTradeFromDivergence(int dir)
    // Apply direction filter
    if(TradeDir==DIR_ONLY_BUY && dir<0) return;
    if(TradeDir==DIR_ONLY_SELL && dir>0) return;
+   
+   // RÉCUPÉRER LES DONNÉES DE DIVERGENCE AVANT D'OUVRIR LE TRADE
+   double divAngle = divValidator.GetLastDivergenceAngle();
+   double divStrength = divValidator.GetLastDivergenceStrength();
+   int divBars = divValidator.GetLastDivergenceBars();
    
    // Marquer la divergence validée sur le graphique
    if(Mark_FreeCandles) {
@@ -808,7 +822,10 @@ void ExecuteTradeFromDivergence(int dir)
               ", SL: " + DoubleToString(sl, 5) + 
               ", TP: " + DoubleToString(tp, 5) + 
               ", RR: 1:" + DoubleToString(rr, 2) + 
-              ", Lots: " + DoubleToString(lots, 2));
+              ", Lots: " + DoubleToString(lots, 2) + 
+              ", DivAngle: " + DoubleToString(divAngle, 2) + "°" +
+              ", DivStrength: " + DoubleToString(divStrength, 6) + 
+              ", DivBars: " + IntegerToString(divBars));
    
    // Vérifier le seuil RR minimum
    if(Min_RR > 0 && rr < Min_RR) {
@@ -830,7 +847,7 @@ void ExecuteTradeFromDivergence(int dir)
    if(isBuy) {
       if(lots > 0) {
          OpenBuyPosition(trade, s, lots, ask, sl, tp, orderComment);
-         // Enregistrer le trade divergence dans le tracker
+         // Enregistrer le trade divergence dans le tracker AVEC LES DONNÉES DE DIVERGENCE
          if(trade.ResultOrder() > 0 && tracker != NULL) {
             string tradeMode = (Mode == REVERSION ? "REVERSION" : "BREAKOUT");
             string emaMode = "";
@@ -841,13 +858,22 @@ void ExecuteTradeFromDivergence(int dir)
                   case EMA_ZONE: emaMode = "ZONE"; break;
                }
             }
-            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, true, emaMode);
+            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, true, emaMode,
+                                   divAngle, divStrength, divBars,
+                                   // Config EA
+                                   BB_Period, BB_Dev, RSI_Period,
+                                   RSI_Oversold, RSI_Overbought,
+                                   EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
+                                   Risk_Percent, Min_RR,
+                                   SL_Period, TP_Period, ATR_Multiplier,
+                                   OutsidePaddingPoints, BodyMustBeOutside,
+                                   Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
          }
       }
    } else {
       if(lots > 0) {
          OpenSellPosition(trade, s, lots, bid, sl, tp, orderComment);
-         // Enregistrer le trade divergence dans le tracker
+         // Enregistrer le trade divergence dans le tracker AVEC LES DONNÉES DE DIVERGENCE
          if(trade.ResultOrder() > 0 && tracker != NULL) {
             string tradeMode = (Mode == REVERSION ? "REVERSION" : "BREAKOUT");
             string emaMode = "";
@@ -858,7 +884,16 @@ void ExecuteTradeFromDivergence(int dir)
                   case EMA_ZONE: emaMode = "ZONE"; break;
                }
             }
-            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, true, emaMode);
+            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, true, emaMode,
+                                   divAngle, divStrength, divBars,
+                                   // Config EA
+                                   BB_Period, BB_Dev, RSI_Period,
+                                   RSI_Oversold, RSI_Overbought,
+                                   EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
+                                   Risk_Percent, Min_RR,
+                                   SL_Period, TP_Period, ATR_Multiplier,
+                                   OutsidePaddingPoints, BodyMustBeOutside,
+                                   Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
          }
       }
    }

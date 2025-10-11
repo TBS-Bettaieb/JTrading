@@ -250,15 +250,6 @@ void OnTick()
       if(divSignal != 0) {
          // Divergence validée, exécuter le trade
          ExecuteTradeFromDivergence(divSignal);
-         
-         // Enregistrer les métriques de divergence dans le tracker
-         if(tracker != NULL) {
-            tracker.SetDivergenceData(
-               divValidator.GetLastDivergenceAngle(),
-               divValidator.GetLastDivergenceStrength(),
-               divValidator.GetLastDivergenceBars()
-            );
-         }
          return;
       }
    }
@@ -539,7 +530,16 @@ void ExecuteTrade(int dir)
                   case 2: emaMode = "ZONE"; break;
                }
             }
-            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, false, emaMode);
+            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, false, emaMode,
+                                   0.0, 0.0, 0,  // Pas de divergence
+                                   // Config EA
+                                   currentConfig.bb_period, currentConfig.bb_dev, currentConfig.rsi_period,
+                                   currentConfig.rsi_oversold, currentConfig.rsi_overbought,
+                                   currentConfig.ema_fast, currentConfig.ema_slow, currentConfig.ema_zone_distance,
+                                   currentConfig.risk_percent, currentConfig.min_rr,
+                                   currentConfig.sl_period, currentConfig.tp_period, currentConfig.atr_multiplier,
+                                   currentConfig.outside_padding, currentConfig.body_must_be_outside,
+                                   true, currentConfig.use_ema, currentConfig.use_divergence);
          }
       }
    } else {
@@ -555,7 +555,16 @@ void ExecuteTrade(int dir)
                   case 2: emaMode = "ZONE"; break;
                }
             }
-            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, false, emaMode);
+            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, false, emaMode,
+                                   0.0, 0.0, 0,  // Pas de divergence
+                                   // Config EA
+                                   currentConfig.bb_period, currentConfig.bb_dev, currentConfig.rsi_period,
+                                   currentConfig.rsi_oversold, currentConfig.rsi_overbought,
+                                   currentConfig.ema_fast, currentConfig.ema_slow, currentConfig.ema_zone_distance,
+                                   currentConfig.risk_percent, currentConfig.min_rr,
+                                   currentConfig.sl_period, currentConfig.tp_period, currentConfig.atr_multiplier,
+                                   currentConfig.outside_padding, currentConfig.body_must_be_outside,
+                                   true, currentConfig.use_ema, currentConfig.use_divergence);
          }
       }
    }
@@ -570,7 +579,104 @@ void ExecuteTradeFromDivergence(int dir)
    
    if(HaveOpenPos(s)) return;
    
-   ExecuteTrade(dir);
+   // RÉCUPÉRER LES DONNÉES DE DIVERGENCE AVANT D'OUVRIR LE TRADE
+   double divAngle = divValidator.GetLastDivergenceAngle();
+   double divStrength = divValidator.GetLastDivergenceStrength();
+   int divBars = divValidator.GetLastDivergenceBars();
+   
+   ENUM_TIMEFRAMES t = TF();
+   double ask = SymbolInfoDouble(s, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(s, SYMBOL_BID);
+   
+   // Variables pour SL et TP
+   double sl = 0, tp = 0;
+   bool isBuy = (dir > 0);
+   
+   // Calculer SL/TP basés sur les plus hauts/plus bas avec ATR fallback
+   if(!CalculateSwingSLTP(s, t, isBuy, currentConfig.sl_period, currentConfig.tp_period, sl, tp, 0.0, currentConfig.min_rr, 1000, currentConfig.atr_multiplier, currentConfig.atr_period)) {
+      Print("❌ Erreur lors du calcul des niveaux SL/TP pour divergence");
+      return;
+   }
+   
+   // Calculer le volume en fonction du risque
+   double riskPrice = isBuy ? (bid - sl) : (sl - ask);
+   if(riskPrice <= 0) {
+      Print("❌ Distance de SL invalide pour divergence");
+      return;
+   }
+   
+   double lots = CalcLotsByRisk(s, riskPrice);
+   
+   // Calculer le ratio risque/récompense (RR)
+   double entryPrice = isBuy ? ask : bid;
+   double reward = isBuy ? (tp - entryPrice) : (entryPrice - tp);
+   double risk = isBuy ? (entryPrice - sl) : (sl - entryPrice);
+   double rr = (risk > 0) ? (reward / risk) : 0;
+   
+   // Vérifier le seuil RR minimum
+   if(currentConfig.min_rr > 0 && rr < currentConfig.min_rr) {
+      return;
+   }
+   
+   // Récupérer la valeur RSI actuelle pour le commentaire
+   int rsiI = (int)MathRound(buffers.RSI[1]);
+   
+   // Préparer le commentaire compact
+   string dirStr = isBuy ? "BUY" : "SELL";
+   string orderComment = StringFormat("DIV %s|R:%.2f|I:%d", dirStr, rr, rsiI);
+   
+   // Ouvrir la position
+   if(isBuy) {
+      if(lots > 0) {
+         OpenBuyPosition(trade, s, lots, ask, sl, tp, orderComment);
+         if(trade.ResultOrder() > 0 && tracker != NULL) {
+            string tradeMode = (currentConfig.mode == 0 ? "REVERSION" : "BREAKOUT");
+            string emaMode = "";
+            if(currentConfig.use_ema) {
+               switch(currentConfig.ema_mode) {
+                  case 0: emaMode = "TREND"; break;
+                  case 1: emaMode = "COUNTER"; break;
+                  case 2: emaMode = "ZONE"; break;
+               }
+            }
+            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, true, emaMode,
+                                   divAngle, divStrength, divBars,
+                                   // Config EA
+                                   currentConfig.bb_period, currentConfig.bb_dev, currentConfig.rsi_period,
+                                   currentConfig.rsi_oversold, currentConfig.rsi_overbought,
+                                   currentConfig.ema_fast, currentConfig.ema_slow, currentConfig.ema_zone_distance,
+                                   currentConfig.risk_percent, currentConfig.min_rr,
+                                   currentConfig.sl_period, currentConfig.tp_period, currentConfig.atr_multiplier,
+                                   currentConfig.outside_padding, currentConfig.body_must_be_outside,
+                                   true, currentConfig.use_ema, currentConfig.use_divergence);
+         }
+      }
+   } else {
+      if(lots > 0) {
+         OpenSellPosition(trade, s, lots, bid, sl, tp, orderComment);
+         if(trade.ResultOrder() > 0 && tracker != NULL) {
+            string tradeMode = (currentConfig.mode == 0 ? "REVERSION" : "BREAKOUT");
+            string emaMode = "";
+            if(currentConfig.use_ema) {
+               switch(currentConfig.ema_mode) {
+                  case 0: emaMode = "TREND"; break;
+                  case 1: emaMode = "COUNTER"; break;
+                  case 2: emaMode = "ZONE"; break;
+               }
+            }
+            tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, true, emaMode,
+                                   divAngle, divStrength, divBars,
+                                   // Config EA
+                                   currentConfig.bb_period, currentConfig.bb_dev, currentConfig.rsi_period,
+                                   currentConfig.rsi_oversold, currentConfig.rsi_overbought,
+                                   currentConfig.ema_fast, currentConfig.ema_slow, currentConfig.ema_zone_distance,
+                                   currentConfig.risk_percent, currentConfig.min_rr,
+                                   currentConfig.sl_period, currentConfig.tp_period, currentConfig.atr_multiplier,
+                                   currentConfig.outside_padding, currentConfig.body_must_be_outside,
+                                   true, currentConfig.use_ema, currentConfig.use_divergence);
+         }
+      }
+   }
 }
 
 //+------------------------------------------------------------------+

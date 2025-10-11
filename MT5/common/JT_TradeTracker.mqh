@@ -67,6 +67,26 @@ struct TradeRecord {
    string   mode;           // "REVERSION" ou "BREAKOUT"
    bool     divergence;     // Trade validé par divergence
    string   emaMode;        // Mode EMA utilisé
+   
+   // Paramètres de configuration EA capturés à l'ouverture
+   int      bb_period;           // Période BB utilisée
+   double   bb_deviation;        // Déviation BB utilisée
+   int      rsi_period_used;     // Période RSI utilisée
+   double   rsi_oversold_level;  // Seuil RSI oversold
+   double   rsi_overbought_level;// Seuil RSI overbought
+   int      ema_fast_period;     // Période EMA rapide
+   int      ema_slow_period;     // Période EMA lente
+   double   ema_zone_distance;   // Distance zone EMA (points)
+   double   risk_percent_used;   // % risque utilisé
+   double   min_rr_config;       // Ratio RR minimum configuré
+   int      sl_period_config;    // Période SL configurée
+   int      tp_period_config;    // Période TP configurée
+   double   atr_multiplier;      // Multiplicateur ATR
+   int      outside_padding;     // Padding hors bande (points)
+   bool     body_must_outside;   // Corps seul doit être dehors
+   bool     use_rsi_filter;      // Filtre RSI activé
+   bool     use_ema_filter;      // Filtre EMA activé
+   bool     use_div_validator;   // Validateur divergence activé
 };
 
 class JTTradeTracker {
@@ -231,21 +251,17 @@ public:
       if(m_emaSlowHandle != INVALID_HANDLE) IndicatorRelease(m_emaSlowHandle);
    }
 
-   // Définir les données de divergence pour le prochain trade
-   void SetDivergenceData(double angle, double strength, int bars) {
-      // Chercher le dernier trade ouvert (pas encore fermé)
-      for(int i = ArraySize(m_records) - 1; i >= 0; i--) {
-         if(m_records[i].closeTime == 0) {
-            m_records[i].divAngle = angle;
-            m_records[i].divStrength = strength;
-            m_records[i].divBars = bars;
-            break;
-         }
-      }
-   }
-
    // Enregistrer l'ouverture d'un trade avec TOUTES les données
-   void RecordTradeOpen(ulong ticket, string mode = "", bool isDivergence = false, string emaMode = "") {
+   void RecordTradeOpen(ulong ticket, string mode = "", bool isDivergence = false, string emaMode = "",
+                        double divAngle = 0.0, double divStrength = 0.0, int divBars = 0,
+                        // Paramètres de configuration EA
+                        int bbPeriod = 20, double bbDev = 2.0, int rsiPeriod = 14,
+                        double rsiOversold = 30.0, double rsiOverbought = 70.0,
+                        int emaFast = 50, int emaSlow = 100, double emaZoneDist = 20.0,
+                        double riskPct = 1.0, double minRR = 2.0,
+                        int slPeriod = 50, int tpPeriod = 30, double atrMult = 2.0,
+                        int outsidePad = 5, bool bodyOut = true,
+                        bool useRSI = true, bool useEMA = true, bool useDiv = true) {
       if(!PositionSelectByTicket(ticket)) return;
       
       int idx = ArraySize(m_records);
@@ -294,9 +310,24 @@ public:
       rec.emaSpread = 0;
       rec.emaTrend = "";
       rec.priceVsEMA = "";
-      rec.divAngle = 0;
-      rec.divStrength = 0;
-      rec.divBars = 0;
+      rec.bb_period = 0;
+      rec.bb_deviation = 0;
+      rec.rsi_period_used = 0;
+      rec.rsi_oversold_level = 0;
+      rec.rsi_overbought_level = 0;
+      rec.ema_fast_period = 0;
+      rec.ema_slow_period = 0;
+      rec.ema_zone_distance = 0;
+      rec.risk_percent_used = 0;
+      rec.min_rr_config = 0;
+      rec.sl_period_config = 0;
+      rec.tp_period_config = 0;
+      rec.atr_multiplier = 0;
+      rec.outside_padding = 0;
+      rec.body_must_outside = false;
+      rec.use_rsi_filter = false;
+      rec.use_ema_filter = false;
+      rec.use_div_validator = false;
       
       // Données de position
       rec.ticket = ticket;
@@ -322,6 +353,31 @@ public:
       rec.mode = mode;
       rec.divergence = isDivergence;
       rec.emaMode = emaMode;
+      
+      // Données de divergence (passées en paramètres)
+      rec.divAngle = divAngle;
+      rec.divStrength = divStrength;
+      rec.divBars = divBars;
+      
+      // Paramètres de configuration EA (passés en paramètres)
+      rec.bb_period = bbPeriod;
+      rec.bb_deviation = bbDev;
+      rec.rsi_period_used = rsiPeriod;
+      rec.rsi_oversold_level = rsiOversold;
+      rec.rsi_overbought_level = rsiOverbought;
+      rec.ema_fast_period = emaFast;
+      rec.ema_slow_period = emaSlow;
+      rec.ema_zone_distance = emaZoneDist;
+      rec.risk_percent_used = riskPct;
+      rec.min_rr_config = minRR;
+      rec.sl_period_config = slPeriod;
+      rec.tp_period_config = tpPeriod;
+      rec.atr_multiplier = atrMult;
+      rec.outside_padding = outsidePad;
+      rec.body_must_outside = bodyOut;
+      rec.use_rsi_filter = useRSI;
+      rec.use_ema_filter = useEMA;
+      rec.use_div_validator = useDiv;
       
       // Calculer RR prévu
       double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
@@ -545,7 +601,10 @@ public:
                "DistEMAFastSlow,EMASpread,EMATrend,PriceVsEMA," +
                "DivAngle,DivStrength,DivBars," +
                "Hour,Minute,DayOfWeek," +
-               "Duration,MaxProfit,MaxDD,ExitReason,Mode,Divergence,EMAMode\n";
+               "Duration,MaxProfit,MaxDD,ExitReason,Mode,Divergence,EMAMode," +
+               "BB_Period,BB_Dev,RSI_Period,RSI_Oversold,RSI_Overbought," +
+               "EMA_Fast,EMA_Slow,EMA_ZoneDist,Risk%,MinRR," +
+               "SL_Period,TP_Period,ATR_Mult,OutsidePad,BodyOnly,UseRSI,UseEMA,UseDiv\n";
             
             FileWriteString(m_fileHandle, header);
          }
@@ -562,7 +621,7 @@ public:
       if(handle != INVALID_HANDLE) {
          FileSeek(handle, 0, SEEK_END);
          
-         string row = StringFormat("%d,%s,%s,%s,%s,%.2f,%.5f,%.5f,%.5f,%.5f,%.2f,%.1f,%.2f,%.2f,%.2f,%.2f,%.2f,%.5f,%.1f,%.1f,%.1f,%.1f,%.5f,%.5f,%.1f,%.4f,%s,%s,%.2f,%.6f,%d,%d,%d,%d,%d,%.2f,%.2f,%s,%s,%s,%s\n",
+         string row = StringFormat("%d,%s,%s,%s,%s,%.2f,%.5f,%.5f,%.5f,%.5f,%.2f,%.1f,%.2f,%.2f,%.2f,%.2f,%.2f,%.5f,%.1f,%.1f,%.1f,%.1f,%.5f,%.5f,%.1f,%.4f,%s,%s,%.2f,%.6f,%d,%d,%d,%d,%d,%.2f,%.2f,%s,%s,%s,%s,%d,%.1f,%d,%.1f,%.1f,%d,%d,%.1f,%.2f,%.1f,%d,%d,%.1f,%d,%s,%s,%s,%s\n",
             rec.ticket,
             TimeToString(rec.openTime, TIME_DATE|TIME_SECONDS),
             isOpen ? "" : TimeToString(rec.closeTime, TIME_DATE|TIME_SECONDS),
@@ -603,7 +662,25 @@ public:
             rec.exitReason,
             rec.mode,
             rec.divergence ? "YES" : "NO",
-            rec.emaMode
+            rec.emaMode,
+            rec.bb_period,
+            rec.bb_deviation,
+            rec.rsi_period_used,
+            rec.rsi_oversold_level,
+            rec.rsi_overbought_level,
+            rec.ema_fast_period,
+            rec.ema_slow_period,
+            rec.ema_zone_distance,
+            rec.risk_percent_used,
+            rec.min_rr_config,
+            rec.sl_period_config,
+            rec.tp_period_config,
+            rec.atr_multiplier,
+            rec.outside_padding,
+            rec.body_must_outside ? "YES" : "NO",
+            rec.use_rsi_filter ? "YES" : "NO",
+            rec.use_ema_filter ? "YES" : "NO",
+            rec.use_div_validator ? "YES" : "NO"
          );
          
          FileWriteString(handle, row);

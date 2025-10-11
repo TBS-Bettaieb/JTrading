@@ -177,10 +177,21 @@ private:
       
       double priceDiff = MathAbs(price2 - price1);
       double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
-      double priceDiffPoints = priceDiff / point;
       
-      // Angle = arctan(hauteur / largeur) converti en degrés
-      double angle = MathArctan(priceDiffPoints / bars) * 180.0 / M_PI;
+      // Normaliser par la valeur du pip pour avoir une échelle cohérente
+      int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
+      double pipSize = (digits == 3 || digits == 5) ? 10.0 : 1.0;
+      double priceDiffPips = (priceDiff / point) / pipSize;
+      
+      // Échelle de temps en heures pour un angle plus réaliste
+      int tfSeconds = PeriodSeconds(m_tf);
+      double timeBarsInHours = (bars * tfSeconds) / 3600.0;
+      
+      // Si moins d'1 heure, utiliser directement les barres
+      if(timeBarsInHours < 1.0) timeBarsInHours = bars;
+      
+      // Angle = arctan(pips / temps) en degrés
+      double angle = MathArctan(priceDiffPips / timeBarsInHours) * 180.0 / M_PI;
       return angle;
    }
    
