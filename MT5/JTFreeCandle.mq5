@@ -62,11 +62,22 @@ input double   Risk_Percent        = 0.1;                // % risque par trade
 input bool     One_Pos_Per_Symbol  = true;               // 1 position par symbole max
 input ulong    Magic               = 20251007;           // Magic Number
 
-input group "═══ Stop Loss & Take Profit ═══"
-input int      SL_Period           = 50;                 // Période pour SL (barres)
-input int      TP_Period           = 30;                 // Période pour TP (barres)
-input double   Min_RR              = 2.0;                // Ratio RR minimum (0 = désactivé)
-input double   ATR_Multiplier      = 2.0;                // Multiplicateur ATR (fallback SL)
+input group "═══ Stop Loss Configuration ═══"
+input SL_METHOD SL_Method          = SL_SWING;           // Méthode de Stop Loss
+input int      SL_Period           = 50;                 // Période pour SL Swing (barres)
+input double   SL_ATR_Multiplier   = 2.0;                // Multiplicateur ATR pour SL
+input double   SL_Fixed_Points     = 100;                // Points fixes pour SL
+input double   SL_Percent          = 1.0;                // Pourcentage du prix pour SL
+input int      SL_Min_Distance     = 20;                 // Distance SL minimale (points)
+input int      SL_Max_Distance     = 1000;               // Distance SL maximale (points)
+
+input group "═══ Take Profit Configuration ═══"
+input TP_METHOD TP_Method          = TP_RR_RATIO;        // Méthode de Take Profit
+input int      TP_Period           = 30;                 // Période pour TP Swing (barres)
+input double   Min_RR              = 2.0;                // Ratio RR minimum
+input double   Max_RR              = 5.0;                // Ratio RR maximum
+input double   TP_ATR_Multiplier   = 3.0;                // Multiplicateur ATR pour TP
+input double   TP_Fixed_Points     = 200;                // Points fixes pour TP
 input int      ATR_Period          = 14;                 // Période ATR
 
 input group "═══ Filtre Horaire ═══"
@@ -77,10 +88,20 @@ input group "═══ Filtre Jours de la Semaine ═══"
 input bool     UseDayFilter        = false;              // Activer filtre par jour
 input string   DayRanges           = "1-5";              // Jours autorisés (0=Dim,1=Lun...6=Sam)
 
+input group "═══ Break-Even Configuration ═══"
+input bool     Use_BreakEven         = true;             // Activer Break-Even
+input double   BE_Activation_RR      = 0.5;              // RR pour activer BE (ex: 0.5 = 50% du TP)
+input int      BE_Offset_Points      = 5;                // Offset BE au-dessus de l'entrée (points)
+
+input group "═══ Trailing Stop Configuration ═══"
+input bool     Use_Trailing          = false;            // Activer Trailing Stop
+input double   Trailing_Start_RR     = 1.0;              // RR pour démarrer le trailing
+input int      Trailing_Step_Points  = 10;               // Pas du trailing (points)
+input int      Trailing_Stop_Points  = 50;               // Distance du trailing stop (points)
+
 input group "═══ Gestion de Position ═══"
 input bool     Close_On_OppositeBand = true;             // Fermer si touche bande opposée
-input bool     BE_On_MiddleBand      = true;             // Break-Even sur médiane
-input int      BE_Offset_Points      = 0;                // Offset BE (points)
+input bool     BE_On_MiddleBand      = true;             // Break-Even sur médiane (ancien système)
 input bool     UseFlatTime           = false;            // Clôture forcée à heure fixe
 input int      Flat_Hour             = 23;               // Heure de clôture
 input int      Flat_Minute           = 40;               // Minute de clôture
@@ -435,30 +456,68 @@ int OnInit()
    if(mmManager != NULL) {
       // Configurer les paramètres selon les inputs de l'EA
       TPSLParams params;
-      params.slMethod = SL_SWING;
-      params.slSwingPeriod = SL_Period;
-      params.slATRMultiplier = ATR_Multiplier;
       
-      params.tpMethod = TP_RR_RATIO;
+      // Configuration SL depuis les inputs
+      params.slMethod = SL_Method;
+      params.slSwingPeriod = SL_Period;
+      params.slATRMultiplier = SL_ATR_Multiplier;
+      params.slFixedPoints = SL_Fixed_Points;
+      params.slPercent = SL_Percent;
+      
+      // Configuration TP depuis les inputs
+      params.tpMethod = TP_Method;
       params.tpRRRatio = Min_RR;
       params.tpSwingPeriod = TP_Period;
+      params.tpATRMultiplier = TP_ATR_Multiplier;
+      params.tpFixedPoints = TP_Fixed_Points;
       
+      // Configuration RR
       params.minRR = Min_RR;
-      params.maxRR = 5.0;
-      params.useBreakEven = BE_On_MiddleBand;
-      params.beActivationRR = 0.5;
+      params.maxRR = Max_RR;
+      
+      // Configuration Break-Even depuis les inputs
+      params.useBreakEven = Use_BreakEven;
+      params.beActivationRR = BE_Activation_RR;
       params.beOffsetPoints = BE_Offset_Points;
       
-      params.useTrailing = false;  // Désactivé par défaut
-      params.trailingStartRR = 1.0;
-      params.trailingStepPoints = 10;
-      params.trailingStopPoints = 50;
+      // Configuration Trailing Stop depuis les inputs
+      params.useTrailing = Use_Trailing;
+      params.trailingStartRR = Trailing_Start_RR;
+      params.trailingStepPoints = Trailing_Step_Points;
+      params.trailingStopPoints = Trailing_Stop_Points;
       
-      params.minDistancePoints = 20;
-      params.maxDistancePoints = 1000;
+      // Distances SL depuis les inputs
+      params.minDistancePoints = SL_Min_Distance;
+      params.maxDistancePoints = SL_Max_Distance;
       
       mmManager.SetParams(params);
-      LogMessage("Money Management activé - Méthode SL: SWING, Méthode TP: RR_RATIO");
+      
+      // Log de la configuration
+      string slMethodStr = "";
+      switch(SL_Method) {
+         case SL_ATR: slMethodStr = "ATR"; break;
+         case SL_SWING: slMethodStr = "SWING"; break;
+         case SL_FIXED_POINTS: slMethodStr = "FIXED_POINTS"; break;
+         case SL_PERCENT: slMethodStr = "PERCENT"; break;
+         case SL_BOLLINGER: slMethodStr = "BOLLINGER"; break;
+         case SL_SUPPORT_RESISTANCE: slMethodStr = "SUPPORT_RESISTANCE"; break;
+      }
+      
+      string tpMethodStr = "";
+      switch(TP_Method) {
+         case TP_RR_RATIO: tpMethodStr = "RR_RATIO"; break;
+         case TP_ATR: tpMethodStr = "ATR"; break;
+         case TP_SWING: tpMethodStr = "SWING"; break;
+         case TP_FIXED_POINTS: tpMethodStr = "FIXED_POINTS"; break;
+         case TP_BOLLINGER: tpMethodStr = "BOLLINGER"; break;
+         case TP_FIBONACCI: tpMethodStr = "FIBONACCI"; break;
+      }
+      
+      LogMessage("Money Management activé:");
+      LogMessage("  SL Method: " + slMethodStr + " | TP Method: " + tpMethodStr);
+      LogMessage("  RR Range: " + DoubleToString(Min_RR, 1) + " - " + DoubleToString(Max_RR, 1));
+      LogMessage("  Break-Even: " + (Use_BreakEven ? "ON (RR=" + DoubleToString(BE_Activation_RR, 2) + ")" : "OFF"));
+      LogMessage("  Trailing: " + (Use_Trailing ? "ON (Start RR=" + DoubleToString(Trailing_Start_RR, 1) + ")" : "OFF"));
    }
    
    return INIT_SUCCEEDED;
@@ -764,7 +823,7 @@ void Process()
                                    RSI_Oversold, RSI_Overbought,
                                    EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
                                    Risk_Percent, Min_RR,
-                                   SL_Period, TP_Period, ATR_Multiplier, ATR_Period,
+                                   SL_Period, TP_Period, SL_ATR_Multiplier, ATR_Period,
                                    OutsidePaddingPoints, BodyMustBeOutside,
                                    Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
          }
@@ -790,7 +849,7 @@ void Process()
                                    RSI_Oversold, RSI_Overbought,
                                    EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
                                    Risk_Percent, Min_RR,
-                                   SL_Period, TP_Period, ATR_Multiplier, ATR_Period,
+                                   SL_Period, TP_Period, SL_ATR_Multiplier, ATR_Period,
                                    OutsidePaddingPoints, BodyMustBeOutside,
                                    Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
          }
@@ -905,7 +964,7 @@ void ExecuteTradeFromDivergence(int dir)
                                    RSI_Oversold, RSI_Overbought,
                                    EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
                                    Risk_Percent, Min_RR,
-                                   SL_Period, TP_Period, ATR_Multiplier, ATR_Period,
+                                   SL_Period, TP_Period, SL_ATR_Multiplier, ATR_Period,
                                    OutsidePaddingPoints, BodyMustBeOutside,
                                    Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
          }
@@ -931,7 +990,7 @@ void ExecuteTradeFromDivergence(int dir)
                                    RSI_Oversold, RSI_Overbought,
                                    EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
                                    Risk_Percent, Min_RR,
-                                   SL_Period, TP_Period, ATR_Multiplier, ATR_Period,
+                                   SL_Period, TP_Period, SL_ATR_Multiplier, ATR_Period,
                                    OutsidePaddingPoints, BodyMustBeOutside,
                                    Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
          }
@@ -953,8 +1012,8 @@ void ManageOpenPositions(const string s)
    double lower1  = buffers.BBLower[1];   // Bande inférieure bougie 1
 
    // extrêmes bougie en cours
-   MqlRates bar[1]; if(CopyRates(s,TF(),0,1,bar)<1) return;
-   ArraySetAsSeries(bar,true);
+   MqlRates bar[1]; 
+   if(CopyRates(s,TF(),0,1,bar)<1) return;
    double barHigh=bar[0].high, barLow=bar[0].low; // pas de "lo" local
 
    double point=SymbolInfoDouble(s,SYMBOL_POINT);
@@ -1004,24 +1063,18 @@ void ManageOpenPositions(const string s)
          }
       }
 
-      // Gestion du Break-Even via Money Management
-      if(mmManager != NULL && mmManager.CheckBreakEven(tk, type==POSITION_TYPE_BUY, op, sl)) {
-         double newSL = op + BE_Offset_Points*point * (type==POSITION_TYPE_BUY ? 1 : -1);
-         if((type==POSITION_TYPE_BUY && sl<newSL) || (type==POSITION_TYPE_SELL && (sl==0.0 || sl>newSL))) {
-            ModifyPosition(trade, tk, newSL, tp);
-            LogMessage("Break-Even activé pour ticket " + IntegerToString(tk));
+      // Gestion du Break-Even via Money Management (prioritaire)
+      if(Use_BreakEven && mmManager != NULL) {
+         double newSL;
+         if(mmManager.CheckBreakEven(tk, type==POSITION_TYPE_BUY, op, sl, newSL)) {
+            if((type==POSITION_TYPE_BUY && sl<newSL) || (type==POSITION_TYPE_SELL && (sl==0.0 || sl>newSL))) {
+               ModifyPosition(trade, tk, newSL, tp);
+               LogMessage("Break-Even activé pour ticket " + IntegerToString(tk));
+            }
          }
       }
-      
-      // Gestion du Trailing Stop via Money Management
-      double newSL;
-      if(mmManager != NULL && mmManager.CheckTrailingStop(tk, type==POSITION_TYPE_BUY, op, sl, newSL)) {
-         ModifyPosition(trade, tk, newSL, tp);
-         LogMessage("Trailing Stop activé pour ticket " + IntegerToString(tk) + " - Nouveau SL: " + DoubleToString(newSL, 5));
-      }
-      
-      // BE sur médiane (garde l'ancienne logique comme backup si mmManager est NULL)
-      if(BE_On_MiddleBand && mmManager == NULL)
+      // BE sur médiane (ancienne logique, utilisée si nouveau système désactivé)
+      else if(BE_On_MiddleBand && (!Use_BreakEven || mmManager == NULL))
       {
          if(type==POSITION_TYPE_BUY  && (barHigh>=middle1-pad || bid>=middle0-pad)){
             double newSL=op + BE_Offset_Points*point;
@@ -1030,6 +1083,15 @@ void ManageOpenPositions(const string s)
          if(type==POSITION_TYPE_SELL && (barLow<=middle1+pad || ask<=middle0+pad)){
             double newSL=op - BE_Offset_Points*point;
             if(sl==0.0 || sl>newSL) ModifyPosition(trade, tk, newSL, tp);
+         }
+      }
+      
+      // Gestion du Trailing Stop via Money Management
+      if(Use_Trailing && mmManager != NULL) {
+         double newSL;
+         if(mmManager.CheckTrailingStop(tk, type==POSITION_TYPE_BUY, op, sl, newSL)) {
+            ModifyPosition(trade, tk, newSL, tp);
+            LogMessage("Trailing Stop activé pour ticket " + IntegerToString(tk) + " - Nouveau SL: " + DoubleToString(newSL, 5));
          }
       }
 
