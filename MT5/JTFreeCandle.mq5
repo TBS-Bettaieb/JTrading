@@ -7,11 +7,11 @@
 #property strict
 
 #include <Trade/Trade.mqh>
-#include "JT_Indicators.mqh"
-#include "JT_Positions.mqh"
-#include "JT_Utils.mqh"
-#include "JT_DivergenceValidator.mqh"
-#include "JT_TradeTracker.mqh"
+#include "common/JT_Indicators.mqh"
+#include "common/JT_Positions.mqh"
+#include "common/JT_Utils.mqh"
+#include "common/JT_DivergenceValidator.mqh"
+#include "common/JT_TradeTracker.mqh"
 CTrade trade;
 
 //---------------------------- Inputs --------------------------------
