@@ -537,7 +537,7 @@ void ExecuteTrade(int dir)
                                    currentConfig.rsi_oversold, currentConfig.rsi_overbought,
                                    currentConfig.ema_fast, currentConfig.ema_slow, currentConfig.ema_zone_distance,
                                    currentConfig.risk_percent, currentConfig.min_rr,
-                                   currentConfig.sl_period, currentConfig.tp_period, currentConfig.atr_multiplier,
+                                   currentConfig.sl_period, currentConfig.tp_period, currentConfig.atr_multiplier, currentConfig.atr_period,
                                    currentConfig.outside_padding, currentConfig.body_must_be_outside,
                                    true, currentConfig.use_ema, currentConfig.use_divergence);
          }
@@ -562,7 +562,7 @@ void ExecuteTrade(int dir)
                                    currentConfig.rsi_oversold, currentConfig.rsi_overbought,
                                    currentConfig.ema_fast, currentConfig.ema_slow, currentConfig.ema_zone_distance,
                                    currentConfig.risk_percent, currentConfig.min_rr,
-                                   currentConfig.sl_period, currentConfig.tp_period, currentConfig.atr_multiplier,
+                                   currentConfig.sl_period, currentConfig.tp_period, currentConfig.atr_multiplier, currentConfig.atr_period,
                                    currentConfig.outside_padding, currentConfig.body_must_be_outside,
                                    true, currentConfig.use_ema, currentConfig.use_divergence);
          }
@@ -646,7 +646,7 @@ void ExecuteTradeFromDivergence(int dir)
                                    currentConfig.rsi_oversold, currentConfig.rsi_overbought,
                                    currentConfig.ema_fast, currentConfig.ema_slow, currentConfig.ema_zone_distance,
                                    currentConfig.risk_percent, currentConfig.min_rr,
-                                   currentConfig.sl_period, currentConfig.tp_period, currentConfig.atr_multiplier,
+                                   currentConfig.sl_period, currentConfig.tp_period, currentConfig.atr_multiplier, currentConfig.atr_period,
                                    currentConfig.outside_padding, currentConfig.body_must_be_outside,
                                    true, currentConfig.use_ema, currentConfig.use_divergence);
          }
@@ -671,7 +671,7 @@ void ExecuteTradeFromDivergence(int dir)
                                    currentConfig.rsi_oversold, currentConfig.rsi_overbought,
                                    currentConfig.ema_fast, currentConfig.ema_slow, currentConfig.ema_zone_distance,
                                    currentConfig.risk_percent, currentConfig.min_rr,
-                                   currentConfig.sl_period, currentConfig.tp_period, currentConfig.atr_multiplier,
+                                   currentConfig.sl_period, currentConfig.tp_period, currentConfig.atr_multiplier, currentConfig.atr_period,
                                    currentConfig.outside_padding, currentConfig.body_must_be_outside,
                                    true, currentConfig.use_ema, currentConfig.use_divergence);
          }

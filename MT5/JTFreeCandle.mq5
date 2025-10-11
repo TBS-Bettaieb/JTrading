@@ -717,7 +717,7 @@ void Process()
                                    RSI_Oversold, RSI_Overbought,
                                    EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
                                    Risk_Percent, Min_RR,
-                                   SL_Period, TP_Period, ATR_Multiplier,
+                                   SL_Period, TP_Period, ATR_Multiplier, ATR_Period,
                                    OutsidePaddingPoints, BodyMustBeOutside,
                                    Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
          }
@@ -743,7 +743,7 @@ void Process()
                                    RSI_Oversold, RSI_Overbought,
                                    EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
                                    Risk_Percent, Min_RR,
-                                   SL_Period, TP_Period, ATR_Multiplier,
+                                   SL_Period, TP_Period, ATR_Multiplier, ATR_Period,
                                    OutsidePaddingPoints, BodyMustBeOutside,
                                    Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
          }
@@ -865,7 +865,7 @@ void ExecuteTradeFromDivergence(int dir)
                                    RSI_Oversold, RSI_Overbought,
                                    EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
                                    Risk_Percent, Min_RR,
-                                   SL_Period, TP_Period, ATR_Multiplier,
+                                   SL_Period, TP_Period, ATR_Multiplier, ATR_Period,
                                    OutsidePaddingPoints, BodyMustBeOutside,
                                    Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
          }
@@ -891,7 +891,7 @@ void ExecuteTradeFromDivergence(int dir)
                                    RSI_Oversold, RSI_Overbought,
                                    EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
                                    Risk_Percent, Min_RR,
-                                   SL_Period, TP_Period, ATR_Multiplier,
+                                   SL_Period, TP_Period, ATR_Multiplier, ATR_Period,
                                    OutsidePaddingPoints, BodyMustBeOutside,
                                    Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
          }

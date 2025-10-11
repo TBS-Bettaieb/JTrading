@@ -82,6 +82,7 @@ struct TradeRecord {
    int      sl_period_config;    // Période SL configurée
    int      tp_period_config;    // Période TP configurée
    double   atr_multiplier;      // Multiplicateur ATR
+   int      atr_period;          // Période ATR
    int      outside_padding;     // Padding hors bande (points)
    bool     body_must_outside;   // Corps seul doit être dehors
    bool     use_rsi_filter;      // Filtre RSI activé
@@ -259,7 +260,7 @@ public:
                         double rsiOversold = 30.0, double rsiOverbought = 70.0,
                         int emaFast = 50, int emaSlow = 100, double emaZoneDist = 20.0,
                         double riskPct = 1.0, double minRR = 2.0,
-                        int slPeriod = 50, int tpPeriod = 30, double atrMult = 2.0,
+                        int slPeriod = 50, int tpPeriod = 30, double atrMult = 2.0, int atrPeriod = 14,
                         int outsidePad = 5, bool bodyOut = true,
                         bool useRSI = true, bool useEMA = true, bool useDiv = true) {
       if(!PositionSelectByTicket(ticket)) return;
@@ -323,6 +324,7 @@ public:
       rec.sl_period_config = 0;
       rec.tp_period_config = 0;
       rec.atr_multiplier = 0;
+      rec.atr_period = 0;
       rec.outside_padding = 0;
       rec.body_must_outside = false;
       rec.use_rsi_filter = false;
@@ -373,6 +375,7 @@ public:
       rec.sl_period_config = slPeriod;
       rec.tp_period_config = tpPeriod;
       rec.atr_multiplier = atrMult;
+      rec.atr_period = atrPeriod;
       rec.outside_padding = outsidePad;
       rec.body_must_outside = bodyOut;
       rec.use_rsi_filter = useRSI;
@@ -604,7 +607,7 @@ public:
                "Duration,MaxProfit,MaxDD,ExitReason,Mode,Divergence,EMAMode," +
                "BB_Period,BB_Dev,RSI_Period,RSI_Oversold,RSI_Overbought," +
                "EMA_Fast,EMA_Slow,EMA_ZoneDist,Risk%,MinRR," +
-               "SL_Period,TP_Period,ATR_Mult,OutsidePad,BodyOnly,UseRSI,UseEMA,UseDiv\n";
+               "SL_Period,TP_Period,ATR_Mult,ATR_Period,OutsidePad,BodyOnly,UseRSI,UseEMA,UseDiv\n";
             
             FileWriteString(m_fileHandle, header);
          }
@@ -621,7 +624,7 @@ public:
       if(handle != INVALID_HANDLE) {
          FileSeek(handle, 0, SEEK_END);
          
-         string row = StringFormat("%d,%s,%s,%s,%s,%.2f,%.5f,%.5f,%.5f,%.5f,%.2f,%.1f,%.2f,%.2f,%.2f,%.2f,%.2f,%.5f,%.1f,%.1f,%.1f,%.1f,%.5f,%.5f,%.1f,%.4f,%s,%s,%.2f,%.6f,%d,%d,%d,%d,%d,%.2f,%.2f,%s,%s,%s,%s,%d,%.1f,%d,%.1f,%.1f,%d,%d,%.1f,%.2f,%.1f,%d,%d,%.1f,%d,%s,%s,%s,%s\n",
+         string row = StringFormat("%d,%s,%s,%s,%s,%.2f,%.5f,%.5f,%.5f,%.5f,%.2f,%.1f,%.2f,%.2f,%.2f,%.2f,%.2f,%.5f,%.1f,%.1f,%.1f,%.1f,%.5f,%.5f,%.1f,%.4f,%s,%s,%.2f,%.6f,%d,%d,%d,%d,%d,%.2f,%.2f,%s,%s,%s,%s,%d,%.1f,%d,%.1f,%.1f,%d,%d,%.1f,%.2f,%.1f,%d,%d,%.1f,%d,%d,%s,%s,%s,%s\n",
             rec.ticket,
             TimeToString(rec.openTime, TIME_DATE|TIME_SECONDS),
             isOpen ? "" : TimeToString(rec.closeTime, TIME_DATE|TIME_SECONDS),
@@ -676,6 +679,7 @@ public:
             rec.sl_period_config,
             rec.tp_period_config,
             rec.atr_multiplier,
+            rec.atr_period,
             rec.outside_padding,
             rec.body_must_outside ? "YES" : "NO",
             rec.use_rsi_filter ? "YES" : "NO",
