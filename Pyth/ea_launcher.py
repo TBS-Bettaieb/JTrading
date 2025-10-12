@@ -214,25 +214,26 @@ class MT5EALauncher:
     
     def generate_set_file(self, config: Dict, output_dir: str = "MT5_Sets") -> str:
         """
-        Génère un fichier .set pour l'EA
+        Génère un fichier .ini pour l'EA (format MT5 Strategy Tester)
         
         Args:
             config: Configuration à utiliser
             output_dir: Dossier de sortie
             
         Returns:
-            Chemin du fichier .set créé
+            Chemin du fichier .ini créé
         """
         Path(output_dir).mkdir(exist_ok=True)
         
-        filename = f"{output_dir}/{self.ea_name}_{config['name']}.set"
+        filename = f"{output_dir}/{self.ea_name}_{config['name']}.ini"
         
         with open(filename, 'w', encoding='utf-8') as f:
-            f.write(f"; Configuration: {config['name']}\n")
-            f.write(f"; Generated: {datetime.now().strftime('%Y.%m.%d %H:%M:%S')}\n\n")
+            # Header MT5 Strategy Tester format
+            f.write(f"; saved automatically on {datetime.now().strftime('%Y.%m.%d %H:%M:%S')}\n")
+            f.write(f"; this file contains input parameters for testing/optimizing {self.ea_name}\n")
             
             for key, value in config['inputs'].items():
-                # Convertir les valeurs en format .set
+                # Convertir les valeurs en format MT5 Strategy Tester
                 if isinstance(value, bool):
                     set_value = "true" if value else "false"
                 elif isinstance(value, str):
@@ -240,9 +241,10 @@ class MT5EALauncher:
                 else:
                     set_value = str(value)
                 
-                f.write(f"{key}={set_value}\n")
+                # Format MT5 Strategy Tester: Param=Value||Value
+                f.write(f"{key}={set_value}||{set_value}\n")
         
-        logging.info(f"Fichier .set créé: {filename}")
+        logging.info(f"Fichier .ini créé: {filename}")
         return filename
     
     def run_backtest(
@@ -278,16 +280,16 @@ class MT5EALauncher:
         logging.info("2. Utiliser l'API REST de MT5 si disponible")
         logging.info("3. Exécuter en live et suivre les résultats")
         
-        # Générer le fichier .set pour utilisation manuelle
-        set_file = self.generate_set_file(config)
-        logging.info(f"Fichier .set créé: {set_file}")
+        # Générer le fichier .ini pour utilisation manuelle
+        ini_file = self.generate_set_file(config)
+        logging.info(f"Fichier .ini créé: {ini_file}")
         logging.info("Chargez ce fichier dans Strategy Tester de MT5 pour le backtest")
         
         return {
             "config_name": config["name"],
-            "set_file": set_file,
-            "status": "set_file_generated",
-            "message": "Utilisez Strategy Tester MT5 avec ce fichier .set"
+            "set_file": ini_file,
+            "status": "ini_file_generated",
+            "message": "Utilisez Strategy Tester MT5 avec ce fichier .ini"
         }
     
     def monitor_live_positions(self) -> pd.DataFrame:
