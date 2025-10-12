@@ -69,30 +69,30 @@ void ReleaseIndicators(IndicatorHandles &handles) {
 // Copie les données des indicateurs dans les buffers
 bool GetIndicatorData(
    const IndicatorHandles &handles,
-   IndicatorBuffers &indicatorBuffers,
+   IndicatorBuffers &buffers,
    int bars = 5,
    bool useEMA = false
 ) {
    // Copier les données des Bollinger Bands
    // Buffer 0 = BASE_LINE (milieu), Buffer 1 = UPPER_BAND, Buffer 2 = LOWER_BAND
-   if(CopyBuffer(handles.BB, 1, 0, bars, indicatorBuffers.BBUpper) < bars) return false;
-   if(CopyBuffer(handles.BB, 0, 0, bars, indicatorBuffers.BBMiddle) < bars) return false;
-   if(CopyBuffer(handles.BB, 2, 0, bars, indicatorBuffers.BBLower) < bars) return false;
+   if(CopyBuffer(handles.BB, 1, 0, bars, buffers.BBUpper) < bars) return false;
+   if(CopyBuffer(handles.BB, 0, 0, bars, buffers.BBMiddle) < bars) return false;
+   if(CopyBuffer(handles.BB, 2, 0, bars, buffers.BBLower) < bars) return false;
    
    // Copier les données du RSI
-   if(CopyBuffer(handles.RSI, 0, 0, bars, indicatorBuffers.RSI) < bars) return false;
+   if(CopyBuffer(handles.RSI, 0, 0, bars, buffers.RSI) < bars) return false;
    
    // Copier les données de l'EMA (optionnel)
    if(useEMA && handles.EMA != INVALID_HANDLE) {
-      if(CopyBuffer(handles.EMA, 0, 0, bars, indicatorBuffers.EMA) < bars) return false;
+      if(CopyBuffer(handles.EMA, 0, 0, bars, buffers.EMA) < bars) return false;
    }
    
    // Définir les tableaux comme séries pour un accès plus intuitif
-   ArraySetAsSeries(indicatorBuffers.BBUpper, true);
-   ArraySetAsSeries(indicatorBuffers.BBMiddle, true);
-   ArraySetAsSeries(indicatorBuffers.BBLower, true);
-   ArraySetAsSeries(indicatorBuffers.RSI, true);
-   if(useEMA) ArraySetAsSeries(indicatorBuffers.EMA, true);
+   ArraySetAsSeries(buffers.BBUpper, true);
+   ArraySetAsSeries(buffers.BBMiddle, true);
+   ArraySetAsSeries(buffers.BBLower, true);
+   ArraySetAsSeries(buffers.RSI, true);
+   if(useEMA) ArraySetAsSeries(buffers.EMA, true);
    
    return true;
 }

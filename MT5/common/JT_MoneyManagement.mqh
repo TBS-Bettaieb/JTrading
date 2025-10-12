@@ -488,7 +488,7 @@ public:
    //+------------------------------------------------------------------+
    //| Gestion du Break-Even                                           |
    //+------------------------------------------------------------------+
-   bool CheckBreakEven(ulong ticket, bool isBuy, double entryPrice, double currentSL, double &newSL_out) {
+   bool CheckBreakEven(ulong ticket, bool isBuy, double entryPrice, double currentSL) {
       if(!m_params.useBreakEven) return false;
       
       double currentPrice = isBuy ? SymbolInfoDouble(m_symbol, SYMBOL_BID) : 
@@ -496,17 +496,17 @@ public:
       
       double risk = MathAbs(entryPrice - currentSL);
       double currentReward = isBuy ? (currentPrice - entryPrice) : 
-                                       (entryPrice - currentPrice);
+                                     (entryPrice - currentPrice);
       
       double currentRR = (risk > 0) ? (currentReward / risk) : 0;
       
       // Activer BE si le RR est atteint
       if(currentRR >= m_params.beActivationRR) {
          double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
-         newSL_out = entryPrice + (m_params.beOffsetPoints * point * (isBuy ? 1 : -1));
+         double newSL = entryPrice + (m_params.beOffsetPoints * point * (isBuy ? 1 : -1));
          
          // Vérifier que le nouveau SL est meilleur
-         if((isBuy && newSL_out > currentSL) || (!isBuy && newSL_out < currentSL)) {
+         if((isBuy && newSL > currentSL) || (!isBuy && newSL < currentSL)) {
             return true; // Signaler qu'il faut modifier le SL
          }
       }
