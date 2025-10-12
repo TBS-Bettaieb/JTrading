@@ -12,6 +12,14 @@ import time
 from pathlib import Path
 import logging
 
+# Import backtester (optional dependency)
+try:
+    from ea_backtester import Backtester
+    BACKTESTER_AVAILABLE = True
+except ImportError:
+    BACKTESTER_AVAILABLE = False
+    Backtester = None
+
 # Configuration du logging
 logging.basicConfig(
     level=logging.INFO,
@@ -408,6 +416,140 @@ class MT5EALauncher:
         
         # Trier par profit total
         comparison_df = comparison_df.sort_values('total_profit', ascending=False)
+        
+        return comparison_df
+    
+    def run_csv_backtest(
+        self,
+        config: Dict,
+        csv_file: str,
+        initial_deposit: float = 10000.0,
+        target_timeframe: Optional[str] = None,
+        save_results: bool = True
+    ) -> Optional[object]:
+        """
+        Run backtest using CSV data
+        
+        Args:
+            config: Configuration dictionary
+            csv_file: Path to CSV file with OHLC data
+            initial_deposit: Initial capital
+            target_timeframe: Target timeframe for resampling (e.g., 'H1', 'H4')
+            save_results: Whether to save results to files
+            
+        Returns:
+            Backtester object with results, or None if backtester not available
+        """
+        if not BACKTESTER_AVAILABLE:
+            logging.error("Backtester module not available. Install required dependencies.")
+            logging.info("Required: pandas, numpy, matplotlib")
+            return None
+        
+        logging.info(f"Starting CSV backtest for: {config.get('name', 'Unknown')}")
+        
+        try:
+            # Create backtester
+            backtester = Backtester(csv_file, config, initial_deposit)
+            
+            # Run full backtest
+            backtester.run_full_backtest(
+                target_timeframe=target_timeframe,
+                save_results=save_results
+            )
+            
+            return backtester
+            
+        except Exception as e:
+            logging.error(f"Backtest failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def batch_csv_backtest(
+        self,
+        csv_file: str,
+        initial_deposit: float = 10000.0,
+        target_timeframe: Optional[str] = None,
+        save_comparison: bool = True
+    ) -> pd.DataFrame:
+        """
+        Run backtest on all configurations and compare results
+        
+        Args:
+            csv_file: Path to CSV file with OHLC data
+            initial_deposit: Initial capital
+            target_timeframe: Target timeframe for resampling
+            save_comparison: Whether to save comparison to CSV
+            
+        Returns:
+            DataFrame with comparison of all configurations
+        """
+        if not BACKTESTER_AVAILABLE:
+            logging.error("Backtester module not available.")
+            return pd.DataFrame()
+        
+        if not self.configurations:
+            logging.warning("No configurations loaded. Create configurations first.")
+            return pd.DataFrame()
+        
+        logging.info(f"\n{'='*70}")
+        logging.info(f"   BATCH BACKTEST: {len(self.configurations)} configurations")
+        logging.info(f"{'='*70}\n")
+        
+        results = []
+        
+        for i, config in enumerate(self.configurations, 1):
+            logging.info(f"\n[{i}/{len(self.configurations)}] Testing: {config.get('name', 'Unknown')}")
+            
+            try:
+                # Run backtest (don't save individual results)
+                backtester = Backtester(csv_file, config, initial_deposit)
+                backtester.load_data(target_timeframe)
+                backtester.calculate_indicators()
+                backtester.generate_signals()
+                backtester.simulate_trades()
+                
+                # Get statistics
+                stats = backtester.get_statistics()
+                results.append(stats)
+                
+                # Quick summary
+                logging.info(f"   Return: {stats['total_return_pct']:.2f}% | " +
+                           f"Win Rate: {stats['win_rate_pct']:.1f}% | " +
+                           f"Profit Factor: {stats['profit_factor']:.2f}")
+                
+            except Exception as e:
+                logging.error(f"   Failed: {e}")
+                continue
+        
+        if not results:
+            logging.error("No successful backtests")
+            return pd.DataFrame()
+        
+        # Create comparison DataFrame
+        comparison_df = pd.DataFrame(results)
+        
+        # Sort by total return
+        comparison_df = comparison_df.sort_values('total_return_pct', ascending=False)
+        
+        # Display top performers
+        logging.info(f"\n{'='*70}")
+        logging.info("   TOP 10 CONFIGURATIONS")
+        logging.info(f"{'='*70}\n")
+        
+        top10 = comparison_df.head(10)
+        for idx, row in top10.iterrows():
+            logging.info(f"{row['config_name']:30s} | " +
+                       f"Return: {row['total_return_pct']:7.2f}% | " +
+                       f"Win Rate: {row['win_rate_pct']:5.1f}% | " +
+                       f"PF: {row['profit_factor']:5.2f} | " +
+                       f"Trades: {row['total_trades']:4d}")
+        
+        # Save comparison
+        if save_comparison:
+            filename = f"backtest_comparison_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            comparison_df.to_csv(filename, index=False)
+            logging.info(f"\n💾 Comparison saved to: {filename}")
         
         return comparison_df
 
