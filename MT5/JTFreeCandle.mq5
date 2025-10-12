@@ -12,7 +12,6 @@
 #include "common/JT_Utils.mqh"
 #include "common/JT_DivergenceValidator.mqh"
 #include "common/JT_TradeTracker.mqh"
-#include "common/JT_MoneyManagement.mqh"
 CTrade trade;
 
 //---------------------------- Inputs --------------------------------
@@ -107,9 +106,6 @@ JTDivergenceValidator divValidator;
 
 //---------------------------- Trade Tracker -------------------------------
 JTTradeTracker* tracker = NULL;
-
-//---------------------------- Money Management ----------------------------
-JTMoneyManagement* mmManager = NULL;
 
 //---------------------------- Utils ----------------------------------
 string Sym() { return (InpSymbol=="" ? _Symbol : InpSymbol); }
@@ -414,51 +410,7 @@ int OnInit()
    );
    
    if(tracker != NULL) {
-      string tfStr = "";
-      switch(t) {
-         case PERIOD_M1: tfStr = "M1"; break;
-         case PERIOD_M3: tfStr = "M3"; break;
-         case PERIOD_M5: tfStr = "M5"; break;
-         case PERIOD_M15: tfStr = "M15"; break;
-         case PERIOD_M30: tfStr = "M30"; break;
-         case PERIOD_H1: tfStr = "H1"; break;
-         case PERIOD_H4: tfStr = "H4"; break;
-         case PERIOD_D1: tfStr = "D1"; break;
-         default: tfStr = "UNKNOWN"; break;
-      }
-      LogMessage("Trade Tracker activé - Fichier CSV: TradeAnalysis_" + s + "_" + tfStr + ".csv");
-   }
-   
-   // Initialiser le Money Management
-   mmManager = new JTMoneyManagement(s, t);
-   
-   if(mmManager != NULL) {
-      // Configurer les paramètres selon les inputs de l'EA
-      TPSLParams params;
-      params.slMethod = SL_SWING;
-      params.slSwingPeriod = SL_Period;
-      params.slATRMultiplier = ATR_Multiplier;
-      
-      params.tpMethod = TP_RR_RATIO;
-      params.tpRRRatio = Min_RR;
-      params.tpSwingPeriod = TP_Period;
-      
-      params.minRR = Min_RR;
-      params.maxRR = 5.0;
-      params.useBreakEven = BE_On_MiddleBand;
-      params.beActivationRR = 0.5;
-      params.beOffsetPoints = BE_Offset_Points;
-      
-      params.useTrailing = false;  // Désactivé par défaut
-      params.trailingStartRR = 1.0;
-      params.trailingStepPoints = 10;
-      params.trailingStopPoints = 50;
-      
-      params.minDistancePoints = 20;
-      params.maxDistancePoints = 1000;
-      
-      mmManager.SetParams(params);
-      LogMessage("Money Management activé - Méthode SL: SWING, Méthode TP: RR_RATIO");
+      LogMessage("Trade Tracker activé - Fichier CSV: TradeAnalysis_" + s + "_" + IntegerToString(Magic) + ".csv");
    }
    
    return INIT_SUCCEEDED;
@@ -483,12 +435,6 @@ void OnDeinit(const int reason)
       tracker.PrintReport();
       delete tracker;
       tracker = NULL;
-   }
-   
-   // Libérer le Money Management
-   if(mmManager != NULL) {
-      delete mmManager;
-      mmManager = NULL;
    }
    
    // Nettoyer les marqueurs Free Candles si souhaité
@@ -706,22 +652,24 @@ void Process()
    // Variables pour SL et TP
    double sl = 0, tp = 0;
    bool isBuy = (dir > 0);
-   double entryPrice = isBuy ? ask : bid;
    
-   // Utiliser le nouveau système de Money Management
-   string errorMsg = "";
-   if(mmManager == NULL || !mmManager.CalculateTPSL(isBuy, entryPrice, sl, tp, errorMsg)) {
-      LogError("Erreur calcul TP/SL: " + errorMsg);
+   // Calculer SL/TP basés sur les plus hauts/plus bas avec ATR fallback
+   if(!CalculateSwingSLTP(s, t, isBuy, SL_Period, TP_Period, sl, tp, 0.0, Min_RR, 1000, ATR_Multiplier, ATR_Period)) {
+      LogError("Erreur lors du calcul des niveaux SL/TP");
       return;
    }
    
    // Calculer le volume en fonction du risque
-   double point = SymbolInfoDouble(s, SYMBOL_POINT);
-   double slDistancePoints = MathAbs(entryPrice - sl) / point;
-   double lots = (mmManager != NULL) ? mmManager.CalculateVolume(Risk_Percent, slDistancePoints) : 
-                                       CalcLotsByRisk(s, MathAbs(entryPrice - sl));
+   double riskPrice = isBuy ? (bid - sl) : (sl - ask);
+   if(riskPrice <= 0) {
+      LogError("Distance de SL invalide");
+      return;
+   }
+   
+   double lots = CalcLotsByRisk(s, riskPrice);
    
    // Calculer le ratio risque/récompense (RR)
+   double entryPrice = isBuy ? ask : bid;
    double reward = isBuy ? (tp - entryPrice) : (entryPrice - tp);
    double risk = isBuy ? (entryPrice - sl) : (sl - entryPrice);
    double rr = (risk > 0) ? (reward / risk) : 0;
@@ -734,7 +682,12 @@ void Process()
               ", RR: 1:" + DoubleToString(rr, 2) + 
               ", Lots: " + DoubleToString(lots, 2));
    
-   // Note: La vérification du RR minimum est déjà faite dans mmManager.CalculateTPSL()
+   // Vérifier le seuil RR minimum
+   if(Min_RR > 0 && rr < Min_RR) {
+      LogMessage("Trade rejeté - RR insuffisant: 1:" + DoubleToString(rr, 2) + 
+                 " < minimum requis: 1:" + DoubleToString(Min_RR, 2));
+      return;
+   }
    
    // Récupérer la valeur RSI actuelle pour le commentaire
    int rsiI = (int)MathRound(buffers.RSI[1]);
@@ -841,22 +794,24 @@ void ExecuteTradeFromDivergence(int dir)
    // Variables pour SL et TP
    double sl = 0, tp = 0;
    bool isBuy = (dir > 0);
-   double entryPrice = isBuy ? ask : bid;
    
-   // Utiliser le nouveau système de Money Management
-   string errorMsg = "";
-   if(mmManager == NULL || !mmManager.CalculateTPSL(isBuy, entryPrice, sl, tp, errorMsg)) {
-      LogError("Erreur calcul TP/SL divergence: " + errorMsg);
+   // Calculer SL/TP basés sur les plus hauts/plus bas avec ATR fallback
+   if(!CalculateSwingSLTP(s, t, isBuy, SL_Period, TP_Period, sl, tp, 0.0, Min_RR, 1000, ATR_Multiplier, ATR_Period)) {
+      LogError("Erreur lors du calcul des niveaux SL/TP pour divergence");
       return;
    }
    
    // Calculer le volume en fonction du risque
-   double point = SymbolInfoDouble(s, SYMBOL_POINT);
-   double slDistancePoints = MathAbs(entryPrice - sl) / point;
-   double lots = (mmManager != NULL) ? mmManager.CalculateVolume(Risk_Percent, slDistancePoints) : 
-                                       CalcLotsByRisk(s, MathAbs(entryPrice - sl));
+   double riskPrice = isBuy ? (bid - sl) : (sl - ask);
+   if(riskPrice <= 0) {
+      LogError("Distance de SL invalide pour divergence");
+      return;
+   }
+   
+   double lots = CalcLotsByRisk(s, riskPrice);
    
    // Calculer le ratio risque/récompense (RR)
+   double entryPrice = isBuy ? ask : bid;
    double reward = isBuy ? (tp - entryPrice) : (entryPrice - tp);
    double risk = isBuy ? (entryPrice - sl) : (sl - entryPrice);
    double rr = (risk > 0) ? (reward / risk) : 0;
@@ -872,7 +827,12 @@ void ExecuteTradeFromDivergence(int dir)
               ", DivStrength: " + DoubleToString(divStrength, 6) + 
               ", DivBars: " + IntegerToString(divBars));
    
-   // Note: La vérification du RR minimum est déjà faite dans mmManager.CalculateTPSL()
+   // Vérifier le seuil RR minimum
+   if(Min_RR > 0 && rr < Min_RR) {
+      LogMessage("Trade divergence rejeté - RR insuffisant: 1:" + DoubleToString(rr, 2) + 
+                 " < minimum requis: 1:" + DoubleToString(Min_RR, 2));
+      return;
+   }
    
    // Récupérer la valeur RSI actuelle pour le commentaire
    int rsiI = 0;
@@ -1004,24 +964,8 @@ void ManageOpenPositions(const string s)
          }
       }
 
-      // Gestion du Break-Even via Money Management
-      if(mmManager != NULL && mmManager.CheckBreakEven(tk, type==POSITION_TYPE_BUY, op, sl)) {
-         double newSL = op + BE_Offset_Points*point * (type==POSITION_TYPE_BUY ? 1 : -1);
-         if((type==POSITION_TYPE_BUY && sl<newSL) || (type==POSITION_TYPE_SELL && (sl==0.0 || sl>newSL))) {
-            ModifyPosition(trade, tk, newSL, tp);
-            LogMessage("Break-Even activé pour ticket " + IntegerToString(tk));
-         }
-      }
-      
-      // Gestion du Trailing Stop via Money Management
-      double newSL;
-      if(mmManager != NULL && mmManager.CheckTrailingStop(tk, type==POSITION_TYPE_BUY, op, sl, newSL)) {
-         ModifyPosition(trade, tk, newSL, tp);
-         LogMessage("Trailing Stop activé pour ticket " + IntegerToString(tk) + " - Nouveau SL: " + DoubleToString(newSL, 5));
-      }
-      
-      // BE sur médiane (garde l'ancienne logique comme backup si mmManager est NULL)
-      if(BE_On_MiddleBand && mmManager == NULL)
+      // BE sur médiane (après tentative de fermeture sur bande opposée)
+      if(BE_On_MiddleBand)
       {
          if(type==POSITION_TYPE_BUY  && (barHigh>=middle1-pad || bid>=middle0-pad)){
             double newSL=op + BE_Offset_Points*point;
