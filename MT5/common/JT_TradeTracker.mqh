@@ -1,6 +1,12 @@
 //+------------------------------------------------------------------+
 //|                                             JT_TradeTracker.mqh  |
 //|                      Système de suivi et analyse des trades      |
+//|                                                                  |
+//|  IMPORTANT: Les fichiers CSV sont sauvegardés dans le dossier   |
+//|  Common Files (FILE_COMMON) accessible depuis tous les          |
+//|  terminaux MT5 et applications externes.                        |
+//|  Chemin: C:\Users\[User]\AppData\Roaming\MetaQuotes\Terminal\   |
+//|          Common\Files\                                           |
 //+------------------------------------------------------------------+
 #property strict
 
@@ -519,17 +525,17 @@ public:
    // Initialiser le fichier CSV
    void InitializeCSV() {
       // Vérifier si le fichier existe déjà
-      m_fileHandle = FileOpen(m_csvFile, FILE_READ|FILE_ANSI);
+      m_fileHandle = FileOpen(m_csvFile, FILE_READ|FILE_COMMON|FILE_ANSI);
       bool fileExists = (m_fileHandle != INVALID_HANDLE);
       
       if(fileExists) {
          FileClose(m_fileHandle);
-         Print("✅ Fichier CSV existant trouvé: ", m_csvFile, " - Mode APPEND activé");
+         Print("✅ Fichier CSV existant trouvé dans Common Files: ", m_csvFile, " - Mode APPEND activé");
          return; // Le fichier existe déjà avec son en-tête, ne rien faire
       }
       
       // Le fichier n'existe pas, le créer avec l'en-tête
-      m_fileHandle = FileOpen(m_csvFile, FILE_WRITE|FILE_ANSI);
+      m_fileHandle = FileOpen(m_csvFile, FILE_WRITE|FILE_COMMON|FILE_ANSI);
       
       if(m_fileHandle != INVALID_HANDLE) {
          // Écrire l'en-tête complet avec les nouvelles colonnes
@@ -549,15 +555,15 @@ public:
          FileWriteString(m_fileHandle, header);
          FileClose(m_fileHandle);
          
-         Print("✅ Nouveau fichier CSV créé: ", m_csvFile);
+         Print("✅ Nouveau fichier CSV créé dans Common Files: ", m_csvFile);
       } else {
-         Print("❌ ERREUR: Impossible de créer le fichier CSV: ", m_csvFile);
+         Print("❌ ERREUR: Impossible de créer le fichier CSV dans Common Files: ", m_csvFile);
       }
    }
 
    // Sauvegarder dans CSV
    void SaveToCSV(const TradeRecord &rec, bool isOpen) {
-      int handle = FileOpen(m_csvFile, FILE_WRITE|FILE_READ|FILE_ANSI);
+      int handle = FileOpen(m_csvFile, FILE_WRITE|FILE_READ|FILE_COMMON|FILE_ANSI);
       
       if(handle != INVALID_HANDLE) {
          FileSeek(handle, 0, SEEK_END);
