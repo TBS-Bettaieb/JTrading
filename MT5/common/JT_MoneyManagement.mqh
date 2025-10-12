@@ -1,9 +1,11 @@
 //+------------------------------------------------------------------+
 //|                                          JT_MoneyManagement.mqh  |
 //|                    Système avancé de Money Management (MT5)      |
-//|                                      (c) 2025 - Version 2.0      |
+//|                                      (c) 2025 - Version 2.1      |
 //+------------------------------------------------------------------+
 #property strict
+
+#include "JT_AdaptiveSL.mqh"
 
 //+------------------------------------------------------------------+
 //| Énumérations pour les différentes méthodes                       |
@@ -14,7 +16,8 @@ enum SL_METHOD {
    SL_FIXED_POINTS = 2,     // Points fixes
    SL_PERCENT = 3,          // Pourcentage du prix
    SL_BOLLINGER = 4,        // Bande de Bollinger opposée
-   SL_SUPPORT_RESISTANCE = 5 // Niveau S/R le plus proche
+   SL_SUPPORT_RESISTANCE = 5, // Niveau S/R le plus proche
+   SL_ADAPTIVE = 6          // Adaptatif multi-actifs (RECOMMANDÉ)
 };
 
 enum TP_METHOD {
@@ -36,6 +39,7 @@ struct TPSLParams {
    int slSwingPeriod;
    double slFixedPoints;
    double slPercent;
+   double slVolatilityMultiplier;  // Multiplicateur de volatilité pour SL adaptatif
    
    // Paramètres TP
    TP_METHOD tpMethod;
@@ -74,6 +78,10 @@ private:
    // Handles d'indicateurs
    int m_atrHandle;
    int m_bbHandle;
+   bool m_ownsHandles;  // True si les handles sont créés par cette classe
+   
+   // Système adaptatif
+   JTAdaptiveSL* m_adaptiveSL;
    
 public:
    //+------------------------------------------------------------------+
@@ -86,28 +94,100 @@ public:
       // Initialiser les handles
       m_atrHandle = INVALID_HANDLE;
       m_bbHandle = INVALID_HANDLE;
+      m_ownsHandles = false;  // Par défaut, les handles sont externes
+      
+      // Initialiser le système adaptatif
+      m_adaptiveSL = NULL;
       
       // Paramètres par défaut
       SetDefaultParams();
    }
    
    //+------------------------------------------------------------------+
+   //| Définir les handles existants (RECOMMANDÉ)                      |
+   //+------------------------------------------------------------------+
+   bool SetExternalHandles(int atrHandle, int bbHandle) {
+      m_atrHandle = atrHandle;
+      m_bbHandle = bbHandle;
+      m_ownsHandles = false;  // Les handles sont gérés par l'appelant
+      return (m_atrHandle != INVALID_HANDLE && m_bbHandle != INVALID_HANDLE);
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Initialiser le système adaptatif (pour SL_ADAPTIVE)             |
+   //+------------------------------------------------------------------+
+   bool InitAdaptiveSL(int atrPeriod = 14) {
+      if(m_adaptiveSL != NULL) {
+         delete m_adaptiveSL;
+         m_adaptiveSL = NULL;
+      }
+      
+      m_adaptiveSL = new JTAdaptiveSL(m_symbol, m_timeframe, atrPeriod);
+      
+      if(m_adaptiveSL == NULL) {
+         Print("Erreur création système adaptatif pour ", m_symbol);
+         return false;
+      }
+      
+      // Afficher les recommandations
+      Print(m_adaptiveSL.GetRecommendations());
+      
+      return true;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Initialisation des indicateurs (LEGACY - préférer SetExternalHandles) |
+   //+------------------------------------------------------------------+
+   bool InitIndicators(int atrPeriod = 14, int bbPeriod = 20, double bbDev = 2.0) {
+      // ATR
+      if(m_atrHandle == INVALID_HANDLE) {
+         m_atrHandle = iATR(m_symbol, m_timeframe, atrPeriod);
+         if(m_atrHandle == INVALID_HANDLE) {
+            Print("Erreur création handle ATR");
+            return false;
+         }
+      }
+      
+      // Bollinger Bands
+      if(m_bbHandle == INVALID_HANDLE) {
+         m_bbHandle = iBands(m_symbol, m_timeframe, bbPeriod, 0, bbDev, PRICE_CLOSE);
+         if(m_bbHandle == INVALID_HANDLE) {
+            Print("Erreur création handle BB");
+            return false;
+         }
+      }
+      
+      m_ownsHandles = true;  // Cette classe possède les handles et doit les libérer
+      return true;
+   }
+   
+   //+------------------------------------------------------------------+
    //| Destructeur                                                      |
    //+------------------------------------------------------------------+
    ~JTMoneyManagement() {
-      if(m_atrHandle != INVALID_HANDLE) IndicatorRelease(m_atrHandle);
-      if(m_bbHandle != INVALID_HANDLE) IndicatorRelease(m_bbHandle);
+      // Libérer les handles uniquement si cette classe les possède
+      if(m_ownsHandles) {
+         if(m_atrHandle != INVALID_HANDLE) IndicatorRelease(m_atrHandle);
+         if(m_bbHandle != INVALID_HANDLE) IndicatorRelease(m_bbHandle);
+      }
+      
+      // Libérer le système adaptatif
+      if(m_adaptiveSL != NULL) {
+         delete m_adaptiveSL;
+         m_adaptiveSL = NULL;
+      }
    }
    
    //+------------------------------------------------------------------+
    //| Configuration des paramètres par défaut                         |
    //+------------------------------------------------------------------+
    void SetDefaultParams() {
-      m_params.slMethod = SL_ATR;
+      m_params.slMethod = SL_ADAPTIVE;  // Par défaut: adaptatif
       m_params.slATRMultiplier = 2.0;
       m_params.slSwingPeriod = 20;
       m_params.slFixedPoints = 100;
       m_params.slPercent = 1.0;
+      m_params.slVolatilityMultiplier = 1.0;
       
       m_params.tpMethod = TP_RR_RATIO;
       m_params.tpRRRatio = 2.0;
@@ -168,11 +248,23 @@ public:
          return false;
       }
       
-      // 4. Valider le ratio RR
-      double actualRR = CalculateRR(isBuy, entryPrice, stopLoss, takeProfit);
+      // 4. Valider que le TP est dans la bonne direction
+      if(isBuy && takeProfit <= entryPrice) {
+         errorMsg = "TP invalide pour BUY (doit être > entry)";
+         return false;
+      }
+      if(!isBuy && takeProfit >= entryPrice) {
+         errorMsg = "TP invalide pour SELL (doit être < entry)";
+         return false;
+      }
       
-      if(actualRR < m_params.minRR) {
-         errorMsg = StringFormat("RR insuffisant: %.2f < %.2f", actualRR, m_params.minRR);
+      // 5. Valider le ratio RR avec tolérance de 5%
+      double actualRR = CalculateRR(isBuy, entryPrice, stopLoss, takeProfit);
+      double tolerance = 0.05; // 5% de tolérance pour éviter rejets dus aux arrondis
+      
+      if(actualRR < m_params.minRR * (1.0 - tolerance)) {
+         errorMsg = StringFormat("RR insuffisant: %.2f < %.2f (min avec tolérance)", 
+                                actualRR, m_params.minRR);
          return false;
       }
       
@@ -222,6 +314,10 @@ public:
          case SL_SUPPORT_RESISTANCE:
             sl = CalculateSL_SR(isBuy, entryPrice);
             break;
+            
+         case SL_ADAPTIVE:
+            sl = CalculateSL_Adaptive(isBuy, entryPrice);
+            break;
       }
       
       return NormalizeDouble(sl, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS));
@@ -232,14 +328,17 @@ public:
    //+------------------------------------------------------------------+
    double CalculateSL_ATR(bool isBuy, double entryPrice) {
       if(m_atrHandle == INVALID_HANDLE) {
-         m_atrHandle = iATR(m_symbol, m_timeframe, 14);
-         if(m_atrHandle == INVALID_HANDLE) return 0;
+         Print("Erreur: Handle ATR non initialisé. Appelez InitIndicators() dans OnInit()");
+         return 0;
       }
       
       double atr[];
       ArraySetAsSeries(atr, true);
       
-      if(CopyBuffer(m_atrHandle, 0, 0, 1, atr) <= 0) return 0;
+      if(CopyBuffer(m_atrHandle, 0, 0, 1, atr) <= 0) {
+         Print("Erreur CopyBuffer ATR");
+         return 0;
+      }
       
       double slDistance = atr[0] * m_params.slATRMultiplier;
       
@@ -274,23 +373,31 @@ public:
    //+------------------------------------------------------------------+
    double CalculateSL_Bollinger(bool isBuy) {
       if(m_bbHandle == INVALID_HANDLE) {
-         m_bbHandle = iBands(m_symbol, m_timeframe, 20, 0, 2.0, PRICE_CLOSE);
-         if(m_bbHandle == INVALID_HANDLE) return 0;
+         Print("Erreur: Handle BB non initialisé. Appelez InitIndicators() dans OnInit()");
+         return 0;
       }
       
       double upper[], lower[];
       ArraySetAsSeries(upper, true);
       ArraySetAsSeries(lower, true);
       
-      if(CopyBuffer(m_bbHandle, 1, 0, 1, upper) <= 0) return 0;
-      if(CopyBuffer(m_bbHandle, 2, 0, 1, lower) <= 0) return 0;
+      // CORRECTION: Copier 2 bougies pour utiliser l'index 1 (bougie fermée)
+      if(CopyBuffer(m_bbHandle, 1, 0, 2, upper) < 2) {
+         Print("Erreur CopyBuffer BB upper");
+         return 0;
+      }
+      if(CopyBuffer(m_bbHandle, 2, 0, 2, lower) < 2) {
+         Print("Erreur CopyBuffer BB lower");
+         return 0;
+      }
       
       double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
       
+      // CORRECTION: Utiliser index 1 (bougie fermée) au lieu de 0 (bougie en cours)
       if(isBuy)
-         return lower[0] - 5 * point;
+         return lower[1] - 5 * point;
       else
-         return upper[0] + 5 * point;
+         return upper[1] + 5 * point;
    }
    
    //+------------------------------------------------------------------+
@@ -307,6 +414,31 @@ public:
          return sr - 10 * point;
       else
          return sr + 10 * point;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| SL Adaptatif Multi-Actifs (RECOMMANDÉ)                          |
+   //+------------------------------------------------------------------+
+   double CalculateSL_Adaptive(bool isBuy, double entryPrice) {
+      if(m_adaptiveSL == NULL) {
+         Print("Erreur: Système adaptatif non initialisé. Utilisez InitAdaptiveSL()");
+         return 0;
+      }
+      
+      // Appliquer le multiplicateur de volatilité si configuré
+      if(m_params.slVolatilityMultiplier != 1.0) {
+         m_adaptiveSL.AdjustForVolatility(m_params.slVolatilityMultiplier);
+      }
+      
+      string reason = "";
+      double sl = m_adaptiveSL.CalculateAdaptiveSL(isBuy, entryPrice, reason);
+      
+      if(sl > 0) {
+         Print(StringFormat("SL Adaptatif calculé pour %s (%s): Entry=%.5f, SL=%.5f | %s",
+                           m_symbol, m_adaptiveSL.GetAssetTypeName(), entryPrice, sl, reason));
+      }
+      
+      return sl;
    }
    
    //+------------------------------------------------------------------+
@@ -366,14 +498,17 @@ public:
    //+------------------------------------------------------------------+
    double CalculateTP_ATR(bool isBuy, double entryPrice) {
       if(m_atrHandle == INVALID_HANDLE) {
-         m_atrHandle = iATR(m_symbol, m_timeframe, 14);
-         if(m_atrHandle == INVALID_HANDLE) return 0;
+         Print("Erreur: Handle ATR non initialisé. Appelez InitIndicators() dans OnInit()");
+         return 0;
       }
       
       double atr[];
       ArraySetAsSeries(atr, true);
       
-      if(CopyBuffer(m_atrHandle, 0, 0, 1, atr) <= 0) return 0;
+      if(CopyBuffer(m_atrHandle, 0, 0, 1, atr) <= 0) {
+         Print("Erreur CopyBuffer ATR");
+         return 0;
+      }
       
       double tpDistance = atr[0] * m_params.tpATRMultiplier;
       
@@ -406,23 +541,31 @@ public:
    //+------------------------------------------------------------------+
    double CalculateTP_Bollinger(bool isBuy) {
       if(m_bbHandle == INVALID_HANDLE) {
-         m_bbHandle = iBands(m_symbol, m_timeframe, 20, 0, 2.0, PRICE_CLOSE);
-         if(m_bbHandle == INVALID_HANDLE) return 0;
+         Print("Erreur: Handle BB non initialisé. Appelez InitIndicators() dans OnInit()");
+         return 0;
       }
       
       double upper[], lower[];
       ArraySetAsSeries(upper, true);
       ArraySetAsSeries(lower, true);
       
-      if(CopyBuffer(m_bbHandle, 1, 0, 1, upper) <= 0) return 0;
-      if(CopyBuffer(m_bbHandle, 2, 0, 1, lower) <= 0) return 0;
+      // CORRECTION: Copier 2 bougies pour utiliser l'index 1 (bougie fermée)
+      if(CopyBuffer(m_bbHandle, 1, 0, 2, upper) < 2) {
+         Print("Erreur CopyBuffer BB upper");
+         return 0;
+      }
+      if(CopyBuffer(m_bbHandle, 2, 0, 2, lower) < 2) {
+         Print("Erreur CopyBuffer BB lower");
+         return 0;
+      }
       
       double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
       
+      // CORRECTION: Utiliser index 1 (bougie fermée) au lieu de 0 (bougie en cours)
       if(isBuy)
-         return upper[0] + 5 * point;
+         return upper[1] + 5 * point;
       else
-         return lower[0] - 5 * point;
+         return lower[1] - 5 * point;
    }
    
    //+------------------------------------------------------------------+
@@ -488,25 +631,54 @@ public:
    //+------------------------------------------------------------------+
    //| Gestion du Break-Even                                           |
    //+------------------------------------------------------------------+
-   bool CheckBreakEven(ulong ticket, bool isBuy, double entryPrice, double currentSL, double &newSL_out) {
+   bool CheckBreakEven(ulong ticket, bool isBuy, double entryPrice, double currentSL, double &newSL) {
       if(!m_params.useBreakEven) return false;
+      
+      // Vérifier que la position existe encore
+      if(!PositionSelectByTicket(ticket)) {
+         return false;
+      }
+      
+      // CORRECTION: Vérifier si BE déjà activé
+      double ticketSL = PositionGetDouble(POSITION_SL);
+      double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+      double beLevel = entryPrice + (m_params.beOffsetPoints * point * (isBuy ? 1 : -1));
+      
+      // Normaliser le niveau BE pour comparaison
+      int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
+      beLevel = NormalizeDouble(beLevel, digits);
+      
+      // Si SL déjà au niveau BE ou mieux, ne rien faire
+      if(isBuy && ticketSL >= beLevel - point) return false;
+      if(!isBuy && ticketSL <= beLevel + point && ticketSL > 0) return false;
+      
+      // Validation du currentSL
+      if(currentSL <= 0) {
+         currentSL = ticketSL;
+         if(currentSL <= 0) return false;
+      }
       
       double currentPrice = isBuy ? SymbolInfoDouble(m_symbol, SYMBOL_BID) : 
                                     SymbolInfoDouble(m_symbol, SYMBOL_ASK);
       
       double risk = MathAbs(entryPrice - currentSL);
-      double currentReward = isBuy ? (currentPrice - entryPrice) : 
-                                       (entryPrice - currentPrice);
+      if(risk <= 0) return false;
       
-      double currentRR = (risk > 0) ? (currentReward / risk) : 0;
+      double currentReward = isBuy ? (currentPrice - entryPrice) : 
+                                     (entryPrice - currentPrice);
+      
+      if(currentReward <= 0) return false; // Pas encore en profit
+      
+      double currentRR = currentReward / risk;
       
       // Activer BE si le RR est atteint
       if(currentRR >= m_params.beActivationRR) {
-         double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
-         newSL_out = entryPrice + (m_params.beOffsetPoints * point * (isBuy ? 1 : -1));
+         newSL = beLevel;
          
-         // Vérifier que le nouveau SL est meilleur
-         if((isBuy && newSL_out > currentSL) || (!isBuy && newSL_out < currentSL)) {
+         // Vérifier que le nouveau SL est meilleur que le SL actuel
+         if((isBuy && newSL > currentSL) || (!isBuy && newSL < currentSL)) {
+            Print(StringFormat("BE activé: RR=%.2f >= %.2f, SL %.5f -> %.5f",
+                              currentRR, m_params.beActivationRR, currentSL, newSL));
             return true; // Signaler qu'il faut modifier le SL
          }
       }
@@ -520,6 +692,9 @@ public:
    bool CheckTrailingStop(ulong ticket, bool isBuy, double entryPrice, 
                           double currentSL, double &newSL) {
       if(!m_params.useTrailing) return false;
+      
+      // Validation du currentSL
+      if(currentSL <= 0) return false;
       
       double currentPrice = isBuy ? SymbolInfoDouble(m_symbol, SYMBOL_BID) : 
                                     SymbolInfoDouble(m_symbol, SYMBOL_ASK);
@@ -557,7 +732,7 @@ public:
    double CalculateVolume(double riskPercent, double stopLossPoints) {
       if(stopLossPoints <= 0.0) return 0.01;
       
-   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double balance = AccountInfoDouble(ACCOUNT_EQUITY);
    double riskAmount = balance * (riskPercent / 100.0);
    
       double tickSize = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_SIZE);
@@ -606,21 +781,29 @@ private:
       ArraySetAsSeries(highs, true);
       ArraySetAsSeries(lows, true);
       
-      if(CopyHigh(m_symbol, m_timeframe, 1, lookback, highs) <= 0) return entryPrice;
-      if(CopyLow(m_symbol, m_timeframe, 1, lookback, lows) <= 0) return entryPrice;
+      if(CopyHigh(m_symbol, m_timeframe, 1, lookback, highs) <= 0) {
+         Print("Erreur CopyHigh dans FindNearestSR");
+         return 0;
+      }
+      if(CopyLow(m_symbol, m_timeframe, 1, lookback, lows) <= 0) {
+         Print("Erreur CopyLow dans FindNearestSR");
+         return 0;
+      }
       
       // Pour BUY, chercher le dernier low significatif
    if(isBuy) {
-         for(int i = 0; i < lookback - 2; i++) {
-            if(lows[i] < lows[i-1] && lows[i] < lows[i+1] && lows[i] < lows[i+2]) {
+         for(int i = 2; i < lookback - 2; i++) {
+            if(lows[i] < lows[i-1] && lows[i] < lows[i-2] &&
+               lows[i] < lows[i+1] && lows[i] < lows[i+2]) {
                return lows[i];
             }
          }
          return lows[ArrayMinimum(lows)];
    } else {
          // Pour SELL, chercher le dernier high significatif
-         for(int i = 0; i < lookback - 2; i++) {
-            if(highs[i] > highs[i-1] && highs[i] > highs[i+1] && highs[i] > highs[i+2]) {
+         for(int i = 2; i < lookback - 2; i++) {
+            if(highs[i] > highs[i-1] && highs[i] > highs[i-2] &&
+               highs[i] > highs[i+1] && highs[i] > highs[i+2]) {
                return highs[i];
             }
          }

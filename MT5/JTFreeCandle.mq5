@@ -63,11 +63,12 @@ input bool     One_Pos_Per_Symbol  = true;               // 1 position par symbo
 input ulong    Magic               = 20251007;           // Magic Number
 
 input group "═══ Stop Loss Configuration ═══"
-input SL_METHOD SL_Method          = SL_SWING;           // Méthode de Stop Loss
+input SL_METHOD SL_Method          = SL_ADAPTIVE;        // Méthode de Stop Loss (RECOMMANDÉ: ADAPTIVE)
 input int      SL_Period           = 50;                 // Période pour SL Swing (barres)
 input double   SL_ATR_Multiplier   = 2.0;                // Multiplicateur ATR pour SL
 input double   SL_Fixed_Points     = 100;                // Points fixes pour SL
 input double   SL_Percent          = 1.0;                // Pourcentage du prix pour SL
+input double   SL_Volatility_Mult  = 1.0;                // Multiplicateur volatilité (SL Adaptatif)
 input int      SL_Min_Distance     = 20;                 // Distance SL minimale (points)
 input int      SL_Max_Distance     = 1000;               // Distance SL maximale (points)
 
@@ -131,6 +132,7 @@ JTTradeTracker* tracker = NULL;
 
 //---------------------------- Money Management ----------------------------
 JTMoneyManagement* mmManager = NULL;
+int MM_ATR_Handle = INVALID_HANDLE;  // Handle ATR pour le Money Management
 
 //---------------------------- Utils ----------------------------------
 string Sym() { return (InpSymbol=="" ? _Symbol : InpSymbol); }
@@ -199,30 +201,9 @@ bool HaveOpenPos(const string s)
    return HasOpenPosition(s, Magic, direction, ticket);
 }
 
-double NormalizeVolume(double lots, const string s)
-{
-   double minv=SymbolInfoDouble(s, SYMBOL_VOLUME_MIN);
-   double maxv=SymbolInfoDouble(s, SYMBOL_VOLUME_MAX);
-   double step=SymbolInfoDouble(s, SYMBOL_VOLUME_STEP);
-   lots = MathMax(minv, MathMin(maxv, lots));
-   return MathRound(lots/step)*step;
-}
-
-double CalcLotsByRisk(const string s, double sl_dist_price)
-{
-   if(sl_dist_price<=0) return 0.0;
-double eq   = AccountInfoDouble(ACCOUNT_EQUITY);
-double risk = eq * (Risk_Percent/100.0);
-
-   double tick_value = SymbolInfoDouble(s, SYMBOL_TRADE_TICK_VALUE);
-   double tick_size  = SymbolInfoDouble(s, SYMBOL_TRADE_TICK_SIZE);
-   if(tick_value<=0 || tick_size<=0) return 0.0;
-
-   double money_per_lot = (sl_dist_price / tick_size) * tick_value;
-   if(money_per_lot<=0) return 0.0;
-
-   return NormalizeVolume(risk / money_per_lot, s);
-}
+// SUPPRIMÉ: NormalizeVolume et CalcLotsByRisk
+// Ces fonctions sont maintenant gérées par JTMoneyManagement
+// (voir JT_MoneyManagement.mqh -> CalculateVolume et NormalizeVolume)
 
 //---------------------------- Filtre EMA -------------------------------
 bool CheckEMAFilter(int signalDirection)
@@ -454,6 +435,29 @@ int OnInit()
    mmManager = new JTMoneyManagement(s, t);
    
    if(mmManager != NULL) {
+      // Créer le handle ATR si nécessaire (pour les méthodes SL/TP basées sur ATR)
+      if(SL_Method == SL_ATR || TP_Method == TP_ATR) {
+         MM_ATR_Handle = iATR(s, t, ATR_Period);
+         if(MM_ATR_Handle == INVALID_HANDLE) {
+            LogError("Erreur création handle ATR pour Money Management");
+            delete mmManager;
+            mmManager = NULL;
+            return INIT_FAILED;
+         }
+      }
+      
+      // Utiliser les handles existants au lieu de créer des duplicatas
+      if(!mmManager.SetExternalHandles(MM_ATR_Handle, indicators.BB)) {
+         LogError("Erreur configuration handles MM");
+         if(MM_ATR_Handle != INVALID_HANDLE) {
+            IndicatorRelease(MM_ATR_Handle);
+            MM_ATR_Handle = INVALID_HANDLE;
+         }
+         delete mmManager;
+         mmManager = NULL;
+         return INIT_FAILED;
+      }
+      
       // Configurer les paramètres selon les inputs de l'EA
       TPSLParams params;
       
@@ -463,16 +467,17 @@ int OnInit()
       params.slATRMultiplier = SL_ATR_Multiplier;
       params.slFixedPoints = SL_Fixed_Points;
       params.slPercent = SL_Percent;
+      params.slVolatilityMultiplier = SL_Volatility_Mult;
       
       // Configuration TP depuis les inputs
       params.tpMethod = TP_Method;
-      params.tpRRRatio = Min_RR;
+      params.tpRRRatio = Min_RR;  // CORRECTION: Utiliser directement Min_RR
       params.tpSwingPeriod = TP_Period;
       params.tpATRMultiplier = TP_ATR_Multiplier;
       params.tpFixedPoints = TP_Fixed_Points;
       
       // Configuration RR
-      params.minRR = Min_RR;
+      params.minRR = Min_RR * 0.95;  // CORRECTION: Réduire minRR de 5% pour tolérance
       params.maxRR = Max_RR;
       
       // Configuration Break-Even depuis les inputs
@@ -492,6 +497,20 @@ int OnInit()
       
       mmManager.SetParams(params);
       
+      // Initialiser le système adaptatif si nécessaire
+      if(SL_Method == SL_ADAPTIVE) {
+         if(!mmManager.InitAdaptiveSL(ATR_Period)) {
+            LogError("Erreur initialisation système SL adaptatif");
+            delete mmManager;
+            mmManager = NULL;
+            return INIT_FAILED;
+         }
+         LogMessage("Système SL Adaptatif initialisé avec succès");
+         if(SL_Volatility_Mult != 1.0) {
+            LogMessage("  Multiplicateur de volatilité: " + DoubleToString(SL_Volatility_Mult, 2));
+         }
+      }
+      
       // Log de la configuration
       string slMethodStr = "";
       switch(SL_Method) {
@@ -501,6 +520,7 @@ int OnInit()
          case SL_PERCENT: slMethodStr = "PERCENT"; break;
          case SL_BOLLINGER: slMethodStr = "BOLLINGER"; break;
          case SL_SUPPORT_RESISTANCE: slMethodStr = "SUPPORT_RESISTANCE"; break;
+         case SL_ADAPTIVE: slMethodStr = "ADAPTIVE (Multi-Actifs)"; break;
       }
       
       string tpMethodStr = "";
@@ -548,6 +568,12 @@ void OnDeinit(const int reason)
    if(mmManager != NULL) {
       delete mmManager;
       mmManager = NULL;
+   }
+   
+   // Libérer le handle ATR du Money Management
+   if(MM_ATR_Handle != INVALID_HANDLE) {
+      IndicatorRelease(MM_ATR_Handle);
+      MM_ATR_Handle = INVALID_HANDLE;
    }
    
    // Nettoyer les marqueurs Free Candles si souhaité
@@ -774,11 +800,25 @@ void Process()
       return;
    }
    
-   // Calculer le volume en fonction du risque
+   // CORRECTION: Calculer le volume uniquement via Money Manager
    double point = SymbolInfoDouble(s, SYMBOL_POINT);
    double slDistancePoints = MathAbs(entryPrice - sl) / point;
-   double lots = (mmManager != NULL) ? mmManager.CalculateVolume(Risk_Percent, slDistancePoints) : 
-                                       CalcLotsByRisk(s, MathAbs(entryPrice - sl));
+   
+   double lots = 0.0;
+   if(mmManager != NULL) {
+      lots = mmManager.CalculateVolume(Risk_Percent, slDistancePoints);
+   } else {
+      LogError("Money Manager non initialisé - impossible de calculer le volume");
+      return;
+   }
+   
+   // Validation du volume minimal
+   double minLots = SymbolInfoDouble(s, SYMBOL_VOLUME_MIN);
+   if(lots < minLots) {
+      LogError("Volume calculé (" + DoubleToString(lots, 2) + ") inférieur au minimum (" + 
+               DoubleToString(minLots, 2) + ") - Trade annulé");
+      return;
+   }
    
    // Calculer le ratio risque/récompense (RR)
    double reward = isBuy ? (tp - entryPrice) : (entryPrice - tp);
@@ -909,11 +949,17 @@ void ExecuteTradeFromDivergence(int dir)
       return;
    }
    
-   // Calculer le volume en fonction du risque
+   // CORRECTION: Calculer le volume uniquement via Money Manager
    double point = SymbolInfoDouble(s, SYMBOL_POINT);
    double slDistancePoints = MathAbs(entryPrice - sl) / point;
-   double lots = (mmManager != NULL) ? mmManager.CalculateVolume(Risk_Percent, slDistancePoints) : 
-                                       CalcLotsByRisk(s, MathAbs(entryPrice - sl));
+   
+   double lots = 0.0;
+   if(mmManager != NULL) {
+      lots = mmManager.CalculateVolume(Risk_Percent, slDistancePoints);
+   } else {
+      LogError("Money Manager non initialisé - impossible de calculer le volume");
+      return;
+   }
    
    // Calculer le ratio risque/récompense (RR)
    double reward = isBuy ? (tp - entryPrice) : (entryPrice - tp);
@@ -1067,10 +1113,8 @@ void ManageOpenPositions(const string s)
       if(Use_BreakEven && mmManager != NULL) {
          double newSL;
          if(mmManager.CheckBreakEven(tk, type==POSITION_TYPE_BUY, op, sl, newSL)) {
-            if((type==POSITION_TYPE_BUY && sl<newSL) || (type==POSITION_TYPE_SELL && (sl==0.0 || sl>newSL))) {
-               ModifyPosition(trade, tk, newSL, tp);
-               LogMessage("Break-Even activé pour ticket " + IntegerToString(tk));
-            }
+            ModifyPosition(trade, tk, newSL, tp);
+            LogMessage("Break-Even activé pour ticket " + IntegerToString(tk));
          }
       }
       // BE sur médiane (ancienne logique, utilisée si nouveau système désactivé)
