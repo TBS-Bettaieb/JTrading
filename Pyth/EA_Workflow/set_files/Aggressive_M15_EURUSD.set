@@ -1,0 +1,19 @@
+; Configuration: Aggressive_M15_EURUSD
+; Description: Trading agressif sur M15
+; Generated: 2025.10.12 12:49:09
+
+InpSymbol=EURUSD
+InpTF=15
+BB_Period=15
+BB_Dev=1.8
+Use_RSI_Filter=true
+RSI_Oversold=30.0
+RSI_Overbought=70.0
+Use_EMA_Filter=false
+Use_Divergence_Validator=false
+Mode=1
+Risk_Percent=1.0
+Min_RR=1.8
+SL_Period=30
+TP_Period=20
+Magic=20258370
