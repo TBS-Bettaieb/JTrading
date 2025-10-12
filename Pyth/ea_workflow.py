@@ -30,16 +30,20 @@ class EAWorkflow:
         (self.workflow_dir / "reports").mkdir(exist_ok=True)
         (self.workflow_dir / "results").mkdir(exist_ok=True)
     
-    def step1_generate_configs(self, strategy: str = "smart"):
+    def step1_generate_configs(self, strategy: str = "smart", max_configs: int = None):
         """
         Étape 1: Générer les configurations
         
         Args:
             strategy: 'smart', 'grid', ou 'random'
+            max_configs: Nombre maximum de configurations à générer (None = illimité)
         """
         print("\n" + "="*60)
         print("ÉTAPE 1: GÉNÉRATION DES CONFIGURATIONS")
         print("="*60)
+        
+        if max_configs:
+            print(f"⚠️  Limite: {max_configs:,} configurations maximum")
         
         configs = []
         
@@ -48,7 +52,7 @@ class EAWorkflow:
             configs = self._generate_smart_configs()
         elif strategy == "grid":
             print("Génération via Grid Search...")
-            configs = self._generate_grid_configs()
+            configs = self._generate_grid_configs(max_configs)
         elif strategy == "random":
             print("Génération via Random Search...")
             configs = self._generate_random_configs()
@@ -181,33 +185,131 @@ class EAWorkflow:
             }
         ]
     
-    def _generate_grid_configs(self):
-        """Génère des configs par grid search (limité)"""
+    def _generate_grid_configs(self, max_configs: int = None):
+        """
+        Génère TOUTES les combinaisons possibles de paramètres
+        
+        Args:
+            max_configs: Nombre maximum de configurations à générer (None = illimité)
+        """
+        import itertools
+        
+        # Plages étendues de paramètres
+        bb_periods = [10, 15, 20, 25, 30, 40, 50]
+        bb_devs = [1.5, 1.8, 2.0, 2.2, 2.5, 3.0]
+        rsi_periods = [10, 14, 21, 28]
+        rsi_oversolds = [20, 25, 30, 35]
+        rsi_overboughts = [65, 70, 75, 80]
+        ema_fast_periods = [20, 30, 50, 75, 100]
+        ema_slow_periods = [50, 100, 150, 200]
+        ema_filter_modes = ['TREND', 'COUNTER', 'ZONE']
+        modes = ['REVERSION', 'BREAKOUT']
+        risk_percents = [0.3, 0.5, 0.8, 1.0, 1.5, 2.0]
+        min_rrs = [1.5, 2.0, 2.5, 3.0, 3.5]
+        sl_periods = [20, 30, 50, 75, 100]
+        tp_periods = [15, 20, 30, 40, 50]
+        use_rsi_filters = [True, False]
+        use_ema_filters = [True, False]
+        use_divergence_validators = [True, False]
+        
+        # Calculer le nombre total de combinaisons possibles
+        total_combinations = (
+            len(bb_periods) * len(bb_devs) * len(rsi_periods) * 
+            len(rsi_oversolds) * len(rsi_overboughts) * len(ema_fast_periods) * 
+            len(ema_slow_periods) * len(ema_filter_modes) * len(modes) * 
+            len(risk_percents) * len(min_rrs) * len(sl_periods) * 
+            len(tp_periods) * len(use_rsi_filters) * len(use_ema_filters) * 
+            len(use_divergence_validators)
+        )
+        
+        # Estimation du nombre de configurations valides (80% du total)
+        estimated_valid = int(total_combinations * 0.80)
+        
+        print(f"\n🔢 Nombre total de combinaisons théoriques: {total_combinations:,}")
+        print(f"📊 Estimation après filtrage: ~{estimated_valid:,} configurations valides")
+        
+        if max_configs:
+            print(f"⚠️  LIMITE ACTIVE: Génération de seulement {max_configs:,} configurations")
+        else:
+            print(f"⚠️  AUCUNE LIMITE: Génération de TOUTES les configurations possibles")
+            print(f"⏱️  Temps estimé: {estimated_valid/10000:.1f} secondes (~{estimated_valid/600000:.1f} heures)")
+            print(f"💾 Espace disque estimé: {estimated_valid/1024:.1f} MB")
+        
+        print(f"\n⏳ Génération en cours...\n")
+        
         configs = []
-        symbols = ['EURUSD', 'GBPUSD']
-        timeframes = ['M15', 'H1']
-        bb_periods = [15, 20, 25]
-        rr_ratios = [2.0, 2.5, 3.0]
-        
         idx = 0
-        for symbol in symbols:
-            for tf in timeframes:
-                for bb_period in bb_periods:
-                    for min_rr in rr_ratios:
-                        configs.append({
-                            'name': f'Grid_{idx}_{symbol}_{tf}',
-                            'symbol': symbol,
-                            'timeframe': tf,
-                            'parameters': {
-                                'BB_Period': bb_period,
-                                'BB_Dev': 2.0,
-                                'Risk_Percent': 1.0,
-                                'Min_RR': min_rr
-                            }
-                        })
-                        idx += 1
+        valid_count = 0
         
-        return configs[:20]  # Limiter à 20 configs
+        # Générer toutes les combinaisons
+        all_combos = itertools.product(
+            bb_periods, bb_devs, rsi_periods, rsi_oversolds, rsi_overboughts,
+            ema_fast_periods, ema_slow_periods, ema_filter_modes, modes,
+            risk_percents, min_rrs, sl_periods, tp_periods,
+            use_rsi_filters, use_ema_filters, use_divergence_validators
+        )
+        
+        for combo in all_combos:
+            # Vérifier la limite
+            if max_configs and valid_count >= max_configs:
+                print(f"\n⚠️  Limite de {max_configs:,} configurations atteinte")
+                break
+            
+            (bb_period, bb_dev, rsi_period, rsi_oversold, rsi_overbought,
+             ema_fast, ema_slow, ema_filter_mode, mode,
+             risk_percent, min_rr, sl_period, tp_period,
+             use_rsi, use_ema, use_div) = combo
+            
+            idx += 1
+            
+            # Vérifications de cohérence
+            if ema_fast >= ema_slow:
+                continue
+            if rsi_oversold >= rsi_overbought:
+                continue
+            
+            valid_count += 1
+            
+            # Afficher la progression tous les 1000 configs (ou tous les 100 si max_configs < 1000)
+            progress_interval = 100 if (max_configs and max_configs < 1000) else 1000
+            if valid_count % progress_interval == 0 or (max_configs and valid_count == max_configs):
+                if max_configs:
+                    progress = (valid_count / max_configs) * 100
+                    print(f"Génération: {valid_count:,}/{max_configs:,} configs ({progress:.1f}%)")
+                else:
+                    progress = (idx / total_combinations) * 100
+                    print(f"Génération: {valid_count:,} configs valides | Progression: {idx:,}/{total_combinations:,} ({progress:.3f}%)")
+            
+            configs.append({
+                'name': f'Grid_Params_{valid_count:04d}',
+                'symbol': 'UNIVERSAL',  # Sera défini dans MT5
+                'timeframe': 'UNIVERSAL',  # Sera défini dans MT5
+                'description': f'Grid search config #{valid_count}',
+                'parameters': {
+                    'BB_Period': bb_period,
+                    'BB_Dev': bb_dev,
+                    'RSI_Period': rsi_period,
+                    'RSI_Oversold': rsi_oversold,
+                    'RSI_Overbought': rsi_overbought,
+                    'Use_RSI_Filter': use_rsi,
+                    'EMA_Fast_Period': ema_fast,
+                    'EMA_Slow_Period': ema_slow,
+                    'EMA_Filter_Mode': ema_filter_mode,
+                    'Use_EMA_Filter': use_ema,
+                    'Use_Divergence_Validator': use_div,
+                    'Mode': mode,
+                    'Risk_Percent': risk_percent,
+                    'Min_RR': min_rr,
+                    'SL_Period': sl_period,
+                    'TP_Period': tp_period
+                }
+            })
+        
+        print(f"\n✅ Génération terminée: {len(configs):,} configurations valides générées")
+        if not max_configs:
+            print(f"📊 Taux de réussite: {(len(configs)/total_combinations)*100:.1f}%")
+        
+        return configs
     
     def _generate_random_configs(self):
         """Génère des configs aléatoires"""
@@ -246,33 +348,43 @@ class EAWorkflow:
             configs = json.load(f)
         
         set_dir = self.workflow_dir / "set_files"
+        total = len(configs)
         
-        for config in configs:
+        print(f"\n📝 Génération de {total:,} fichiers .set...")
+        print(f"📂 Destination: {set_dir}\n")
+        
+        for i, config in enumerate(configs, 1):
             set_filename = set_dir / f"{config['name']}.set"
             self._write_set_file(config, set_filename)
-            print(f"✅ Créé: {set_filename.name}")
+            
+            # Afficher la progression
+            if i % 100 == 0 or i == total:
+                progress = (i / total) * 100
+                bar_length = 40
+                filled = int(bar_length * i / total)
+                bar = '█' * filled + '░' * (bar_length - filled)
+                print(f"\r[{bar}] {i:,}/{total:,} ({progress:.1f}%)", end='', flush=True)
         
-        print(f"\n📁 {len(configs)} fichiers .set créés dans: {set_dir}")
-        print("\n📋 PROCHAINES ÉTAPES:")
-        print("1. Ouvrez MetaTrader 5")
-        print("2. Allez dans Outils > Options > Strategy Tester")
-        print("3. Chargez les fichiers .set pour tester chaque configuration")
+        print(f"\n\n✅ {total:,} fichiers .set créés avec succès!")
+        print(f"📁 Dossier: {set_dir.absolute()}")
+        print("\n📋 UTILISATION DANS MT5:")
+        print("1. Ouvrez MetaTrader 5 Strategy Tester")
+        print("2. Sélectionnez l'EA JTFreeCandle_v2")
+        print("3. Définissez le symbole et timeframe souhaités")
+        print("4. Cliquez sur 'Charger' et sélectionnez un fichier .set")
+        print("5. Les paramètres seront appliqués, mais symbole/TF restent ceux que vous avez définis")
     
     def _write_set_file(self, config: dict, filename: Path):
-        """Écrit un fichier .set"""
+        """Écrit un fichier .set (SANS symbole et timeframe)"""
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(f"; Configuration: {config['name']}\n")
             f.write(f"; Description: {config.get('description', '')}\n")
-            f.write(f"; Generated: {datetime.now().strftime('%Y.%m.%d %H:%M:%S')}\n\n")
+            f.write(f"; Generated: {datetime.now().strftime('%Y.%m.%d %H:%M:%S')}\n")
+            f.write(f"; REMARQUE: Symbole et Timeframe doivent être définis dans MT5\n\n")
             
-            # Paramètres de base
-            f.write(f"InpSymbol={config['symbol']}\n")
+            # NE PLUS ÉCRIRE InpSymbol et InpTF - ils seront définis dans MT5
             
-            # Timeframe
-            tf_map = {'M1': 1, 'M5': 5, 'M15': 15, 'M30': 30, 'H1': 16385, 'H4': 16388, 'D1': 16408}
-            f.write(f"InpTF={tf_map.get(config['timeframe'], 16385)}\n")
-            
-            # Tous les autres paramètres
+            # Tous les paramètres de stratégie
             for key, value in config.get('parameters', {}).items():
                 if isinstance(value, bool):
                     f.write(f"{key}={'true' if value else 'false'}\n")
@@ -580,12 +692,13 @@ class EAWorkflow:
         </html>
         """
     
-    def run_complete_workflow(self, strategy: str = "smart"):
+    def run_complete_workflow(self, strategy: str = "smart", max_configs: int = None):
         """
         Exécute le workflow complet automatiquement
         
         Args:
             strategy: Type de génération de configs ('smart', 'grid', 'random')
+            max_configs: Nombre maximum de configurations (None = illimité)
         """
         print("\n" + "="*70)
         print("   🚀 WORKFLOW COMPLET EA JTFreeCandle_v2")
@@ -593,7 +706,7 @@ class EAWorkflow:
         
         try:
             # Étape 1
-            configs = self.step1_generate_configs(strategy)
+            configs = self.step1_generate_configs(strategy, max_configs)
             if not configs:
                 return
             
@@ -634,7 +747,7 @@ def main():
     
     print("\nOptions disponibles:")
     print("1. Workflow complet automatique (Smart Configs)")
-    print("2. Workflow complet automatique (Grid Search)")
+    print("2. Workflow complet automatique (Grid Search - LIMITÉ)")
     print("3. Générer seulement les configurations")
     print("4. Générer seulement les fichiers .set")
     print("5. Analyser les résultats existants")
@@ -646,10 +759,37 @@ def main():
     if choice == "1":
         workflow.run_complete_workflow("smart")
     elif choice == "2":
-        workflow.run_complete_workflow("grid")
+        print("\n⚠️  ATTENTION: Le Grid Search peut générer 1.5 MILLIARD de combinaisons!")
+        print("Il est FORTEMENT recommandé de limiter le nombre de configurations.")
+        print("\nLimites suggérées:")
+        print("  - 1,000 configs  : Test rapide (~2 minutes)")
+        print("  - 10,000 configs : Test approfondi (~20 minutes)")
+        print("  - 100,000 configs: Test exhaustif (~3 heures)")
+        print("  - Aucune limite  : TOUTES les combinaisons (TRÈS LONG)")
+        
+        limit_input = input("\nNombre max de configs (Enter = 10,000 par défaut): ").strip()
+        if limit_input:
+            try:
+                max_configs = int(limit_input)
+                if max_configs <= 0:
+                    print("❌ Nombre invalide, utilisation de 10,000 par défaut")
+                    max_configs = 10000
+            except ValueError:
+                print("❌ Nombre invalide, utilisation de 10,000 par défaut")
+                max_configs = 10000
+        else:
+            max_configs = 10000
+        
+        workflow.run_complete_workflow("grid", max_configs)
     elif choice == "3":
         strategy = input("Type (smart/grid/random): ").strip() or "smart"
-        workflow.step1_generate_configs(strategy)
+        
+        if strategy == "grid":
+            limit_input = input("Nombre max de configs (Enter = 10,000): ").strip()
+            max_configs = int(limit_input) if limit_input else 10000
+            workflow.step1_generate_configs(strategy, max_configs)
+        else:
+            workflow.step1_generate_configs(strategy)
     elif choice == "4":
         config_files = list(workflow.workflow_dir.glob("configs/configs_*.json"))
         if not config_files:
