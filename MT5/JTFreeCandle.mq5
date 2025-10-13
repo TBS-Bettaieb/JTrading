@@ -3,7 +3,7 @@
 //|                      Entrée sur bougie hors Bollinger (MT5)      |
 //+------------------------------------------------------------------+
 #property copyright "(c) 2025"
-#property version   "1.0"
+#property version   "1.1"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -14,23 +14,35 @@
 #include "common/JT_TradeTracker.mqh"
 CTrade trade;
 
+//---------------------------- Profils de Stratégie --------------------------------
+enum STRATEGY_PROFILE {
+   CONSERVATIVE=0,    // Conservateur (BB 20/2.0, RSI 25/75, EMA TREND, Risk 0.5%, RR 2.5)
+   AGGRESSIVE=1,      // Agressif (BB 15/1.8, RSI 30/70, EMA OFF, Risk 1.0%, RR 1.8)
+   COUNTER_TREND=2,   // Contre-tendance (BB 25/2.5, RSI 29/71, EMA COUNTER, Risk 0.3%, RR 3.0)
+   BREAKOUT_MODE=3,   // Breakout (BB 20/1.5, Mode BREAKOUT, RSI OFF, Risk 0.8%, RR 2.0)
+   CUSTOM=4           // Personnalisé (utilise les inputs ci-dessous)
+};
+
 //---------------------------- Inputs --------------------------------
+input group "═══ Profil de Stratégie ═══"
+input STRATEGY_PROFILE Strategy_Profile = CUSTOM;        // Profil prédéfini
+
 input group "═══ Symbole et Timeframe ═══"
 input string   InpSymbol           = "";                 // Symbole (vide = _Symbol)
 input ENUM_TIMEFRAMES InpTF        = PERIOD_CURRENT;     // Timeframe
 
-input group "═══ Bollinger Bands ═══"
+input group "═══ Bollinger Bands (mode CUSTOM) ═══"
 input int      BB_Period           = 20;                 // Période
 input double   BB_Dev              = 2.0;                // Déviation
 input int      BB_Shift            = 0;                  // Shift
 
-input group "═══ RSI - Filtre de confirmation ═══"
+input group "═══ RSI - Filtre de confirmation (mode CUSTOM) ═══"
 input bool     Use_RSI_Filter      = true;               // Activer filtre RSI
 input int      RSI_Period          = 14;                 // Période RSI
 input double   RSI_Oversold        = 29.0;               // Seuil survente (pour BUY)
 input double   RSI_Overbought      = 71.0;               // Seuil surachat (pour SELL)
 
-input group "═══ EMA - Filtre de tendance ═══"
+input group "═══ EMA - Filtre de tendance (mode CUSTOM) ═══"
 input bool     Use_EMA_Filter      = true;               // Activer filtre EMA
 input int      EMA_Fast_Period     = 50;                 // Période EMA rapide
 input int      EMA_Slow_Period     = 100;                // Période EMA lente
@@ -48,7 +60,7 @@ input double   Div_RSI_Buy_Level   = 35.0;               // Seuil RSI pour valid
 input double   Div_RSI_Sell_Level  = 65.0;               // Seuil RSI pour validation SELL
 input int      Div_Swing_Length    = 5;                  // Longueur pivot pour divergence
 
-input group "═══ Mode d'Entrée ═══"
+input group "═══ Mode d'Entrée (mode CUSTOM) ═══"
 enum EntryMode { REVERSION=0, BREAKOUT=1 };
 input EntryMode Mode               = REVERSION;          // Type d'entrée
 enum TradeDirection { DIR_BOTH=0, DIR_ONLY_BUY=1, DIR_ONLY_SELL=2 };
@@ -56,14 +68,14 @@ input TradeDirection TradeDir      = DIR_BOTH;           // Filtre direction
 input int      OutsidePaddingPoints  = 5;                // Marge mini au-delà de la bande (points)
 input bool     BodyMustBeOutside     = true;             // Seulement le corps hors bande
 
-input group "═══ Money Management ═══"
+input group "═══ Money Management (mode CUSTOM) ═══"
 enum RISK_BASE { RISK_BALANCE=0, RISK_EQUITY=1 };
 input RISK_BASE Risk_Base = RISK_EQUITY;  // Calculer risque sur
 input double   Risk_Percent        = 0.1;                // % risque par trade
 input bool     One_Pos_Per_Symbol  = false;               // 1 position par symbole max
 input ulong    Magic               = 20251007;           // Magic Number
 
-input group "═══ Stop Loss & Take Profit ═══"
+input group "═══ Stop Loss & Take Profit (mode CUSTOM) ═══"
 input int      SL_Period           = 50;                 // Période pour SL (barres)
 input int      TP_Period           = 30;                 // Période pour TP (barres)
 input double   Min_RR              = 2.0;                // Ratio RR minimum (0 = désactivé)
@@ -108,6 +120,22 @@ JTDivergenceValidator divValidator;
 
 //---------------------------- Trade Tracker -------------------------------
 JTTradeTracker* tracker = NULL;
+
+//---------------------------- Variables Globales (Profil Actif) ----------
+int      g_BB_Period;
+double   g_BB_Dev;
+bool     g_Use_RSI_Filter;
+int      g_RSI_Period;
+double   g_RSI_Oversold;
+double   g_RSI_Overbought;
+bool     g_Use_EMA_Filter;
+int      g_EMA_Fast_Period;
+int      g_EMA_Slow_Period;
+EMA_MODE g_EMA_Filter_Mode;
+double   g_EMA_Zone_Distance;
+EntryMode g_Mode;
+double   g_Risk_Percent;
+double   g_Min_RR;
 
 //---------------------------- Utils ----------------------------------
 string Sym() { return (InpSymbol=="" ? _Symbol : InpSymbol); }
@@ -189,7 +217,7 @@ double CalcLotsByRisk(const string s, double sl_dist_price)
 {
    if(sl_dist_price<=0) return 0.0;
 double eq   = (Risk_Base == RISK_BALANCE) ? AccountInfoDouble(ACCOUNT_BALANCE) : AccountInfoDouble(ACCOUNT_EQUITY);
-double risk = eq * (Risk_Percent/100.0);
+double risk = eq * (g_Risk_Percent/100.0);
 
    double tick_value = SymbolInfoDouble(s, SYMBOL_TRADE_TICK_VALUE);
    double tick_size  = SymbolInfoDouble(s, SYMBOL_TRADE_TICK_SIZE);
@@ -204,7 +232,7 @@ double risk = eq * (Risk_Percent/100.0);
 //---------------------------- Filtre EMA -------------------------------
 bool CheckEMAFilter(int signalDirection)
 {
-   if(!Use_EMA_Filter) return true;
+   if(!g_Use_EMA_Filter) return true;
    
    double emaFast[], emaSlow[];
    ArraySetAsSeries(emaFast, true);
@@ -227,7 +255,7 @@ bool CheckEMAFilter(int signalDirection)
    string modeStr = "";
    bool filterPassed = false;
    
-   switch(EMA_Filter_Mode) {
+   switch(g_EMA_Filter_Mode) {
       case EMA_TREND: {
          // Mode TREND : Trade dans le sens de la tendance
          modeStr = "TREND";
@@ -252,16 +280,16 @@ bool CheckEMAFilter(int signalDirection)
          modeStr = "COUNTER";
          double distance = MathAbs(price - emaFast[0]) / point;
          if(signalDirection > 0) { // BUY
-            filterPassed = !uptrend && (price < emaFast[0]) && (distance > EMA_Zone_Distance);
+            filterPassed = !uptrend && (price < emaFast[0]) && (distance > g_EMA_Zone_Distance);
             if(!filterPassed) {
                LogMessage("Filtre EMA COUNTER: Rejet BUY - Distance=" + DoubleToString(distance,1) + 
-                         "pts < " + DoubleToString(EMA_Zone_Distance,1) + "pts");
+                         "pts < " + DoubleToString(g_EMA_Zone_Distance,1) + "pts");
             }
          } else { // SELL
-            filterPassed = uptrend && (price > emaFast[0]) && (distance > EMA_Zone_Distance);
+            filterPassed = uptrend && (price > emaFast[0]) && (distance > g_EMA_Zone_Distance);
             if(!filterPassed) {
                LogMessage("Filtre EMA COUNTER: Rejet SELL - Distance=" + DoubleToString(distance,1) + 
-                         "pts < " + DoubleToString(EMA_Zone_Distance,1) + "pts");
+                         "pts < " + DoubleToString(g_EMA_Zone_Distance,1) + "pts");
             }
          }
          break;
@@ -272,8 +300,8 @@ bool CheckEMAFilter(int signalDirection)
          modeStr = "ZONE";
          double maxEMA = MathMax(emaFast[0], emaSlow[0]);
          double minEMA = MathMin(emaFast[0], emaSlow[0]);
-         bool inZone = (price < maxEMA + EMA_Zone_Distance * point) && 
-                       (price > minEMA - EMA_Zone_Distance * point);
+         bool inZone = (price < maxEMA + g_EMA_Zone_Distance * point) && 
+                       (price > minEMA - g_EMA_Zone_Distance * point);
          filterPassed = !inZone;
          if(!filterPassed) {
             LogMessage("Filtre EMA ZONE: Rejet - Prix dans zone neutre [" + 
@@ -290,13 +318,119 @@ bool CheckEMAFilter(int signalDirection)
    return filterPassed;
 }
 
+//---------------------------- Chargement des Profils ------------------
+void LoadProfileSettings()
+{
+   switch(Strategy_Profile)
+   {
+      case CONSERVATIVE:
+         // BB 20/2.0, RSI 25/75, EMA TREND, Risk 0.5%, RR 2.5
+         g_BB_Period = 20;
+         g_BB_Dev = 2.0;
+         g_Use_RSI_Filter = true;
+         g_RSI_Period = 14;
+         g_RSI_Oversold = 25.0;
+         g_RSI_Overbought = 75.0;
+         g_Use_EMA_Filter = true;
+         g_EMA_Fast_Period = 50;
+         g_EMA_Slow_Period = 100;
+         g_EMA_Filter_Mode = EMA_TREND;
+         g_EMA_Zone_Distance = 20.0;
+         g_Mode = REVERSION;
+         g_Risk_Percent = 0.5;
+         g_Min_RR = 2.5;
+         LogMessage("✓ Profil CONSERVATIVE chargé");
+         break;
+         
+      case AGGRESSIVE:
+         // BB 15/1.8, RSI 30/70, EMA OFF, Risk 1.0%, RR 1.8
+         g_BB_Period = 15;
+         g_BB_Dev = 1.8;
+         g_Use_RSI_Filter = true;
+         g_RSI_Period = 14;
+         g_RSI_Oversold = 30.0;
+         g_RSI_Overbought = 70.0;
+         g_Use_EMA_Filter = false;
+         g_EMA_Fast_Period = 50;
+         g_EMA_Slow_Period = 100;
+         g_EMA_Filter_Mode = EMA_TREND;
+         g_EMA_Zone_Distance = 20.0;
+         g_Mode = REVERSION;
+         g_Risk_Percent = 1.0;
+         g_Min_RR = 1.8;
+         LogMessage("✓ Profil AGGRESSIVE chargé");
+         break;
+         
+      case COUNTER_TREND:
+         // BB 25/2.5, RSI 29/71, EMA COUNTER, Risk 0.3%, RR 3.0
+         g_BB_Period = 25;
+         g_BB_Dev = 2.5;
+         g_Use_RSI_Filter = true;
+         g_RSI_Period = 14;
+         g_RSI_Oversold = 29.0;
+         g_RSI_Overbought = 71.0;
+         g_Use_EMA_Filter = true;
+         g_EMA_Fast_Period = 50;
+         g_EMA_Slow_Period = 100;
+         g_EMA_Filter_Mode = EMA_COUNTER;
+         g_EMA_Zone_Distance = 20.0;
+         g_Mode = REVERSION;
+         g_Risk_Percent = 0.3;
+         g_Min_RR = 3.0;
+         LogMessage("✓ Profil COUNTER_TREND chargé");
+         break;
+         
+      case BREAKOUT_MODE:
+         // BB 20/1.5, Mode BREAKOUT, RSI OFF, Risk 0.8%, RR 2.0
+         g_BB_Period = 20;
+         g_BB_Dev = 1.5;
+         g_Use_RSI_Filter = false;
+         g_RSI_Period = 14;
+         g_RSI_Oversold = 29.0;
+         g_RSI_Overbought = 71.0;
+         g_Use_EMA_Filter = false;
+         g_EMA_Fast_Period = 50;
+         g_EMA_Slow_Period = 100;
+         g_EMA_Filter_Mode = EMA_TREND;
+         g_EMA_Zone_Distance = 20.0;
+         g_Mode = BREAKOUT;
+         g_Risk_Percent = 0.8;
+         g_Min_RR = 2.0;
+         LogMessage("✓ Profil BREAKOUT_MODE chargé");
+         break;
+         
+      case CUSTOM:
+      default:
+         // Utiliser les inputs directs
+         g_BB_Period = BB_Period;
+         g_BB_Dev = BB_Dev;
+         g_Use_RSI_Filter = Use_RSI_Filter;
+         g_RSI_Period = RSI_Period;
+         g_RSI_Oversold = RSI_Oversold;
+         g_RSI_Overbought = RSI_Overbought;
+         g_Use_EMA_Filter = Use_EMA_Filter;
+         g_EMA_Fast_Period = EMA_Fast_Period;
+         g_EMA_Slow_Period = EMA_Slow_Period;
+         g_EMA_Filter_Mode = EMA_Filter_Mode;
+         g_EMA_Zone_Distance = EMA_Zone_Distance;
+         g_Mode = Mode;
+         g_Risk_Percent = Risk_Percent;
+         g_Min_RR = Min_RR;
+         LogMessage("✓ Profil CUSTOM chargé - utilisation des inputs personnalisés");
+         break;
+   }
+}
+
 //---------------------------- Lifecycle -------------------------------
 int OnInit()
 {
+   // Charger les paramètres du profil sélectionné
+   LoadProfileSettings();
+   
    string s = Sym(); ENUM_TIMEFRAMES t = TF();
 
    // Initialiser les indicateurs via la structure
-   if(!InitIndicators(indicators, s, t, BB_Period, BB_Dev, BB_Shift, RSI_Period)) {
+   if(!InitIndicators(indicators, s, t, g_BB_Period, g_BB_Dev, BB_Shift, g_RSI_Period)) {
       return INIT_FAILED;
    }
    
@@ -311,9 +445,9 @@ int OnInit()
    }
    
    // Initialiser les EMAs si le filtre est activé
-   if(Use_EMA_Filter) {
-      EMA_Fast_Handle = iMA(s, t, EMA_Fast_Period, 0, MODE_EMA, PRICE_CLOSE);
-      EMA_Slow_Handle = iMA(s, t, EMA_Slow_Period, 0, MODE_EMA, PRICE_CLOSE);
+   if(g_Use_EMA_Filter) {
+      EMA_Fast_Handle = iMA(s, t, g_EMA_Fast_Period, 0, MODE_EMA, PRICE_CLOSE);
+      EMA_Slow_Handle = iMA(s, t, g_EMA_Slow_Period, 0, MODE_EMA, PRICE_CLOSE);
       
       if(EMA_Fast_Handle == INVALID_HANDLE || EMA_Slow_Handle == INVALID_HANDLE) {
          LogError("Erreur d'initialisation des EMAs");
@@ -322,20 +456,20 @@ int OnInit()
       
       // Afficher les EMAs sur le graphe
       if(!ChartIndicatorAdd(0, 0, EMA_Fast_Handle)) {
-         Print("Attention: impossible d'afficher EMA" + IntegerToString(EMA_Fast_Period));
+         Print("Attention: impossible d'afficher EMA" + IntegerToString(g_EMA_Fast_Period));
       }
       if(!ChartIndicatorAdd(0, 0, EMA_Slow_Handle)) {
-         Print("Attention: impossible d'afficher EMA" + IntegerToString(EMA_Slow_Period));
+         Print("Attention: impossible d'afficher EMA" + IntegerToString(g_EMA_Slow_Period));
       }
       
       string modeText = "";
-      switch(EMA_Filter_Mode) {
+      switch(g_EMA_Filter_Mode) {
          case EMA_TREND: modeText = "TREND (suivre tendance)"; break;
          case EMA_COUNTER: modeText = "COUNTER (contre-tendance)"; break;
          case EMA_ZONE: modeText = "ZONE (éviter zone neutre)"; break;
       }
-      LogMessage("Filtre EMA activé: EMA" + IntegerToString(EMA_Fast_Period) + "/EMA" + 
-                 IntegerToString(EMA_Slow_Period) + " - Mode: " + modeText);
+      LogMessage("Filtre EMA activé: EMA" + IntegerToString(g_EMA_Fast_Period) + "/EMA" + 
+                 IntegerToString(g_EMA_Slow_Period) + " - Mode: " + modeText);
    }
 
    trade.SetExpertMagicNumber((long)Magic);
@@ -404,11 +538,11 @@ int OnInit()
    tracker = new JTTradeTracker(
       s,                               // Symbol
       Magic,                           // Magic number
-      BB_Period,                       // BB period
-      BB_Dev,                          // BB deviation
-      RSI_Period,                      // RSI period
-      Use_EMA_Filter ? EMA_Fast_Period : 50,  // EMA fast
-      Use_EMA_Filter ? EMA_Slow_Period : 100  // EMA slow
+      g_BB_Period,                     // BB period
+      g_BB_Dev,                        // BB deviation
+      g_RSI_Period,                    // RSI period
+      g_Use_EMA_Filter ? g_EMA_Fast_Period : 50,  // EMA fast
+      g_Use_EMA_Filter ? g_EMA_Slow_Period : 100  // EMA slow
    );
    
    if(tracker != NULL) {
@@ -547,7 +681,7 @@ int SignalFromClosedBarStrict()
 
    // Déterminer le signal potentiel
    int signal = 0;
-   if(Mode==REVERSION){
+   if(g_Mode==REVERSION){
       if(outsideBearAbove) signal = -1; // SELL
       if(outsideBullBelow) signal = +1; // BUY
    }else{
@@ -565,21 +699,21 @@ int SignalFromClosedBarStrict()
    }
    
    // Appliquer le filtre RSI si activé
-   if(Use_RSI_Filter) {
+   if(g_Use_RSI_Filter) {
       double currentRSI = buffers.RSI[1];  // RSI de la bougie fermée
       LogMessage("RSI valeur: " + DoubleToString(currentRSI, 2));
       
       // Pour un signal BUY, vérifier que RSI est en survente
-      if(signal > 0 && currentRSI >= RSI_Oversold) {
+      if(signal > 0 && currentRSI >= g_RSI_Oversold) {
          LogMessage("Signal BUY rejeté - RSI " + DoubleToString(currentRSI, 2) + 
-                    " >= seuil oversold " + DoubleToString(RSI_Oversold, 2));
+                    " >= seuil oversold " + DoubleToString(g_RSI_Oversold, 2));
          return 0;
       }
       
       // Pour un signal SELL, vérifier que RSI est en surachat
-      if(signal < 0 && currentRSI <= RSI_Overbought) {
+      if(signal < 0 && currentRSI <= g_RSI_Overbought) {
          LogMessage("Signal SELL rejeté - RSI " + DoubleToString(currentRSI, 2) + 
-                    " <= seuil overbought " + DoubleToString(RSI_Overbought, 2));
+                    " <= seuil overbought " + DoubleToString(g_RSI_Overbought, 2));
          return 0;
       }
       
@@ -656,7 +790,7 @@ void Process()
    bool isBuy = (dir > 0);
    
    // Calculer SL/TP basés sur les plus hauts/plus bas avec ATR fallback
-   if(!CalculateSwingSLTP(s, t, isBuy, SL_Period, TP_Period, sl, tp, 0.0, Min_RR, 1000, ATR_Multiplier, ATR_Period)) {
+   if(!CalculateSwingSLTP(s, t, isBuy, SL_Period, TP_Period, sl, tp, 0.0, g_Min_RR, 1000, ATR_Multiplier, ATR_Period)) {
       LogError("Erreur lors du calcul des niveaux SL/TP");
       return;
    }
@@ -685,9 +819,9 @@ void Process()
               ", Lots: " + DoubleToString(lots, 2));
    
    // Vérifier le seuil RR minimum
-   if(Min_RR > 0 && rr < Min_RR) {
+   if(g_Min_RR > 0 && rr < g_Min_RR) {
       LogMessage("Trade rejeté - RR insuffisant: 1:" + DoubleToString(rr, 2) + 
-                 " < minimum requis: 1:" + DoubleToString(Min_RR, 2));
+                 " < minimum requis: 1:" + DoubleToString(g_Min_RR, 2));
       return;
    }
    
@@ -703,10 +837,10 @@ void Process()
          OpenBuyPosition(trade, s, lots, ask, sl, tp, orderComment);
          // Enregistrer le trade dans le tracker (sans divergence)
          if(trade.ResultOrder() > 0 && tracker != NULL) {
-            string tradeMode = (Mode == REVERSION ? "REVERSION" : "BREAKOUT");
+            string tradeMode = (g_Mode == REVERSION ? "REVERSION" : "BREAKOUT");
             string emaMode = "";
-            if(Use_EMA_Filter) {
-               switch(EMA_Filter_Mode) {
+            if(g_Use_EMA_Filter) {
+               switch(g_EMA_Filter_Mode) {
                   case EMA_TREND: emaMode = "TREND"; break;
                   case EMA_COUNTER: emaMode = "COUNTER"; break;
                   case EMA_ZONE: emaMode = "ZONE"; break;
@@ -715,13 +849,13 @@ void Process()
             tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, false, emaMode,
                                    0.0, 0.0, 0,  // Pas de divergence
                                    // Config EA
-                                   BB_Period, BB_Dev, RSI_Period,
-                                   RSI_Oversold, RSI_Overbought,
-                                   EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
-                                   Risk_Percent, Min_RR,
+                                   g_BB_Period, g_BB_Dev, g_RSI_Period,
+                                   g_RSI_Oversold, g_RSI_Overbought,
+                                   g_EMA_Fast_Period, g_EMA_Slow_Period, g_EMA_Zone_Distance,
+                                   g_Risk_Percent, g_Min_RR,
                                    SL_Period, TP_Period, ATR_Multiplier, ATR_Period,
                                    OutsidePaddingPoints, BodyMustBeOutside,
-                                   Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
+                                   g_Use_RSI_Filter, g_Use_EMA_Filter, Use_Divergence_Validator);
          }
       }
    } else {   // SELL
@@ -729,10 +863,10 @@ void Process()
          OpenSellPosition(trade, s, lots, bid, sl, tp, orderComment);
          // Enregistrer le trade dans le tracker (sans divergence)
          if(trade.ResultOrder() > 0 && tracker != NULL) {
-            string tradeMode = (Mode == REVERSION ? "REVERSION" : "BREAKOUT");
+            string tradeMode = (g_Mode == REVERSION ? "REVERSION" : "BREAKOUT");
             string emaMode = "";
-            if(Use_EMA_Filter) {
-               switch(EMA_Filter_Mode) {
+            if(g_Use_EMA_Filter) {
+               switch(g_EMA_Filter_Mode) {
                   case EMA_TREND: emaMode = "TREND"; break;
                   case EMA_COUNTER: emaMode = "COUNTER"; break;
                   case EMA_ZONE: emaMode = "ZONE"; break;
@@ -741,13 +875,13 @@ void Process()
             tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, false, emaMode,
                                    0.0, 0.0, 0,  // Pas de divergence
                                    // Config EA
-                                   BB_Period, BB_Dev, RSI_Period,
-                                   RSI_Oversold, RSI_Overbought,
-                                   EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
-                                   Risk_Percent, Min_RR,
+                                   g_BB_Period, g_BB_Dev, g_RSI_Period,
+                                   g_RSI_Oversold, g_RSI_Overbought,
+                                   g_EMA_Fast_Period, g_EMA_Slow_Period, g_EMA_Zone_Distance,
+                                   g_Risk_Percent, g_Min_RR,
                                    SL_Period, TP_Period, ATR_Multiplier, ATR_Period,
                                    OutsidePaddingPoints, BodyMustBeOutside,
-                                   Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
+                                   g_Use_RSI_Filter, g_Use_EMA_Filter, Use_Divergence_Validator);
          }
       }
    }
@@ -798,7 +932,7 @@ void ExecuteTradeFromDivergence(int dir)
    bool isBuy = (dir > 0);
    
    // Calculer SL/TP basés sur les plus hauts/plus bas avec ATR fallback
-   if(!CalculateSwingSLTP(s, t, isBuy, SL_Period, TP_Period, sl, tp, 0.0, Min_RR, 1000, ATR_Multiplier, ATR_Period)) {
+   if(!CalculateSwingSLTP(s, t, isBuy, SL_Period, TP_Period, sl, tp, 0.0, g_Min_RR, 1000, ATR_Multiplier, ATR_Period)) {
       LogError("Erreur lors du calcul des niveaux SL/TP pour divergence");
       return;
    }
@@ -830,9 +964,9 @@ void ExecuteTradeFromDivergence(int dir)
               ", DivBars: " + IntegerToString(divBars));
    
    // Vérifier le seuil RR minimum
-   if(Min_RR > 0 && rr < Min_RR) {
+   if(g_Min_RR > 0 && rr < g_Min_RR) {
       LogMessage("Trade divergence rejeté - RR insuffisant: 1:" + DoubleToString(rr, 2) + 
-                 " < minimum requis: 1:" + DoubleToString(Min_RR, 2));
+                 " < minimum requis: 1:" + DoubleToString(g_Min_RR, 2));
       return;
    }
    
@@ -851,10 +985,10 @@ void ExecuteTradeFromDivergence(int dir)
          OpenBuyPosition(trade, s, lots, ask, sl, tp, orderComment);
          // Enregistrer le trade divergence dans le tracker AVEC LES DONNÉES DE DIVERGENCE
          if(trade.ResultOrder() > 0 && tracker != NULL) {
-            string tradeMode = (Mode == REVERSION ? "REVERSION" : "BREAKOUT");
+            string tradeMode = (g_Mode == REVERSION ? "REVERSION" : "BREAKOUT");
             string emaMode = "";
-            if(Use_EMA_Filter) {
-               switch(EMA_Filter_Mode) {
+            if(g_Use_EMA_Filter) {
+               switch(g_EMA_Filter_Mode) {
                   case EMA_TREND: emaMode = "TREND"; break;
                   case EMA_COUNTER: emaMode = "COUNTER"; break;
                   case EMA_ZONE: emaMode = "ZONE"; break;
@@ -863,13 +997,13 @@ void ExecuteTradeFromDivergence(int dir)
             tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, true, emaMode,
                                    divAngle, divStrength, divBars,
                                    // Config EA
-                                   BB_Period, BB_Dev, RSI_Period,
-                                   RSI_Oversold, RSI_Overbought,
-                                   EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
-                                   Risk_Percent, Min_RR,
+                                   g_BB_Period, g_BB_Dev, g_RSI_Period,
+                                   g_RSI_Oversold, g_RSI_Overbought,
+                                   g_EMA_Fast_Period, g_EMA_Slow_Period, g_EMA_Zone_Distance,
+                                   g_Risk_Percent, g_Min_RR,
                                    SL_Period, TP_Period, ATR_Multiplier, ATR_Period,
                                    OutsidePaddingPoints, BodyMustBeOutside,
-                                   Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
+                                   g_Use_RSI_Filter, g_Use_EMA_Filter, Use_Divergence_Validator);
          }
       }
    } else {
@@ -877,10 +1011,10 @@ void ExecuteTradeFromDivergence(int dir)
          OpenSellPosition(trade, s, lots, bid, sl, tp, orderComment);
          // Enregistrer le trade divergence dans le tracker AVEC LES DONNÉES DE DIVERGENCE
          if(trade.ResultOrder() > 0 && tracker != NULL) {
-            string tradeMode = (Mode == REVERSION ? "REVERSION" : "BREAKOUT");
+            string tradeMode = (g_Mode == REVERSION ? "REVERSION" : "BREAKOUT");
             string emaMode = "";
-            if(Use_EMA_Filter) {
-               switch(EMA_Filter_Mode) {
+            if(g_Use_EMA_Filter) {
+               switch(g_EMA_Filter_Mode) {
                   case EMA_TREND: emaMode = "TREND"; break;
                   case EMA_COUNTER: emaMode = "COUNTER"; break;
                   case EMA_ZONE: emaMode = "ZONE"; break;
@@ -889,13 +1023,13 @@ void ExecuteTradeFromDivergence(int dir)
             tracker.RecordTradeOpen(trade.ResultOrder(), tradeMode, true, emaMode,
                                    divAngle, divStrength, divBars,
                                    // Config EA
-                                   BB_Period, BB_Dev, RSI_Period,
-                                   RSI_Oversold, RSI_Overbought,
-                                   EMA_Fast_Period, EMA_Slow_Period, EMA_Zone_Distance,
-                                   Risk_Percent, Min_RR,
+                                   g_BB_Period, g_BB_Dev, g_RSI_Period,
+                                   g_RSI_Oversold, g_RSI_Overbought,
+                                   g_EMA_Fast_Period, g_EMA_Slow_Period, g_EMA_Zone_Distance,
+                                   g_Risk_Percent, g_Min_RR,
                                    SL_Period, TP_Period, ATR_Multiplier, ATR_Period,
                                    OutsidePaddingPoints, BodyMustBeOutside,
-                                   Use_RSI_Filter, Use_EMA_Filter, Use_Divergence_Validator);
+                                   g_Use_RSI_Filter, g_Use_EMA_Filter, Use_Divergence_Validator);
          }
       }
    }
