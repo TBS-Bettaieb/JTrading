@@ -43,12 +43,13 @@ double NormalizeVolume(string symbol, double volume) {
 double CalculateRiskBasedVolume(
    string symbol,
    double riskPercent,
-   double stopLossPoints
+   double stopLossPoints,
+   bool useBalance = false  // false = Equity (défaut), true = Balance
 ) {
    if(stopLossPoints <= 0.0) return 0.01; // Volume minimum par défaut
    
    // Calculer le montant à risquer
-   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double balance = useBalance ? AccountInfoDouble(ACCOUNT_BALANCE) : AccountInfoDouble(ACCOUNT_EQUITY);
    double riskAmount = balance * (riskPercent / 100.0);
    
    // Obtenir les informations du symbole

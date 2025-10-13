@@ -57,8 +57,10 @@ input int      OutsidePaddingPoints  = 5;                // Marge mini au-delà 
 input bool     BodyMustBeOutside     = true;             // Seulement le corps hors bande
 
 input group "═══ Money Management ═══"
+enum RISK_BASE { RISK_BALANCE=0, RISK_EQUITY=1 };
+input RISK_BASE Risk_Base = RISK_EQUITY;  // Calculer risque sur
 input double   Risk_Percent        = 0.1;                // % risque par trade
-input bool     One_Pos_Per_Symbol  = true;               // 1 position par symbole max
+input bool     One_Pos_Per_Symbol  = false;               // 1 position par symbole max
 input ulong    Magic               = 20251007;           // Magic Number
 
 input group "═══ Stop Loss & Take Profit ═══"
@@ -77,8 +79,8 @@ input bool     UseDayFilter        = false;              // Activer filtre par j
 input string   DayRanges           = "1-5";              // Jours autorisés (0=Dim,1=Lun...6=Sam)
 
 input group "═══ Gestion de Position ═══"
-input bool     Close_On_OppositeBand = true;             // Fermer si touche bande opposée
-input bool     BE_On_MiddleBand      = true;             // Break-Even sur médiane
+input bool     Close_On_OppositeBand = false;             // Fermer si touche bande opposée
+input bool     BE_On_MiddleBand      = false;             // Break-Even sur médiane
 input int      BE_Offset_Points      = 0;                // Offset BE (points)
 input bool     UseFlatTime           = false;            // Clôture forcée à heure fixe
 input int      Flat_Hour             = 23;               // Heure de clôture
@@ -88,8 +90,8 @@ input int      TouchPadPoints        = 5;                // Marge de touche (poi
 
 input group "═══ Marqueurs Visuels ═══"
 input bool     Mark_FreeCandles      = true;             // Marquer les Free Candles
-input bool     Mark_DrawVLine        = true;             // Ligne verticale
-input bool     Mark_DrawArrow        = true;             // Flèche directionnelle
+input bool     Mark_DrawVLine        = false;             // Ligne verticale
+input bool     Mark_DrawArrow        = false;             // Flèche directionnelle
 input bool     Mark_DrawBox          = false;            // Rectangle autour bougie
 input bool     Mark_DrawText         = false;            // Texte d'annotation
 
@@ -186,7 +188,7 @@ double NormalizeVolume(double lots, const string s)
 double CalcLotsByRisk(const string s, double sl_dist_price)
 {
    if(sl_dist_price<=0) return 0.0;
-double eq   = AccountInfoDouble(ACCOUNT_EQUITY);
+double eq   = (Risk_Base == RISK_BALANCE) ? AccountInfoDouble(ACCOUNT_BALANCE) : AccountInfoDouble(ACCOUNT_EQUITY);
 double risk = eq * (Risk_Percent/100.0);
 
    double tick_value = SymbolInfoDouble(s, SYMBOL_TRADE_TICK_VALUE);
