@@ -73,6 +73,14 @@ input group "═══ Filtre Jours de la Semaine ═══"
 input bool     UseDayFilter        = false;              // Activer filtre par jour
 input string   DayRanges           = "1-5";              // Jours autorisés (0=Dim,1=Lun...6=Sam)
 
+input group "═══ Protection Daily Drawdown ═══"
+input bool     Use_Daily_DD        = true;               // Activer protection DD journalier
+input ENUM_DD_MODE DD_Mode         = DD_PERCENT;         // Mode calcul (% ou fixe)
+input double   DD_Percent          = 2.0;                // DD max en % du capital
+input double   DD_Fixed_Amount     = 200.0;              // DD max en montant fixe
+input bool     DD_Close_All        = false;              // Fermer positions si DD atteint
+input bool     DD_Use_Equity       = true;               // Calculer sur Equity (sinon Balance)
+
 input group "═══ Gestion de Position ═══"
 input bool     Be_On_OppositeBand    = false;            // Break-Even si touche bande opposée
 input int      BE_Offset_Points      = 10;                // Offset BE (points)
@@ -120,6 +128,12 @@ double   g_Min_RR;
 
 //---------------------------- Magic Number (auto-généré) ----------
 ulong Magic = 0;
+
+//---------------------------- Daily Drawdown Protection ----------
+datetime g_DD_LastResetDate = 0;        // Date du dernier reset
+double   g_DD_StartBalance = 0.0;       // Balance de début de journée
+double   g_DD_StartEquity = 0.0;        // Equity de début de journée
+bool     g_DD_LimitReached = false;     // Flag : limite atteinte
 
 //---------------------------- Utils ----------------------------------
 string Sym() { return (InpSymbol=="" ? _Symbol : InpSymbol); }
@@ -310,6 +324,163 @@ bool CheckEMAFilter(int signalDirection)
    }
    
    return filterPassed;
+}
+
+//---------------------------- Daily Drawdown Protection ------------------
+void InitDailyDD()
+{
+   if(!Use_Daily_DD) return;
+   
+   g_DD_StartBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+   g_DD_StartEquity = AccountInfoDouble(ACCOUNT_EQUITY);
+   g_DD_LastResetDate = TimeCurrent();
+   g_DD_LimitReached = false;
+   
+   LogMessage("Protection DD activée - Mode: " + 
+              (DD_Mode == DD_PERCENT ? DoubleToString(DD_Percent,2) + "%" : 
+               DoubleToString(DD_Fixed_Amount,2) + " " + AccountInfoString(ACCOUNT_CURRENCY)));
+}
+
+bool CheckDailyReset()
+{
+   if(!Use_Daily_DD) return false;
+   
+   MqlDateTime current, last;
+   TimeToStruct(TimeCurrent(), current);
+   TimeToStruct(g_DD_LastResetDate, last);
+   
+   // Nouveau jour détecté
+   if(current.day != last.day || current.mon != last.mon || current.year != last.year)
+   {
+      g_DD_StartBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+      g_DD_StartEquity = AccountInfoDouble(ACCOUNT_EQUITY);
+      g_DD_LastResetDate = TimeCurrent();
+      g_DD_LimitReached = false;
+      
+      LogMessage("═══ NOUVEAU JOUR ═══ Daily DD réinitialisé - Capital: " + 
+                 DoubleToString(g_DD_StartBalance, 2));
+      return true;
+   }
+   
+   return false;
+}
+
+double GetDailyDrawdown()
+{
+   if(!Use_Daily_DD) return 0.0;
+   
+   double currentValue = DD_Use_Equity ? 
+                        AccountInfoDouble(ACCOUNT_EQUITY) : 
+                        AccountInfoDouble(ACCOUNT_BALANCE);
+   
+   double startValue = DD_Use_Equity ? g_DD_StartEquity : g_DD_StartBalance;
+   
+   return startValue - currentValue;  // Retourne valeur positive si perte
+}
+
+bool CheckDailyDDLimit()
+{
+   if(!Use_Daily_DD) return false;
+   
+   // Vérifier reset journalier
+   CheckDailyReset();
+   
+   // Si déjà bloqué aujourd'hui
+   if(g_DD_LimitReached) return true;
+   
+   double currentDD = GetDailyDrawdown();
+   double maxDD = 0.0;
+   
+   // Calculer le seuil selon le mode
+   if(DD_Mode == DD_PERCENT) {
+      double startValue = DD_Use_Equity ? g_DD_StartEquity : g_DD_StartBalance;
+      maxDD = startValue * (DD_Percent / 100.0);
+   } else {
+      maxDD = DD_Fixed_Amount;
+   }
+   
+   // Vérifier si limite atteinte
+   if(currentDD >= maxDD)
+   {
+      if(!g_DD_LimitReached)  // Premier dépassement
+      {
+         g_DD_LimitReached = true;
+         
+         string ddStr = (DD_Mode == DD_PERCENT) ? 
+                       DoubleToString(DD_Percent, 2) + "%" : 
+                       DoubleToString(DD_Fixed_Amount, 2) + " " + AccountInfoString(ACCOUNT_CURRENCY);
+         
+         LogMessage("⚠️ DAILY DRAWDOWN ATTEINT ⚠️");
+         LogMessage("Perte journalière: " + DoubleToString(currentDD, 2) + 
+                   " / Limite: " + DoubleToString(maxDD, 2));
+         LogMessage("Trading bloqué jusqu'à demain. Seuil: " + ddStr);
+         
+         // Optionnel : fermer toutes les positions
+         if(DD_Close_All) {
+            CloseAllPositions("DD Limit");
+         }
+      }
+      return true;
+   }
+   
+   return false;
+}
+
+void CloseAllPositions(string reason)
+{
+   string s = Sym();
+   
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(!PositionSelectByTicket(ticket)) continue;
+      
+      if(PositionGetString(POSITION_SYMBOL) == s && 
+         PositionGetInteger(POSITION_MAGIC) == Magic)
+      {
+         ClosePosition(trade, ticket, reason, 0);
+         
+         if(tracker != NULL) {
+            tracker.RecordTradeClose(ticket, reason);
+         }
+      }
+   }
+   
+   LogMessage("Toutes les positions fermées - Raison: " + reason);
+}
+
+void DisplayDDStatus()
+{
+   if(!Use_Daily_DD) return;
+   
+   double currentDD = GetDailyDrawdown();
+   double maxDD = 0.0;
+   
+   if(DD_Mode == DD_PERCENT) {
+      double startValue = DD_Use_Equity ? g_DD_StartEquity : g_DD_StartBalance;
+      maxDD = startValue * (DD_Percent / 100.0);
+   } else {
+      maxDD = DD_Fixed_Amount;
+   }
+   
+   double ddPercent = (maxDD > 0) ? (currentDD / maxDD) * 100.0 : 0.0;
+   
+   string text = "Daily DD: " + DoubleToString(currentDD, 2) + " / " + 
+                 DoubleToString(maxDD, 2) + " (" + DoubleToString(ddPercent, 1) + "%)";
+   
+   if(g_DD_LimitReached) {
+      text += " ⛔ BLOQUÉ";
+   }
+   
+   // Créer un label sur le graphique
+   string labelName = "DD_Status_" + IntegerToString(Magic);
+   ObjectCreate(0, labelName, OBJ_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, labelName, OBJPROP_CORNER, CORNER_RIGHT_UPPER);
+   ObjectSetInteger(0, labelName, OBJPROP_XDISTANCE, 10);
+   ObjectSetInteger(0, labelName, OBJPROP_YDISTANCE, 30);
+   ObjectSetString(0, labelName, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, labelName, OBJPROP_COLOR, g_DD_LimitReached ? clrRed : (ddPercent > 80 ? clrOrange : clrLimeGreen));
+   ObjectSetInteger(0, labelName, OBJPROP_FONTSIZE, 10);
 }
 
 //---------------------------- Chargement des Profils ------------------
@@ -547,6 +718,9 @@ int OnInit()
       LogMessage("Trade Tracker activé - Fichier CSV: TradeAnalysis_" + s + "_" + IntegerToString(Magic) + ".csv");
    }
    
+   // Initialiser la protection Daily Drawdown
+   InitDailyDD();
+   
    return INIT_SUCCEEDED;
 }
 
@@ -582,6 +756,20 @@ void OnTick()
    string s = Sym(); ENUM_TIMEFRAMES t = TF();
    if(!IsHourAllowed()) return;
    if(!IsDayAllowed()) return;
+   
+   // ⭐ Vérification Daily Drawdown
+   if(CheckDailyDDLimit()) {
+      // Afficher un message toutes les 5 minutes
+      static datetime lastDDWarning = 0;
+      if(TimeCurrent() - lastDDWarning > 300) {  // 5 minutes
+         double currentDD = GetDailyDrawdown();
+         LogMessage("⛔ Trading bloqué - DD journalier: " + 
+                   DoubleToString(currentDD, 2) + " (attente nouveau jour)");
+         lastDDWarning = TimeCurrent();
+      }
+      return;  // Bloquer tout trading
+   }
+   
    static datetime last_bar=0;
    
    // Suivre les trades actifs pour max profit/DD
@@ -595,6 +783,9 @@ void OnTick()
          }
       }
    }
+   
+   // ⭐ Afficher le statut DD
+   DisplayDDStatus();
    
    // Gestion en continu des positions
    ManageOpenPositions(s);

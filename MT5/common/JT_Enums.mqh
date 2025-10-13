@@ -39,3 +39,9 @@ enum ENUM_RISK_BASE {
    RISK_BALANCE = 0,       // Calculer sur le solde (balance)
    RISK_EQUITY = 1         // Calculer sur l'équité (equity)
 };
+
+// Mode de calcul Daily Drawdown
+enum ENUM_DD_MODE {
+   DD_PERCENT = 0,         // Pourcentage du capital
+   DD_FIXED = 1            // Montant fixe
+};
