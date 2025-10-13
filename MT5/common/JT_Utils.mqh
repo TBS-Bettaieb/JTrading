@@ -4,6 +4,44 @@
 //|                                      (c) 2025 - Public Domain    |
 //+------------------------------------------------------------------+
 
+//+------------------------------------------------------------------+
+//| Génère un magic number unique à partir d'un symbole et timeframe |
+//| Retourne toujours le même magic pour la même combinaison         |
+//+------------------------------------------------------------------+
+int GenerateMagicNumber(string symbol, ENUM_TIMEFRAMES timeframe)
+{
+   // 1. Calculer un hash du symbole (3 chiffres: 100-999)
+   int symbolHash = 0;
+   for(int i = 0; i < StringLen(symbol); i++) {
+      symbolHash += StringGetCharacter(symbol, i);
+   }
+   // Normaliser entre 100 et 999
+   symbolHash = (symbolHash % 900) + 100;
+   
+   // 2. Convertir le timeframe en code (3 chiffres avec padding)
+   int tfMinutes = PeriodSeconds(timeframe) / 60;
+   int tfCode = 0;
+   
+   // Mapper les timeframes courants
+   if(tfMinutes < 60) {
+      // Minutes: M1=001, M5=005, M15=015, M30=030
+      tfCode = tfMinutes;
+   }
+   else if(tfMinutes < 1440) {
+      // Heures: H1=100, H4=400, etc.
+      tfCode = (tfMinutes / 60) * 100;
+   }
+   else {
+      // Jours et plus: D1=1440, W1=10080, MN1=43200
+      tfCode = tfMinutes % 1000; // Garder les 3 derniers chiffres
+   }
+   
+   // 3. Combiner: (hash * 1000) + tfCode
+   int magicNumber = (symbolHash * 1000) + tfCode;
+   
+   return magicNumber;
+}
+
 // Structure pour stocker les données des bougies
 struct CandleData {
    double open;

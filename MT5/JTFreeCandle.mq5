@@ -56,8 +56,7 @@ input bool     BodyMustBeOutside     = true;             // Seulement le corps h
 input group "═══ Money Management (mode CUSTOM) ═══"
 input ENUM_RISK_BASE Risk_Base = RISK_EQUITY;  // Calculer risque sur
 input double   Risk_Percent        = 0.1;                // % risque par trade
-input bool     One_Pos_Per_Symbol  = false;               // 1 position par symbole max
-input ulong    Magic               = 20251007;           // Magic Number
+input bool One_Pos_Per_Config = true;  // 1 position max par symbole+timeframe
 
 input group "═══ Stop Loss & Take Profit (mode CUSTOM) ═══"
 input int      SL_Period           = 50;                 // Période pour SL (barres)
@@ -119,6 +118,9 @@ ENUM_ENTRY_MODE g_Mode;
 double   g_Risk_Percent;
 double   g_Min_RR;
 
+//---------------------------- Magic Number (auto-généré) ----------
+ulong Magic = 0;
+
 //---------------------------- Utils ----------------------------------
 string Sym() { return (InpSymbol=="" ? _Symbol : InpSymbol); }
 ENUM_TIMEFRAMES TF(){ return (InpTF==PERIOD_CURRENT ? (ENUM_TIMEFRAMES)_Period : InpTF); }
@@ -179,11 +181,21 @@ bool IsDayAllowed()
 
 bool HaveOpenPos(const string s)
 {
-   if(!One_Pos_Per_Symbol) return false;
+   if(!One_Pos_Per_Config) return false;  // Limite désactivée
+   // Vérifier si une position existe pour ce symbole+magic (symbole+timeframe)
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(!PositionSelectByTicket(ticket)) continue;
+      
+      if(PositionGetString(POSITION_SYMBOL) == s && 
+         PositionGetInteger(POSITION_MAGIC) == Magic)
+      {
+         return true;  // Position trouvée pour ce symbole+magic
+      }
+   }
    
-   int direction = 0;
-   ulong ticket = 0;
-   return HasOpenPosition(s, Magic, direction, ticket);
+   return false;  // Aucune position trouvée
 }
 
 double NormalizeVolume(double lots, const string s)
@@ -410,6 +422,10 @@ int OnInit()
    LoadProfileSettings();
    
    string s = Sym(); ENUM_TIMEFRAMES t = TF();
+   
+   // Générer le magic number unique pour ce symbole+timeframe
+   Magic = GenerateMagicNumber(s, t);
+   LogMessage("Magic number généré: " + IntegerToString(Magic) + " pour " + s + " " + EnumToString(t));
 
    // Initialiser les indicateurs via la structure
    if(!InitIndicators(indicators, s, t, g_BB_Period, g_BB_Dev, BB_Shift, g_RSI_Period)) {
