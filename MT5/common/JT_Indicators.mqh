@@ -117,6 +117,7 @@ bool IsNewBar(string symbol, ENUM_TIMEFRAMES timeframe, datetime &lastBarTime) {
 }
 
 // Détecte si une bougie est "libre" (entièrement en dehors des bandes de Bollinger)
+// Version simplifiée avec MqlRates
 bool IsFreeCandle(
    MqlRates &candle, 
    double upperBand, 
@@ -124,35 +125,18 @@ bool IsFreeCandle(
    double paddingPoints = 0, 
    bool bodyOnly = true
 ) {
-   // Calculer la marge
    double padding = paddingPoints * _Point;
    
-   // Vérifier si la bougie est à l'extérieur des bandes
    if(bodyOnly) {
-      // Vérifier uniquement le corps de la bougie
       double bodyHigh = MathMax(candle.open, candle.close);
       double bodyLow = MathMin(candle.open, candle.close);
-      
-      // Bougie au-dessus de la bande supérieure (strictement en dehors)
-      bool isAbove = (bodyLow > upperBand + padding);
-      
-      // Bougie en-dessous de la bande inférieure (strictement en dehors)
-      bool isBelow = (bodyHigh < lowerBand - padding);
-      
-      return isAbove || isBelow;
+      return (bodyLow > upperBand + padding) || (bodyHigh < lowerBand - padding);
    } else {
-      // Vérifier toute la bougie (incluant les mèches)
-      // Bougie au-dessus de la bande supérieure (strictement en dehors)
-      bool isAbove = (candle.low > upperBand + padding);
-      
-      // Bougie en-dessous de la bande inférieure (strictement en dehors)
-      bool isBelow = (candle.high < lowerBand - padding);
-      
-      return isAbove || isBelow;
+      return (candle.low > upperBand + padding) || (candle.high < lowerBand - padding);
    }
 }
 
-// Surcharge permettant d'utiliser directement les valeurs de prix
+// Surcharge avec valeurs de prix directes (version principale)
 bool IsFreeCandle(
    double open,
    double high,
@@ -163,63 +147,13 @@ bool IsFreeCandle(
    double paddingPoints = 0, 
    bool bodyOnly = true
 ) {
-   // Calculer la marge
    double padding = paddingPoints * _Point;
    
-   // Valeurs pour le log
-   string details = "";
-   
-   // Vérifier si la bougie est à l'extérieur des bandes
    if(bodyOnly) {
-      // Vérifier uniquement le corps de la bougie
       double bodyHigh = MathMax(open, close);
       double bodyLow = MathMin(open, close);
-      
-      // Bougie au-dessus de la bande supérieure (strictement en dehors)
-      bool isAbove = (bodyLow > upperBand + padding);
-      
-      // Bougie en-dessous de la bande inférieure (strictement en dehors)
-      bool isBelow = (bodyHigh < lowerBand - padding);
-      
-      // Pour debug: expliquer pourquoi la candle est considérée libre ou non
-      if(isAbove) {
-         details = "Corps au-dessus de la bande: bodyLow=" + DoubleToString(bodyLow, 5) + 
-                   " >= upperBand+padding=" + DoubleToString(upperBand + padding, 5);
-      } else if(isBelow) {
-         details = "Corps en-dessous de la bande: bodyHigh=" + DoubleToString(bodyHigh, 5) + 
-                   " <= lowerBand-padding=" + DoubleToString(lowerBand - padding, 5);
-      } else {
-         details = "Corps dans les bandes: bodyLow=" + DoubleToString(bodyLow, 5) + 
-                   " < upperBand+padding=" + DoubleToString(upperBand + padding, 5) +
-                   " ET bodyHigh=" + DoubleToString(bodyHigh, 5) + 
-                   " > lowerBand-padding=" + DoubleToString(lowerBand - padding, 5);
-      }
-      
-      Print("IsFreeCandle check (bodyOnly): " + details);
-      return isAbove || isBelow;
+      return (bodyLow > upperBand + padding) || (bodyHigh < lowerBand - padding);
    } else {
-      // Vérifier toute la bougie (incluant les mèches)
-      // Bougie au-dessus de la bande supérieure (strictement en dehors)
-      bool isAbove = (low > upperBand + padding);
-      
-      // Bougie en-dessous de la bande inférieure (strictement en dehors)
-      bool isBelow = (high < lowerBand - padding);
-      
-      // Pour debug: expliquer pourquoi la candle est considérée libre ou non
-      if(isAbove) {
-         details = "Bougie au-dessus de la bande: low=" + DoubleToString(low, 5) + 
-                   " >= upperBand+padding=" + DoubleToString(upperBand + padding, 5);
-      } else if(isBelow) {
-         details = "Bougie en-dessous de la bande: high=" + DoubleToString(high, 5) + 
-                   " <= lowerBand-padding=" + DoubleToString(lowerBand - padding, 5);
-      } else {
-         details = "Bougie dans les bandes: low=" + DoubleToString(low, 5) + 
-                   " < upperBand+padding=" + DoubleToString(upperBand + padding, 5) +
-                   " ET high=" + DoubleToString(high, 5) + 
-                   " > lowerBand-padding=" + DoubleToString(lowerBand - padding, 5);
-      }
-      
-      Print("IsFreeCandle check (!bodyOnly): " + details);
-      return isAbove || isBelow;
+      return (low > upperBand + padding) || (high < lowerBand - padding);
    }
 }
