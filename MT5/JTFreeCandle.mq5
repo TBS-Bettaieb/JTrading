@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+ //+------------------------------------------------------------------+
 //|                                           BB_Candle_Outside.mq5  |
 //|                      Entrée sur bougie hors Bollinger (MT5)      |
 //+------------------------------------------------------------------+
@@ -7,6 +7,7 @@
 #property strict
 
 #include <Trade/Trade.mqh>
+#include "common/JT_Enums.mqh"
 #include "common/JT_Indicators.mqh"
 #include "common/JT_Positions.mqh"
 #include "common/JT_Utils.mqh"
@@ -14,18 +15,9 @@
 #include "common/JT_TradeTracker.mqh"
 CTrade trade;
 
-//---------------------------- Profils de Stratégie --------------------------------
-enum STRATEGY_PROFILE {
-   CONSERVATIVE=0,    // Conservateur (BB 20/2.0, RSI 25/75, EMA TREND, Risk 0.5%, RR 2.5)
-   AGGRESSIVE=1,      // Agressif (BB 15/1.8, RSI 30/70, EMA OFF, Risk 1.0%, RR 1.8)
-   COUNTER_TREND=2,   // Contre-tendance (BB 25/2.5, RSI 29/71, EMA COUNTER, Risk 0.3%, RR 3.0)
-   BREAKOUT_MODE=3,   // Breakout (BB 20/1.5, Mode BREAKOUT, RSI OFF, Risk 0.8%, RR 2.0)
-   CUSTOM=4           // Personnalisé (utilise les inputs ci-dessous)
-};
-
 //---------------------------- Inputs --------------------------------
 input group "═══ Profil de Stratégie ═══"
-input STRATEGY_PROFILE Strategy_Profile = CUSTOM;        // Profil prédéfini
+input ENUM_STRATEGY_PROFILE Strategy_Profile = PROFILE_CUSTOM;        // Profil prédéfini
 
 input group "═══ Symbole et Timeframe ═══"
 input string   InpSymbol           = "";                 // Symbole (vide = _Symbol)
@@ -46,12 +38,7 @@ input group "═══ EMA - Filtre de tendance (mode CUSTOM) ═══"
 input bool     Use_EMA_Filter      = true;               // Activer filtre EMA
 input int      EMA_Fast_Period     = 50;                 // Période EMA rapide
 input int      EMA_Slow_Period     = 100;                // Période EMA lente
-enum EMA_MODE { 
-   EMA_TREND=0,        // Suivre la tendance
-   EMA_COUNTER=1,      // Contre-tendance
-   EMA_ZONE=2          // Zone dynamique
-};
-input EMA_MODE EMA_Filter_Mode     = EMA_TREND;          // Mode de filtrage
+input ENUM_EMA_FILTER_MODE EMA_Filter_Mode = EMA_TREND;  // Mode de filtrage
 input double   EMA_Zone_Distance   = 20.0;               // Distance zone (points)
 
 input group "═══ Validateur de Divergence ═══"
@@ -61,16 +48,13 @@ input double   Div_RSI_Sell_Level  = 65.0;               // Seuil RSI pour valid
 input int      Div_Swing_Length    = 5;                  // Longueur pivot pour divergence
 
 input group "═══ Mode d'Entrée (mode CUSTOM) ═══"
-enum EntryMode { REVERSION=0, BREAKOUT=1 };
-input EntryMode Mode               = REVERSION;          // Type d'entrée
-enum TradeDirection { DIR_BOTH=0, DIR_ONLY_BUY=1, DIR_ONLY_SELL=2 };
-input TradeDirection TradeDir      = DIR_BOTH;           // Filtre direction
+input ENUM_ENTRY_MODE Mode         = ENTRY_REVERSION;    // Type d'entrée
+input ENUM_TRADE_DIRECTION TradeDir = TRADE_BOTH;        // Filtre direction
 input int      OutsidePaddingPoints  = 5;                // Marge mini au-delà de la bande (points)
 input bool     BodyMustBeOutside     = true;             // Seulement le corps hors bande
 
 input group "═══ Money Management (mode CUSTOM) ═══"
-enum RISK_BASE { RISK_BALANCE=0, RISK_EQUITY=1 };
-input RISK_BASE Risk_Base = RISK_EQUITY;  // Calculer risque sur
+input ENUM_RISK_BASE Risk_Base = RISK_EQUITY;  // Calculer risque sur
 input double   Risk_Percent        = 0.1;                // % risque par trade
 input bool     One_Pos_Per_Symbol  = false;               // 1 position par symbole max
 input ulong    Magic               = 20251007;           // Magic Number
@@ -131,9 +115,9 @@ double   g_RSI_Overbought;
 bool     g_Use_EMA_Filter;
 int      g_EMA_Fast_Period;
 int      g_EMA_Slow_Period;
-EMA_MODE g_EMA_Filter_Mode;
+ENUM_EMA_FILTER_MODE g_EMA_Filter_Mode;
 double   g_EMA_Zone_Distance;
-EntryMode g_Mode;
+ENUM_ENTRY_MODE g_Mode;
 double   g_Risk_Percent;
 double   g_Min_RR;
 
@@ -323,7 +307,7 @@ void LoadProfileSettings()
 {
    switch(Strategy_Profile)
    {
-      case CONSERVATIVE:
+      case PROFILE_CONSERVATIVE:
          // BB 20/2.0, RSI 25/75, EMA TREND, Risk 0.5%, RR 2.5
          g_BB_Period = 20;
          g_BB_Dev = 2.0;
@@ -336,13 +320,13 @@ void LoadProfileSettings()
          g_EMA_Slow_Period = 100;
          g_EMA_Filter_Mode = EMA_TREND;
          g_EMA_Zone_Distance = 20.0;
-         g_Mode = REVERSION;
+         g_Mode = ENTRY_REVERSION;
          g_Risk_Percent = 0.5;
          g_Min_RR = 2.5;
          LogMessage("✓ Profil CONSERVATIVE chargé");
          break;
          
-      case AGGRESSIVE:
+      case PROFILE_AGGRESSIVE:
          // BB 15/1.8, RSI 30/70, EMA OFF, Risk 1.0%, RR 1.8
          g_BB_Period = 15;
          g_BB_Dev = 1.8;
@@ -355,13 +339,13 @@ void LoadProfileSettings()
          g_EMA_Slow_Period = 100;
          g_EMA_Filter_Mode = EMA_TREND;
          g_EMA_Zone_Distance = 20.0;
-         g_Mode = REVERSION;
+         g_Mode = ENTRY_REVERSION;
          g_Risk_Percent = 1.0;
          g_Min_RR = 1.8;
          LogMessage("✓ Profil AGGRESSIVE chargé");
          break;
          
-      case COUNTER_TREND:
+      case PROFILE_COUNTER_TREND:
          // BB 25/2.5, RSI 29/71, EMA COUNTER, Risk 0.3%, RR 3.0
          g_BB_Period = 25;
          g_BB_Dev = 2.5;
@@ -374,13 +358,13 @@ void LoadProfileSettings()
          g_EMA_Slow_Period = 100;
          g_EMA_Filter_Mode = EMA_COUNTER;
          g_EMA_Zone_Distance = 20.0;
-         g_Mode = REVERSION;
+         g_Mode = ENTRY_REVERSION;
          g_Risk_Percent = 0.3;
          g_Min_RR = 3.0;
          LogMessage("✓ Profil COUNTER_TREND chargé");
          break;
          
-      case BREAKOUT_MODE:
+      case PROFILE_BREAKOUT_MODE:
          // BB 20/1.5, Mode BREAKOUT, RSI OFF, Risk 0.8%, RR 2.0
          g_BB_Period = 20;
          g_BB_Dev = 1.5;
@@ -393,13 +377,13 @@ void LoadProfileSettings()
          g_EMA_Slow_Period = 100;
          g_EMA_Filter_Mode = EMA_TREND;
          g_EMA_Zone_Distance = 20.0;
-         g_Mode = BREAKOUT;
+         g_Mode = ENTRY_BREAKOUT;
          g_Risk_Percent = 0.8;
          g_Min_RR = 2.0;
          LogMessage("✓ Profil BREAKOUT_MODE chargé");
          break;
          
-      case CUSTOM:
+      case PROFILE_CUSTOM:
       default:
          // Utiliser les inputs directs
          g_BB_Period = BB_Period;
@@ -681,7 +665,7 @@ int SignalFromClosedBarStrict()
 
    // Déterminer le signal potentiel
    int signal = 0;
-   if(g_Mode==REVERSION){
+   if(g_Mode==ENTRY_REVERSION){
       if(outsideBearAbove) signal = -1; // SELL
       if(outsideBullBelow) signal = +1; // BUY
    }else{
@@ -741,8 +725,8 @@ void Process()
    }
 
    // Apply direction filter
-   if(TradeDir==DIR_ONLY_BUY && dir<0) return;
-   if(TradeDir==DIR_ONLY_SELL && dir>0) return;
+   if(TradeDir==TRADE_ONLY_BUY && dir<0) return;
+   if(TradeDir==TRADE_ONLY_SELL && dir>0) return;
    
    // Marquer le Free Candle sur le graphique
    if(Mark_FreeCandles) {
@@ -837,7 +821,7 @@ void Process()
          OpenBuyPosition(trade, s, lots, ask, sl, tp, orderComment);
          // Enregistrer le trade dans le tracker (sans divergence)
          if(trade.ResultOrder() > 0 && tracker != NULL) {
-            string tradeMode = (g_Mode == REVERSION ? "REVERSION" : "BREAKOUT");
+            string tradeMode = (g_Mode == ENTRY_REVERSION ? "REVERSION" : "BREAKOUT");
             string emaMode = "";
             if(g_Use_EMA_Filter) {
                switch(g_EMA_Filter_Mode) {
@@ -863,7 +847,7 @@ void Process()
          OpenSellPosition(trade, s, lots, bid, sl, tp, orderComment);
          // Enregistrer le trade dans le tracker (sans divergence)
          if(trade.ResultOrder() > 0 && tracker != NULL) {
-            string tradeMode = (g_Mode == REVERSION ? "REVERSION" : "BREAKOUT");
+            string tradeMode = (g_Mode == ENTRY_REVERSION ? "REVERSION" : "BREAKOUT");
             string emaMode = "";
             if(g_Use_EMA_Filter) {
                switch(g_EMA_Filter_Mode) {
@@ -899,8 +883,8 @@ void ExecuteTradeFromDivergence(int dir)
    }
    
    // Apply direction filter
-   if(TradeDir==DIR_ONLY_BUY && dir<0) return;
-   if(TradeDir==DIR_ONLY_SELL && dir>0) return;
+   if(TradeDir==TRADE_ONLY_BUY && dir<0) return;
+   if(TradeDir==TRADE_ONLY_SELL && dir>0) return;
    
    // RÉCUPÉRER LES DONNÉES DE DIVERGENCE AVANT D'OUVRIR LE TRADE
    double divAngle = divValidator.GetLastDivergenceAngle();
@@ -985,7 +969,7 @@ void ExecuteTradeFromDivergence(int dir)
          OpenBuyPosition(trade, s, lots, ask, sl, tp, orderComment);
          // Enregistrer le trade divergence dans le tracker AVEC LES DONNÉES DE DIVERGENCE
          if(trade.ResultOrder() > 0 && tracker != NULL) {
-            string tradeMode = (g_Mode == REVERSION ? "REVERSION" : "BREAKOUT");
+            string tradeMode = (g_Mode == ENTRY_REVERSION ? "REVERSION" : "BREAKOUT");
             string emaMode = "";
             if(g_Use_EMA_Filter) {
                switch(g_EMA_Filter_Mode) {
@@ -1011,7 +995,7 @@ void ExecuteTradeFromDivergence(int dir)
          OpenSellPosition(trade, s, lots, bid, sl, tp, orderComment);
          // Enregistrer le trade divergence dans le tracker AVEC LES DONNÉES DE DIVERGENCE
          if(trade.ResultOrder() > 0 && tracker != NULL) {
-            string tradeMode = (g_Mode == REVERSION ? "REVERSION" : "BREAKOUT");
+            string tradeMode = (g_Mode == ENTRY_REVERSION ? "REVERSION" : "BREAKOUT");
             string emaMode = "";
             if(g_Use_EMA_Filter) {
                switch(g_EMA_Filter_Mode) {
