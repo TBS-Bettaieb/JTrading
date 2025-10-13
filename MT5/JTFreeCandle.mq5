@@ -75,13 +75,11 @@ input bool     UseDayFilter        = false;              // Activer filtre par j
 input string   DayRanges           = "1-5";              // Jours autorisés (0=Dim,1=Lun...6=Sam)
 
 input group "═══ Gestion de Position ═══"
-input bool     Close_On_OppositeBand = false;             // Fermer si touche bande opposée
-input bool     BE_On_MiddleBand      = false;             // Break-Even sur médiane
-input int      BE_Offset_Points      = 0;                // Offset BE (points)
+input bool     Be_On_OppositeBand    = false;            // Break-Even si touche bande opposée
+input int      BE_Offset_Points      = 10;                // Offset BE (points)
 input bool     UseFlatTime           = false;            // Clôture forcée à heure fixe
 input int      Flat_Hour             = 23;               // Heure de clôture
 input int      Flat_Minute           = 40;               // Minute de clôture
-input bool     Exit_UsePrevBar       = true;             // Utiliser bandes barre fermée
 input int      TouchPadPoints        = 5;                // Marge de touche (points)
 
 input group "═══ Marqueurs Visuels ═══"
@@ -1059,8 +1057,8 @@ void ManageOpenPositions(const string s)
       double sl=PositionGetDouble(POSITION_SL);
       double tp=PositionGetDouble(POSITION_TP);
 
-      // fermer si touche la bande opposée (PRIORITAIRE)
-      if(Close_On_OppositeBand)
+      // Break-Even si touche la bande opposée
+      if(Be_On_OppositeBand)
       {
          bool touchedOpposite = false;
          // Utiliser la logique de la fonction IsFreeCandle pour déterminer si le prix est proche d'une bande
@@ -1075,25 +1073,15 @@ void ManageOpenPositions(const string s)
          
          if(touchedOpposite)
          {
-            ClosePosition(trade, tk, "Band touch exit", 0);
-            // Enregistrer la fermeture dans le tracker
-            if(tracker != NULL) {
-               tracker.RecordTradeClose(tk, "Band Touch");
+            // Mettre le SL au break-even
+            if(type==POSITION_TYPE_BUY) {
+               double newSL = op + BE_Offset_Points*point;
+               if(sl < newSL) ModifyPosition(trade, tk, newSL, tp);
             }
-            continue;
-         }
-      }
-
-      // BE sur médiane (après tentative de fermeture sur bande opposée)
-      if(BE_On_MiddleBand)
-      {
-         if(type==POSITION_TYPE_BUY  && (barHigh>=middle1-pad || bid>=middle0-pad)){
-            double newSL=op + BE_Offset_Points*point;
-            if(sl<newSL) ModifyPosition(trade, tk, newSL, tp);
-         }
-         if(type==POSITION_TYPE_SELL && (barLow<=middle1+pad || ask<=middle0+pad)){
-            double newSL=op - BE_Offset_Points*point;
-            if(sl==0.0 || sl>newSL) ModifyPosition(trade, tk, newSL, tp);
+            if(type==POSITION_TYPE_SELL) {
+               double newSL = op - BE_Offset_Points*point;
+               if(sl==0.0 || sl > newSL) ModifyPosition(trade, tk, newSL, tp);
+            }
          }
       }
 
