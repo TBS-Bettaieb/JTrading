@@ -8,9 +8,12 @@
 #property strict
 
 #include <Trade\Trade.mqh>
+#include "common/JT_ChartManager.mqh"
+#include "common/filters/TimesàDaysFilters/JT_TimeFilter.mqh"
 
 CTrade trade;
 CPositionInfo pos;
+CChartManager* chartManager = NULL;
 
 //--- Trading Inputs
 input group "=== Trading Inputs ==="
@@ -23,13 +26,7 @@ input ENUM_TIMEFRAMES Timeframe   = PERIOD_CURRENT; //Time frame to run
 input int      InpMagic           = 298347;        //EA identification
 input string   TradeComment       = "Scalping Robot";
 
-//--- Time Filters
-input group "=== Time Filter ==="
-input int SHInput = 0;  // Start Hour (0 = Inactive, 1-23 = Active)
-input int EHInput = 0;  // End Hour (0 = Inactive, 1-23 = Active)
-
-int SHChoice;
-int EHChoice;
+//--- Time Filters (moved to JT_TimeFilter.mqh)
 
 //--- Bar management
 input group "=== Strategy Parameters ==="
@@ -54,16 +51,29 @@ int OnInit()
    trade.SetTypeFilling(ORDER_FILLING_FOK);
    trade.SetAsyncMode(false);
    
-   SHChoice = SHInput;
-   EHChoice = EHInput;
+   // SHInput / EHInput fournis par JT_TimeFilter.mqh
    
    Print("Scalping Robot initialized on ", currSymbol);
    Print("Magic Number: ", InpMagic);
    Print("Timeframe: ", EnumToString(Timeframe));
    
+   // ═══ Initialiser CChartManager ═══
+   chartManager = new CChartManager(0, "ScalpBot");
    
+   if(chartManager != NULL)
+   {
+      // Appliquer le style du graphique
+      chartManager.SetupChart();
+      
+      // Afficher le nom de la stratégie
+      chartManager.ShowTopLeftLabel("Scalping Robot v1.0", clrDarkBlue, 12);
+      
+   }
+   else
+   {
+      Print("⚠️ Warning: Chart Manager initialization failed");
+   }
    
-   ChartSetInteger(0,CHART_SHOW_GRID,false);
    return(INIT_SUCCEEDED);
 }
 
@@ -73,6 +83,14 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    Print("Scalping Robot stopped. Reason: ", reason);
+   
+   // Nettoyer le Chart Manager
+   if(chartManager != NULL)
+   {
+      delete chartManager;
+      chartManager = NULL;
+      Print("✓ Chart Manager cleaned up");
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -83,6 +101,9 @@ void OnTick()
    // Trail existing positions
    TrailStop();
    
+   // Mettre à jour les informations sur le graphique
+   UpdateChartInfo();
+   
    if(!IsNewBar()) return;
    
    MqlDateTime time;
@@ -90,9 +111,9 @@ void OnTick()
    
    int HourNow = time.hour;
    
-   // Close all orders outside trading hours
-   if(SHChoice > 0 && HourNow < SHChoice) {CloseAllOrders(); return;}
-   if(EHChoice > 0 && HourNow > EHChoice) {CloseAllOrders(); return;}
+   // Close all orders outside trading hours (inputs from JT_TimeFilter)
+   if(SHInput > 0 && HourNow < SHInput) {CloseAllOrders(); return;}
+   if(EHInput > 0 && HourNow > EHInput) {CloseAllOrders(); return;}
    
    
    
@@ -347,5 +368,96 @@ void CloseAllOrders()
          }
       }
    }
+}
+
+//+------------------------------------------------------------------+
+//| Update chart information display                                 |
+//+------------------------------------------------------------------+
+void UpdateChartInfo()
+{
+   if(chartManager == NULL) return;
+   
+   static int tickCount = 0;
+   tickCount++;
+   
+   // Mettre à jour toutes les 50 ticks pour éviter trop de rafraîchissements
+   if(tickCount % 50 != 0) return;
+   
+   // Compter les positions actives
+   int buyPositions = 0;
+   int sellPositions = 0;
+   double totalProfit = 0;
+   
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      if(pos.SelectByIndex(i))
+      {
+         if(pos.Magic() == InpMagic && pos.Symbol() == currSymbol)
+         {
+            totalProfit += pos.Profit() + pos.Swap() + pos.Commission();
+            
+            if(pos.PositionType() == POSITION_TYPE_BUY)
+               buyPositions++;
+            else
+               sellPositions++;
+         }
+      }
+   }
+   
+   // Compter les ordres en attente
+   int buyOrders = 0;
+   int sellOrders = 0;
+   
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = OrderGetTicket(i);
+      if(OrderSelect(ticket))
+      {
+         if(OrderGetInteger(ORDER_MAGIC) == InpMagic && OrderGetString(ORDER_SYMBOL) == currSymbol)
+         {
+            if(OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_BUY_STOP)
+               buyOrders++;
+            else if(OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_SELL_STOP)
+               sellOrders++;
+         }
+      }
+   }
+   
+   // Construire le texte de statut
+   string status = "";
+   
+   MqlDateTime time;
+   TimeToStruct(TimeCurrent(), time);
+   int hourNow = time.hour;
+   
+   // Vérifier si on est dans les heures de trading
+   bool tradingAllowed = TF_IsTradingAllowed();
+   
+   if(tradingAllowed)
+      status = "Status: ACTIVE";
+   else
+      status = "Status: OUTSIDE HOURS";
+   
+   status += " | Pos: " + IntegerToString(buyPositions + sellPositions);
+   status += " (B:" + IntegerToString(buyPositions) + " S:" + IntegerToString(sellPositions) + ")";
+   status += " | Orders: " + IntegerToString(buyOrders + sellOrders);
+   
+   if(buyPositions + sellPositions > 0)
+   {
+      status += " | P/L: " + DoubleToString(totalProfit, 2);
+   }
+   
+   // Mettre à jour la couleur selon le profit
+   color statusColor = clrGreen;
+   if(!tradingAllowed) 
+      statusColor = clrOrange;
+   else if(totalProfit < 0) 
+      statusColor = clrRed;
+   else if(totalProfit > 0)
+      statusColor = clrGreen;
+   
+   // Mettre à jour le label
+   chartManager.UpdateLabelText("TopRight", status);
+   chartManager.UpdateLabelColor("TopRight", statusColor);
 }
 //+------------------------------------------------------------------+
