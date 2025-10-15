@@ -19,6 +19,7 @@ CSymbolTrader* symbolTraders[];
 
 //--- Multi-Symbol Trading Inputs
 input group "=== Multi-Symbol Configuration ==="
+/// EURUSD,GBPUSD,USDCHF,USDJPY,USDCAD,AUDUSD,AUDNZD,AUDCAD,AUDCHF,AUDJPY,CHFJPY,EURGBP,EURAUD,EURCHF,EURJPY,EURNZD,EURCAD,GBPCHF,GBPJPY,CADCHF,CADJPY,GBPAUD,GBPCAD,GBPNZD,NZDCAD,NZDCHF,NZDJPY,NZDUSD
 input string   SymbolsList        = "EURUSD,GBPUSD,USDJPY";  // List of symbols (comma separated)
 input ENUM_TIMEFRAMES Timeframe   = PERIOD_M5; //Time frame to run
 input bool     UseAllSymbols      = false;                   // Use all symbols from Market Watch
@@ -270,6 +271,15 @@ void UpdateChartInfo()
       
       // Afficher les détails dans le coin inférieur gauche
       chartManager.ShowMultiLineInfo(detailLines, CORNER_LEFT_LOWER, 10, 30, 14, clrDarkBlue, 8);
+      
+      // Rafraîchir l'affichage des swing points
+      for(int i = 0; i < totalSymbols; i++)
+      {
+         if(symbolTraders[i] != NULL)
+         {
+            symbolTraders[i].RefreshSwingDisplay();
+         }
+      }
    }
 }
 //+------------------------------------------------------------------+
