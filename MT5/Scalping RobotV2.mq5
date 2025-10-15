@@ -22,17 +22,17 @@ CSymbolTrader* symbolTraders[];
 //--- Multi-Symbol Trading Inputs
 input group "=== Multi-Symbol Configuration ==="
 /// EURUSD,GBPUSD,USDCHF,USDJPY,USDCAD,AUDUSD,AUDNZD,AUDCAD,AUDCHF,AUDJPY,CHFJPY,EURGBP,EURAUD,EURCHF,EURJPY,EURNZD,EURCAD,GBPCHF,GBPJPY,CADCHF,CADJPY,GBPAUD,GBPCAD,GBPNZD,NZDCAD,NZDCHF,NZDJPY,NZDUSD
-input string   SymbolsList        = "EURUSD,GBPUSD,USDJPY";  // List of symbols (comma separated)
+input string   SymbolsList        = "EURUSD,GBPUSD,USDJPY,USDCAD";  // List of symbols (comma separated)
 input ENUM_TIMEFRAMES Timeframe   = PERIOD_M5; //Time frame to run
 input bool     UseAllSymbols      = false;                   // Use all symbols from Market Watch
 input int      BaseMagic          = 298347;                  // Base magic number (incremented per symbol)
 
 //--- Trading Inputs
 input group "=== Trading Inputs ==="
-input double   RiskPercent        = 2;     // Risk as % of Trading Capital (divided by symbol count)
+input double   RiskPercent        = 4;     // Risk as % of Trading Capital (divided by symbol count)
 input int      Tppoints           = 200;   // Take Profit (10 points = 1 pip)
 input int      Slpoints           = 200;   // StopLoss Points (10 points = 1 pip)
-input int      TslTriggerPoints   = 20;    // Points in profit before Trailing SL is activated (10 points = 1 pip)
+input int      TslTriggerPoints   = 10;    // Points in profit before Trailing SL is activated (10 points = 1 pip)
 input int      TslPoints          = 10;    // Trailing Stop Loss (10 points = 1 pip)
 input string   TradeComment       = "Scalping Robot";
 

@@ -489,13 +489,11 @@ double CalculateCommissionInPoints(string symbol, double commission, double lots
    }
    
    //+------------------------------------------------------------------+
-   //| Envoyer un ordre Buy Stop                                       |
+   //| Envoyer un ordre Buy (Stop ou Limit selon la stratégie)         |
    //+------------------------------------------------------------------+
    void CSymbolTrader::SendBuyOrder(double entry)
    {
       double ask = SymbolInfoDouble(m_symbol, SYMBOL_ASK);
-      
-      if(ask > entry - m_orderDistPoints * m_point) return;
       
       double tp = entry + m_tpPoints * m_point;
       double sl = entry - m_slPoints * m_point;
@@ -505,24 +503,42 @@ double CalculateCommissionInPoints(string symbol, double commission, double lots
       
       datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
       
-      if(m_trade.BuyStop(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
+      if(m_strategyMode == STRATEGY_BREAKOUT)
       {
-         Print("✓ Buy Stop order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
+         // Mode BREAKOUT : utiliser BuyStop (attendre que le prix casse le niveau)
+         if(ask > entry - m_orderDistPoints * m_point) return;
+         
+         if(m_trade.BuyStop(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
+         {
+            Print("✓ Buy Stop order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
+         }
+         else
+         {
+            Print("✗ Failed to send Buy Stop order for ", m_symbol, " | Error: ", GetLastError());
+         }
       }
-      else
+      else if(m_strategyMode == STRATEGY_REVERSION)
       {
-         Print("✗ Failed to send Buy Stop order for ", m_symbol, " | Error: ", GetLastError());
+         // Mode REVERSION : utiliser BuyLimit (attendre que le prix touche le niveau)
+         if(ask < entry + m_orderDistPoints * m_point) return;
+         
+         if(m_trade.BuyLimit(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
+         {
+            Print("✓ Buy Limit order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
+         }
+         else
+         {
+            Print("✗ Failed to send Buy Limit order for ", m_symbol, " | Error: ", GetLastError());
+         }
       }
    }
    
    //+------------------------------------------------------------------+
-   //| Envoyer un ordre Sell Stop                                      |
+   //| Envoyer un ordre Sell (Stop ou Limit selon la stratégie)         |
    //+------------------------------------------------------------------+
    void CSymbolTrader::SendSellOrder(double entry)
    {
       double bid = SymbolInfoDouble(m_symbol, SYMBOL_BID);
-      
-      if(bid < entry + m_orderDistPoints * m_point) return;
       
       double tp = entry - m_tpPoints * m_point;
       double sl = entry + m_slPoints * m_point;
@@ -532,13 +548,33 @@ double CalculateCommissionInPoints(string symbol, double commission, double lots
       
       datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
       
-      if(m_trade.SellStop(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
+      if(m_strategyMode == STRATEGY_BREAKOUT)
       {
-         Print("✓ Sell Stop order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
+         // Mode BREAKOUT : utiliser SellStop (attendre que le prix casse le niveau)
+         if(bid < entry + m_orderDistPoints * m_point) return;
+         
+         if(m_trade.SellStop(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
+         {
+            Print("✓ Sell Stop order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
+         }
+         else
+         {
+            Print("✗ Failed to send Sell Stop order for ", m_symbol, " | Error: ", GetLastError());
+         }
       }
-      else
+      else if(m_strategyMode == STRATEGY_REVERSION)
       {
-         Print("✗ Failed to send Sell Stop order for ", m_symbol, " | Error: ", GetLastError());
+         // Mode REVERSION : utiliser SellLimit (attendre que le prix touche le niveau)
+         if(bid > entry - m_orderDistPoints * m_point) return;
+         
+         if(m_trade.SellLimit(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
+         {
+            Print("✓ Sell Limit order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
+         }
+         else
+         {
+            Print("✗ Failed to send Sell Limit order for ", m_symbol, " | Error: ", GetLastError());
+         }
       }
    }
    

@@ -7,8 +7,8 @@
 //---------------------------- Inputs (reusable) ---------------------
 // Ces inputs sont exposés à tout EA qui inclut ce fichier
 input group "=== Time Filter ==="
-input int SHInput = 0;  // Start Hour (0 = Inactive, 1-23 = Active)
-input int EHInput = 0;  // End Hour (0 = Inactive, 1-23 = Active)
+input int SHInput = 7;  // Start Hour (0 = Inactive, 1-23 = Active)
+input int EHInput = 19;  // End Hour (0 = Inactive, 1-23 = Active)
 
 // Helpers globaux compatibles avec SHInput/EHInput
 int TF_CurrentHour()
@@ -19,9 +19,22 @@ int TF_CurrentHour()
 bool TF_IsTradingAllowed()
 {
    int h = TF_CurrentHour();
-   if(SHInput > 0 && h < SHInput) return false;
-   if(EHInput > 0 && h > EHInput) return false;
-   return true;
+   
+   if(SHInput < EHInput) 
+   {
+      // Plage normale même journée (ex: 8h-17h)
+      return (h >= SHInput && h <= EHInput);
+   }
+   else if(SHInput > EHInput) 
+   {
+      // Plage overnight traverse minuit (ex: 22h-6h)
+      return (h >= SHInput || h <= EHInput);
+   }
+   else 
+   {
+      // Pas de filtre ou égalité (SHInput == EHInput)
+      return true;
+   }
 }
 
 //+------------------------------------------------------------------+
