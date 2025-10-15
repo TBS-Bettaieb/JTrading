@@ -7,6 +7,8 @@
 #property version   "2.00"
 #property strict
 
+
+
 #include <Trade\Trade.mqh>
 #include "common/JT_ChartManager.mqh"
 #include "common/filters/TimesàDaysFilters/JT_TimeFilter.mqh"
@@ -38,6 +40,7 @@ input string   TradeComment       = "Scalping Robot";
 
 //--- Bar management
 input group "=== Strategy Parameters ==="
+input ENUM_STRATEGY_MODE StrategyMode = STRATEGY_BREAKOUT; // Strategy Mode: Breakout or Reversion
 input int      BarsN = 5;
 input int      ExpirationBars = 50;
 input int      OrderDistPoints = 100;
@@ -105,7 +108,8 @@ int OnInit()
          BarsN,                         // bars for analysis
          ExpirationBars,                // expiration bars
          OrderDistPoints,               // order distance points
-         TradeComment                   // trade comment
+         TradeComment,                  // trade comment
+         StrategyMode                   // strategy mode
       );
       
       if(symbolTraders[i] == NULL)

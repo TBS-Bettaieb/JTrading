@@ -10,6 +10,16 @@
 #include <Trade\OrderInfo.mqh>
 #include "CCommissionManager.mqh"
 #include "filters/TimesàDaysFilters/JT_TimeFilter.mqh"
+
+//+------------------------------------------------------------------+
+//| Strategy Mode Enumeration                                       |
+//+------------------------------------------------------------------+
+enum ENUM_STRATEGY_MODE
+{
+   STRATEGY_BREAKOUT,   // Breakout Strategy
+   STRATEGY_REVERSION   // Mean Reversion Strategy
+};
+
 //+------------------------------------------------------------------+
 //| Classe CSymbolTrader - Gestion d'un symbole spécifique          |
 //+------------------------------------------------------------------+
@@ -41,6 +51,7 @@ private:
    int               m_expirationBars;      // Expiration des ordres
    int               m_orderDistPoints;     // Distance des ordres
    string            m_tradeComment;        // Commentaire des trades
+   ENUM_STRATEGY_MODE m_strategyMode;       // Mode de stratégie (Breakout/Reversion)
    
    // Objets de trading
    CTrade            m_trade;               // Objet de trading
@@ -74,7 +85,8 @@ public:
                  int barsN,
                  int expirationBars,
                  int orderDistPoints,
-                 string tradeComment)
+                 string tradeComment,
+                 ENUM_STRATEGY_MODE strategyMode)
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -88,6 +100,7 @@ public:
       m_expirationBars = expirationBars;
       m_orderDistPoints = orderDistPoints;
       m_tradeComment = tradeComment + "_" + symbol;
+      m_strategyMode = strategyMode;
       
       // Initialiser les variables
       m_point = SymbolInfoDouble(symbol, SYMBOL_POINT);
@@ -143,19 +156,45 @@ public:
       // Chercher des signaux de trading seulement si pas de positions/ordres existants
       if(m_buyTotal <= 0)
       {
-         double high = FindHigh();
-         if(high > 0)
+         if(m_strategyMode == STRATEGY_BREAKOUT)
          {
-            SendBuyOrder(high);
+            // Mode BREAKOUT : acheter quand le prix CASSE un swing high (suivre la tendance)
+            double high = FindHigh();
+            if(high > 0)
+            {
+               SendBuyOrder(high);
+            }
+         }
+         else if(m_strategyMode == STRATEGY_REVERSION)
+         {
+            // Mode REVERSION : acheter quand le prix TOUCHE un swing low et rebondit (contre-tendance)
+            double low = FindLow();
+            if(low > 0)
+            {
+               SendBuyOrder(low);
+            }
          }
       }
       
       if(m_sellTotal <= 0)
       {
-         double low = FindLow();
-         if(low > 0)
+         if(m_strategyMode == STRATEGY_BREAKOUT)
          {
-            SendSellOrder(low);
+            // Mode BREAKOUT : vendre quand le prix CASSE un swing low (suivre la tendance)
+            double low = FindLow();
+            if(low > 0)
+            {
+               SendSellOrder(low);
+            }
+         }
+         else if(m_strategyMode == STRATEGY_REVERSION)
+         {
+            // Mode REVERSION : vendre quand le prix TOUCHE un swing high et redescend (contre-tendance)
+            double high = FindHigh();
+            if(high > 0)
+            {
+               SendSellOrder(high);
+            }
          }
       }
    }
