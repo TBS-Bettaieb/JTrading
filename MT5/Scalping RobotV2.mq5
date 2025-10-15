@@ -27,10 +27,10 @@ input int      BaseMagic          = 298347;                  // Base magic numbe
 
 //--- Trading Inputs
 input group "=== Trading Inputs ==="
-input double   RiskPercent        = 0.2;     // Risk as % of Trading Capital (divided by symbol count)
+input double   RiskPercent        = 2;     // Risk as % of Trading Capital (divided by symbol count)
 input int      Tppoints           = 200;   // Take Profit (10 points = 1 pip)
 input int      Slpoints           = 200;   // StopLoss Points (10 points = 1 pip)
-input int      TslTriggerPoints   = 15;    // Points in profit before Trailing SL is activated (10 points = 1 pip)
+input int      TslTriggerPoints   = 20;    // Points in profit before Trailing SL is activated (10 points = 1 pip)
 input int      TslPoints          = 10;    // Trailing Stop Loss (10 points = 1 pip)
 input string   TradeComment       = "Scalping Robot";
 
@@ -39,7 +39,7 @@ input string   TradeComment       = "Scalping Robot";
 //--- Bar management
 input group "=== Strategy Parameters ==="
 input int      BarsN = 5;
-input int      ExpirationBars = 100;
+input int      ExpirationBars = 50;
 input int      OrderDistPoints = 100;
 
 //--- Global variables

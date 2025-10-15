@@ -8,7 +8,8 @@
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
 #include <Trade\OrderInfo.mqh>
-
+#include "CCommissionManager.mqh"
+#include "filters/TimesàDaysFilters/JT_TimeFilter.mqh"
 //+------------------------------------------------------------------+
 //| Classe CSymbolTrader - Gestion d'un symbole spécifique          |
 //+------------------------------------------------------------------+
@@ -45,6 +46,7 @@ private:
    CTrade            m_trade;               // Objet de trading
    CPositionInfo     m_position;            // Gestion des positions
    COrderInfo        m_order;               // Gestion des ordres
+   CCommissionManager m_commissionManager;  // Gestionnaire de commission
    
    // Statistiques
    double            m_totalProfit;         // Profit total pour ce symbole
@@ -174,12 +176,19 @@ public:
          {
             ulong ticket = m_position.Ticket();
             
+            double commission = m_commissionManager.GetCommission(m_position);
+            double commissionPoints = CalculateCommissionInPoints(m_position.Symbol(), commission, m_position.Volume());
+            
             if(m_position.Magic() == m_magicNumber && m_position.Symbol() == m_symbol)
             {
                if(m_position.PositionType() == POSITION_TYPE_BUY)
                {
-                  if(bid - m_position.PriceOpen() > m_tslTriggerPoints * m_point)
-                  {
+                     // Profit actuel en points
+                    double profitPoints = (bid - m_position.PriceOpen()) / m_point;
+                    
+                    // Activer le TSL seulement si profit > trigger + commission
+                    if(profitPoints > ((m_tslTriggerPoints+commissionPoints) + commissionPoints)){
+                    
                      tp = m_position.TakeProfit();
                      sl = bid - (m_tslPoints * m_point);
                      
@@ -191,10 +200,14 @@ public:
                }
                else if(m_position.PositionType() == POSITION_TYPE_SELL)
                {
-                  if(m_position.PriceOpen() - ask > m_tslTriggerPoints * m_point)
+                  // Profit actuel en points
+                    double profitPoints = (m_position.PriceOpen() - ask) / m_point;
+                    
+                    // Activer le TSL seulement si profit > trigger + commission
+                    if(profitPoints > (m_tslTriggerPoints + commissionPoints))
                   {
                      tp = m_position.TakeProfit();
-                     sl = ask + (m_tslPoints * m_point);
+                     sl = ask + ((m_tslPoints+commissionPoints) * m_point);
                      
                      if(sl < m_position.StopLoss() && sl != 0)
                      {
@@ -206,6 +219,35 @@ public:
          }
       }
    }
+
+   //+------------------------------------------------------------------+
+//| Calcule les points équivalents à une commission                  |
+//+------------------------------------------------------------------+
+double CalculateCommissionInPoints(string symbol, double commission, double lots)
+{
+    // Vérifications
+    if(lots <= 0) return 0;
+    if(commission == 0) return 0;
+    
+    // Informations du symbole
+    double tickValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+    double tickSize  = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
+    double point     = SymbolInfoDouble(symbol, SYMBOL_POINT);
+    
+    if(tickValue == 0 || tickSize == 0) 
+    {
+        Print("Erreur: impossible de récupérer les infos du symbole ", symbol);
+        return 0;
+    }
+    
+    // Valeur monétaire d'un point
+    double pointValue = (tickValue / tickSize) * point;
+    
+    // Commission en points = Commission totale / (Valeur d'un point × Volume)
+    double commissionPoints = MathAbs(commission) / (pointValue * lots);
+    
+    return 2*commissionPoints;
+}
    
    //+------------------------------------------------------------------+
    //| Fermer toutes les positions et ordres pour ce symbole          |
