@@ -60,6 +60,11 @@ input int      BarsN = 5;
 input int      ExpirationBars = 50;
 input int      OrderDistPoints = 100;
 
+//--- Trailing Take Profit
+input group "=== Trailing Take Profit ==="
+input bool UseTrailingTP = true;  // Activer Trailing TP
+input ENUM_TRAILING_TP_MODE TrailingTPMode = TRAILING_TP_STEPPED;  // Mode Trailing TP
+
 //--- Global variables
 string symbols[];                    // Array of trading symbols
 int totalSymbols = 0;               // Total number of symbols
@@ -124,7 +129,9 @@ int OnInit()
          ExpirationBars,                // expiration bars
          OrderDistPoints,               // order distance points
          TradeComment,                  // trade comment
-         StrategyMode                   // strategy mode
+         StrategyMode,                  // strategy mode
+         UseTrailingTP,                 // use trailing TP
+         TrailingTPMode                 // trailing TP mode
       );
       
       if(symbolTraders[i] == NULL)
@@ -260,6 +267,9 @@ void OnTick()
          
          // Appliquer le trailing stop pour ce symbole (toujours actif)
          symbolTraders[i].TrailStop();
+         
+         // Appliquer le trailing TP
+         symbolTraders[i].ApplyTrailingTP();
       }
    }
    

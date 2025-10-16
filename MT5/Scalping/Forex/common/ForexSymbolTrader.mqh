@@ -11,6 +11,7 @@
 #include "../../../CommonUtils/TradingEnums.mqh"
 #include "ForexCommissionManager.mqh"
 #include "ForexSwingAnalyzer.mqh"
+#include "../../../CommonUtils/TrailingTP_System.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe ForexSymbolTrader - Gestion d'un symbole spécifique       |
@@ -52,6 +53,15 @@ private:
    ForexCommissionManager m_commissionManager;  // Gestionnaire de commission
    ForexSwingAnalyzer m_swingAnalyzer;      // Analyseur de swing points
    
+   // Trailing TP
+   CTrailingTP*      m_trailingTP;
+   bool              m_useTrailingTP;
+   struct PositionTrailing {
+      ulong ticket;
+      CTrailingTP* trailing;
+   };
+   PositionTrailing  m_positionTrailings[];
+   
    // Statistiques
    double            m_totalProfit;         // Profit total pour ce symbole
    int               m_tradesCount;         // Nombre de trades
@@ -72,7 +82,9 @@ public:
                      int expirationBars,
                      int orderDistPoints,
                      string tradeComment,
-                     ENUM_STRATEGY_MODE strategyMode)
+                     ENUM_STRATEGY_MODE strategyMode,
+                     bool useTrailingTP = false,
+                     ENUM_TRAILING_TP_MODE trailingTPMode = TRAILING_TP_STEPPED)
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -104,6 +116,15 @@ public:
       // Initialiser l'analyseur de swing
       m_swingAnalyzer = ForexSwingAnalyzer(symbol, timeframe, magicNumber, barsN);
       
+      // Initialiser le Trailing TP
+      m_useTrailingTP = useTrailingTP;
+      if(m_useTrailingTP) {
+         m_trailingTP = new CTrailingTP(trailingTPMode);
+      } else {
+         m_trailingTP = NULL;
+      }
+      ArrayResize(m_positionTrailings, 0);
+      
       Print("✓ ForexSymbolTrader initialized for ", symbol, " | Magic: ", magicNumber);
    }
    
@@ -112,6 +133,14 @@ public:
    //+------------------------------------------------------------------+
    ~ForexSymbolTrader()
    {
+      // Cleanup Trailing TP
+      for(int i = 0; i < ArraySize(m_positionTrailings); i++) {
+         if(m_positionTrailings[i].trailing != NULL) {
+            delete m_positionTrailings[i].trailing;
+         }
+      }
+      if(m_trailingTP != NULL) delete m_trailingTP;
+      
       Print("✓ ForexSymbolTrader destroyed for ", m_symbol);
    }
    
@@ -400,6 +429,72 @@ public:
       m_swingAnalyzer.RefreshSwingDisplay();
    }
    
+   //+------------------------------------------------------------------+
+   //| Appelé quand une position est ouverte                           |
+   //+------------------------------------------------------------------+
+   void OnPositionOpened(ulong ticket)
+   {
+      if(!m_useTrailingTP || m_trailingTP == NULL) return;
+      if(!PositionSelectByTicket(ticket)) return;
+      
+      CTrailingTP* newTrailing = new CTrailingTP();
+      newTrailing.Initialize(
+         PositionGetDouble(POSITION_PRICE_OPEN),
+         PositionGetDouble(POSITION_SL),
+         PositionGetDouble(POSITION_TP),
+         PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY
+      );
+      
+      int size = ArraySize(m_positionTrailings);
+      ArrayResize(m_positionTrailings, size + 1);
+      m_positionTrailings[size].ticket = ticket;
+      m_positionTrailings[size].trailing = newTrailing;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Appelé quand une position est fermée                            |
+   //+------------------------------------------------------------------+
+   void OnPositionClosed(ulong ticket)
+   {
+      for(int i = 0; i < ArraySize(m_positionTrailings); i++) {
+         if(m_positionTrailings[i].ticket == ticket) {
+            if(m_positionTrailings[i].trailing != NULL) {
+               delete m_positionTrailings[i].trailing;
+            }
+            for(int j = i; j < ArraySize(m_positionTrailings) - 1; j++) {
+               m_positionTrailings[j] = m_positionTrailings[j + 1];
+            }
+            ArrayResize(m_positionTrailings, ArraySize(m_positionTrailings) - 1);
+            break;
+         }
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Appliquer le Trailing TP à toutes les positions                 |
+   //+------------------------------------------------------------------+
+   void ApplyTrailingTP()
+   {
+      if(!m_useTrailingTP) return;
+      
+      for(int i = ArraySize(m_positionTrailings) - 1; i >= 0; i--) {
+         ulong ticket = m_positionTrailings[i].ticket;
+         if(!PositionSelectByTicket(ticket)) {
+            OnPositionClosed(ticket);
+            continue;
+         }
+         
+         double currentPrice = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) 
+            ? SymbolInfoDouble(m_symbol, SYMBOL_BID)
+            : SymbolInfoDouble(m_symbol, SYMBOL_ASK);
+         
+         double newSL, newTP;
+         if(m_positionTrailings[i].trailing.Update(currentPrice, newSL, newTP)) {
+            m_trade.PositionModify(ticket, newSL, newTP);
+         }
+      }
+   }
+   
 private:
    //+------------------------------------------------------------------+
    //| Vérifier si c'est une nouvelle barre                            |
@@ -465,6 +560,10 @@ private:
          if(m_trade.BuyStop(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
          {
             Print("✓ Buy Stop order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
+            if(m_useTrailingTP) {
+               ulong ticket = m_trade.ResultOrder();
+               OnPositionOpened(ticket);
+            }
          }
          else
          {
@@ -479,6 +578,10 @@ private:
          if(m_trade.BuyLimit(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
          {
             Print("✓ Buy Limit order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
+            if(m_useTrailingTP) {
+               ulong ticket = m_trade.ResultOrder();
+               OnPositionOpened(ticket);
+            }
          }
          else
          {
@@ -510,6 +613,10 @@ private:
          if(m_trade.SellStop(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
          {
             Print("✓ Sell Stop order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
+            if(m_useTrailingTP) {
+               ulong ticket = m_trade.ResultOrder();
+               OnPositionOpened(ticket);
+            }
          }
          else
          {
@@ -524,6 +631,10 @@ private:
          if(m_trade.SellLimit(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
          {
             Print("✓ Sell Limit order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
+            if(m_useTrailingTP) {
+               ulong ticket = m_trade.ResultOrder();
+               OnPositionOpened(ticket);
+            }
          }
          else
          {
