@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
-//|                                          JT_ChartManager.mqh     |
-//|                      Gestionnaire d'affichage graphique          |
+//|                                        ForexChartManager.mqh     |
+//|                      Gestionnaire d'affichage graphique Forex   |
 //+------------------------------------------------------------------+
 #property copyright "(c) 2025"
 #property version   "1.0"
@@ -8,7 +8,7 @@
 //+------------------------------------------------------------------+
 //| Classe de gestion de l'affichage du graphique                    |
 //+------------------------------------------------------------------+
-class CChartManager
+class ForexChartManager
 {
 private:
    long              m_chartId;              // ID du graphique
@@ -29,7 +29,7 @@ public:
    //+------------------------------------------------------------------+
    //| Constructor                                                       |
    //+------------------------------------------------------------------+
-   CChartManager(long chartId = 0, string prefix = "JT")
+   ForexChartManager(long chartId = 0, string prefix = "Forex")
    {
       m_chartId = (chartId == 0) ? ChartID() : chartId;
       m_labelPrefix = prefix;
@@ -39,7 +39,7 @@ public:
    //+------------------------------------------------------------------+
    //| Destructor - Nettoyage automatique                              |
    //+------------------------------------------------------------------+
-   ~CChartManager()
+   ~ForexChartManager()
    {
       ClearLabels();
    }
@@ -326,4 +326,3 @@ public:
    //+------------------------------------------------------------------+
    string GetLabelPrefix() const { return m_labelPrefix; }
 };
-

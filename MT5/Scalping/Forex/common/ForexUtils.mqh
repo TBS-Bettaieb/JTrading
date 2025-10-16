@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
-//|                                          JT_SymbolManager.mqh    |
-//|                Gestionnaire de symboles multi-trading            |
+//|                                               ForexUtils.mqh     |
+//|                         Fonctions utilitaires pour le trading    |
 //|                                      (c) 2025 - Public Domain    |
 //+------------------------------------------------------------------+
 #property strict
@@ -8,7 +8,7 @@
 //+------------------------------------------------------------------+
 //| Parser la liste des symboles depuis une string                  |
 //+------------------------------------------------------------------+
-int ParseSymbolsList(string symbolsList, string &symbolArray[])
+int ForexParseSymbolsList(string symbolsList, string &symbolArray[])
 {
    if(symbolsList == "" || symbolsList == " ")
    {
@@ -43,7 +43,7 @@ int ParseSymbolsList(string symbolsList, string &symbolArray[])
       StringTrimLeft(symbol);
       StringTrimRight(symbol);
       
-      if(symbol != "" && ValidateSymbol(symbol))
+      if(symbol != "" && ForexValidateSymbol(symbol))
       {
          symbolArray[validCount] = symbol;
          validCount++;
@@ -63,7 +63,7 @@ int ParseSymbolsList(string symbolsList, string &symbolArray[])
 //+------------------------------------------------------------------+
 //| Valider qu'un symbole existe et est tradable                    |
 //+------------------------------------------------------------------+
-bool ValidateSymbol(string symbol)
+bool ForexValidateSymbol(string symbol)
 {
    if(symbol == "") return false;
    
@@ -103,7 +103,7 @@ bool ValidateSymbol(string symbol)
 //+------------------------------------------------------------------+
 //| Obtenir tous les symboles du Market Watch                       |
 //+------------------------------------------------------------------+
-int GetSymbolsFromMarketWatch(string &symbolArray[])
+int ForexGetSymbolsFromMarketWatch(string &symbolArray[])
 {
    int total = SymbolsTotal(true); // true = seulement Market Watch
    
@@ -120,7 +120,7 @@ int GetSymbolsFromMarketWatch(string &symbolArray[])
    {
       string symbol = SymbolName(i, true);
       
-      if(ValidateSymbol(symbol))
+      if(ForexValidateSymbol(symbol))
       {
          symbolArray[validCount] = symbol;
          validCount++;
@@ -135,13 +135,13 @@ int GetSymbolsFromMarketWatch(string &symbolArray[])
 //+------------------------------------------------------------------+
 //| Générer un magic number unique pour un symbole                  |
 //+------------------------------------------------------------------+
-int GenerateMagicNumber(int baseMagic, int symbolIndex, ENUM_TIMEFRAMES timeframe, string strategyName = "")
+int ForexGenerateMagicNumber(int baseMagic, int symbolIndex, ENUM_TIMEFRAMES timeframe, string strategyName = "")
 {
    // Calculer le hash du timeframe (0-20)
-   int tfHash = GetTimeframeHash(timeframe);
+   int tfHash = ForexGetTimeframeHash(timeframe);
    
    // Calculer le hash du nom de stratégie (0-99)
-   int stratHash = GetStrategyHash(strategyName);
+   int stratHash = ForexGetStrategyHash(strategyName);
    
    // Format du Magic Number : BBBBBBSSTTII
    // BBBBBB = BaseMagic (jusqu'à 6 chiffres)
@@ -160,7 +160,7 @@ int GenerateMagicNumber(int baseMagic, int symbolIndex, ENUM_TIMEFRAMES timefram
 //+------------------------------------------------------------------+
 //| Fonction helper pour obtenir un hash du timeframe               |
 //+------------------------------------------------------------------+
-int GetTimeframeHash(ENUM_TIMEFRAMES tf)
+int ForexGetTimeframeHash(ENUM_TIMEFRAMES tf)
 {
    switch(tf)
    {
@@ -180,7 +180,7 @@ int GetTimeframeHash(ENUM_TIMEFRAMES tf)
 //+------------------------------------------------------------------+
 //| Fonction helper pour obtenir un hash du nom de stratégie        |
 //+------------------------------------------------------------------+
-int GetStrategyHash(string strategyName)
+int ForexGetStrategyHash(string strategyName)
 {
    if(strategyName == "" || strategyName == NULL)
       return 0;
@@ -201,7 +201,7 @@ int GetStrategyHash(string strategyName)
 //+------------------------------------------------------------------+
 //| Calculer le risque par symbole (divisé par le nombre total)     |
 //+------------------------------------------------------------------+
-double CalculateRiskPerSymbol(double totalRiskPercent, int symbolCount)
+double ForexCalculateRiskPerSymbol(double totalRiskPercent, int symbolCount)
 {
    if(symbolCount <= 0) return 0;
    
@@ -216,42 +216,9 @@ double CalculateRiskPerSymbol(double totalRiskPercent, int symbolCount)
 }
 
 //+------------------------------------------------------------------+
-//| Afficher les informations sur les symboles configurés           |
-//+------------------------------------------------------------------+
-void PrintSymbolsInfo(string &symbolArray[], int baseMagic, ENUM_TIMEFRAMES timeframe, string strategyName = "")
-{
-   int count = ArraySize(symbolArray);
-   
-   Print("═══════════════════════════════════════");
-   Print("🔧 SYMBOLS CONFIGURATION");
-   Print("═══════════════════════════════════════");
-   Print("Total symbols: ", count);
-   Print("Strategy: ", strategyName);
-   Print("Timeframe: ", EnumToString(timeframe));
-   
-   for(int i = 0; i < count; i++)
-   {
-      int magic = GenerateMagicNumber(baseMagic, i, timeframe, strategyName);
-      string symbol = symbolArray[i];
-      
-      // Informations sur le symbole
-      double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-      double spread = SymbolInfoInteger(symbol, SYMBOL_SPREAD);
-      double minLot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
-      double maxLot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
-      
-      Print("  [", i+1, "] ", symbol, " | Magic: ", magic);
-      Print("      Point: ", DoubleToString(point, 5), " | Spread: ", DoubleToString(spread, 0));
-      Print("      Lots: ", DoubleToString(minLot, 2), " - ", DoubleToString(maxLot, 2));
-   }
-   
-   Print("═══════════════════════════════════════");
-}
-
-//+------------------------------------------------------------------+
 //| Vérifier la disponibilité des données historiques               |
 //+------------------------------------------------------------------+
-bool CheckHistoricalData(string symbol, ENUM_TIMEFRAMES timeframe, int barsRequired = 200)
+bool ForexCheckHistoricalData(string symbol, ENUM_TIMEFRAMES timeframe, int barsRequired = 200)
 {
    int bars = Bars(symbol, timeframe);
    
@@ -282,42 +249,4 @@ bool CheckHistoricalData(string symbol, ENUM_TIMEFRAMES timeframe, int barsRequi
    }
    
    return true;
-}
-
-//+------------------------------------------------------------------+
-//| Obtenir les statistiques globales des symboles                  |
-//+------------------------------------------------------------------+
-string GetGlobalSymbolsStatus(string &symbolArray[], CSymbolTrader* &traders[])
-{
-   if(ArraySize(symbolArray) != ArraySize(traders))
-      return "ERROR: Array size mismatch";
-   
-   int symbolCount = ArraySize(symbolArray);
-   int activeSymbols = 0;
-   int totalPositions = 0;
-   double totalProfit = 0;
-   
-   for(int i = 0; i < symbolCount; i++)
-   {
-      if(traders[i] != NULL)
-      {
-         int positions = traders[i].GetTotalPositions();
-         double profit = traders[i].GetTotalProfit();
-         
-         if(positions > 0) activeSymbols++;
-         totalPositions += positions;
-         totalProfit += profit;
-      }
-   }
-   
-   string status = "GLOBAL: ";
-   status += "Symbols: " + IntegerToString(activeSymbols) + "/" + IntegerToString(symbolCount);
-   status += " | Positions: " + IntegerToString(totalPositions);
-   
-   if(totalProfit != 0)
-   {
-      status += " | P/L: " + DoubleToString(totalProfit, 2);
-   }
-   
-   return status;
 }

@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
-//|                                            JT_SymbolTrader.mqh   |
-//|                    Classe de trading par symbole individuel      |
+//|                                        ForexSymbolTrader.mqh     |
+//|                    Classe de trading par symbole individuel Forex|
 //|                                      (c) 2025 - Public Domain    |
 //+------------------------------------------------------------------+
 #property strict
@@ -8,22 +8,15 @@
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
 #include <Trade\OrderInfo.mqh>
-#include "CCommissionManager.mqh"
-#include "filters/TimesàDaysFilters/JT_TimeFilter.mqh"
+#include "ForexEnums.mqh"
+#include "ForexCommissionManager.mqh"
+#include "ForexTimeFilter.mqh"
+#include "ForexSwingAnalyzer.mqh"
 
 //+------------------------------------------------------------------+
-//| Strategy Mode Enumeration                                       |
+//| Classe ForexSymbolTrader - Gestion d'un symbole spécifique       |
 //+------------------------------------------------------------------+
-enum ENUM_STRATEGY_MODE
-{
-   STRATEGY_BREAKOUT,   // Breakout Strategy
-   STRATEGY_REVERSION   // Mean Reversion Strategy
-};
-
-//+------------------------------------------------------------------+
-//| Classe CSymbolTrader - Gestion d'un symbole spécifique          |
-//+------------------------------------------------------------------+
-class CSymbolTrader
+class ForexSymbolTrader
 {
 private:
    // Données du symbole
@@ -51,42 +44,36 @@ private:
    int               m_expirationBars;      // Expiration des ordres
    int               m_orderDistPoints;     // Distance des ordres
    string            m_tradeComment;        // Commentaire des trades
-   ENUM_STRATEGY_MODE m_strategyMode;       // Mode de stratégie (Breakout/Reversion)
+   ENUM_FOREX_STRATEGY_MODE m_strategyMode; // Mode de stratégie (Breakout/Reversion)
    
    // Objets de trading
    CTrade            m_trade;               // Objet de trading
    CPositionInfo     m_position;            // Gestion des positions
    COrderInfo        m_order;               // Gestion des ordres
-   CCommissionManager m_commissionManager;  // Gestionnaire de commission
+   ForexCommissionManager m_commissionManager;  // Gestionnaire de commission
+   ForexSwingAnalyzer m_swingAnalyzer;      // Analyseur de swing points
    
    // Statistiques
    double            m_totalProfit;         // Profit total pour ce symbole
    int               m_tradesCount;         // Nombre de trades
    
-   // Historique des points détectés
-   double            m_lastHighPoints[3];   // 3 derniers high points
-   double            m_lastLowPoints[3];    // 3 derniers low points
-   datetime          m_lastHighTimes[3];    // Times des high points
-   datetime          m_lastLowTimes[3];     // Times des low points
-
-   
 public:
    //+------------------------------------------------------------------+
    //| Constructor                                                      |
    //+------------------------------------------------------------------+
-   CSymbolTrader(string symbol, 
-                 int magicNumber,
-                 ENUM_TIMEFRAMES timeframe,
-                 double riskPercent,
-                 int tpPoints,
-                 int slPoints,
-                 int tslTriggerPoints,
-                 int tslPoints,
-                 int barsN,
-                 int expirationBars,
-                 int orderDistPoints,
-                 string tradeComment,
-                 ENUM_STRATEGY_MODE strategyMode)
+   ForexSymbolTrader(string symbol, 
+                     int magicNumber,
+                     ENUM_TIMEFRAMES timeframe,
+                     double riskPercent,
+                     int tpPoints,
+                     int slPoints,
+                     int tslTriggerPoints,
+                     int tslPoints,
+                     int barsN,
+                     int expirationBars,
+                     int orderDistPoints,
+                     string tradeComment,
+                     ENUM_FOREX_STRATEGY_MODE strategyMode)
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -109,30 +96,24 @@ public:
       m_sellTotal = 0;
       m_totalProfit = 0;
       m_tradesCount = 0;
-      
-      // Initialiser les arrays de points
-      ArrayInitialize(m_lastHighPoints, 0);
-      ArrayInitialize(m_lastLowPoints, 0);
-      ArrayInitialize(m_lastHighTimes, 0);
-      ArrayInitialize(m_lastLowTimes, 0);
-      
       // Configurer l'objet de trading
       m_trade.SetExpertMagicNumber(magicNumber);
       m_trade.SetDeviationInPoints(10);
       m_trade.SetTypeFilling(ORDER_FILLING_FOK);
       m_trade.SetAsyncMode(false);
       
-      Print("✓ CSymbolTrader initialized for ", symbol, " | Magic: ", magicNumber);
+      // Initialiser l'analyseur de swing
+      m_swingAnalyzer = ForexSwingAnalyzer(symbol, timeframe, magicNumber, barsN);
+      
+      Print("✓ ForexSymbolTrader initialized for ", symbol, " | Magic: ", magicNumber);
    }
    
    //+------------------------------------------------------------------+
    //| Destructor                                                       |
    //+------------------------------------------------------------------+
-   ~CSymbolTrader()
+   ~ForexSymbolTrader()
    {
-      // Supprimer les lignes du graphique
-      DeleteSwingLines();
-      Print("✓ CSymbolTrader destroyed for ", m_symbol);
+      Print("✓ ForexSymbolTrader destroyed for ", m_symbol);
    }
    
    //+------------------------------------------------------------------+
@@ -156,19 +137,19 @@ public:
       // Chercher des signaux de trading seulement si pas de positions/ordres existants
       if(m_buyTotal <= 0)
       {
-         if(m_strategyMode == STRATEGY_BREAKOUT)
+         if(m_strategyMode == FOREX_STRATEGY_BREAKOUT)
          {
             // Mode BREAKOUT : acheter quand le prix CASSE un swing high (suivre la tendance)
-            double high = FindHigh();
+            double high = m_swingAnalyzer.FindHigh();
             if(high > 0)
             {
                SendBuyOrder(high);
             }
          }
-         else if(m_strategyMode == STRATEGY_REVERSION)
+         else if(m_strategyMode == FOREX_STRATEGY_REVERSION)
          {
             // Mode REVERSION : acheter quand le prix TOUCHE un swing low et rebondit (contre-tendance)
-            double low = FindLow();
+            double low = m_swingAnalyzer.FindLow();
             if(low > 0)
             {
                SendBuyOrder(low);
@@ -178,19 +159,19 @@ public:
       
       if(m_sellTotal <= 0)
       {
-         if(m_strategyMode == STRATEGY_BREAKOUT)
+         if(m_strategyMode == FOREX_STRATEGY_BREAKOUT)
          {
             // Mode BREAKOUT : vendre quand le prix CASSE un swing low (suivre la tendance)
-            double low = FindLow();
+            double low = m_swingAnalyzer.FindLow();
             if(low > 0)
             {
                SendSellOrder(low);
             }
          }
-         else if(m_strategyMode == STRATEGY_REVERSION)
+         else if(m_strategyMode == FOREX_STRATEGY_REVERSION)
          {
             // Mode REVERSION : vendre quand le prix TOUCHE un swing high et redescend (contre-tendance)
-            double high = FindHigh();
+            double high = m_swingAnalyzer.FindHigh();
             if(high > 0)
             {
                SendSellOrder(high);
@@ -216,7 +197,7 @@ public:
             ulong ticket = m_position.Ticket();
             
             double commission = m_commissionManager.GetCommission(m_position);
-            double commissionPoints = CalculateCommissionInPoints(m_position.Symbol(), commission, m_position.Volume());
+            double commissionPoints = m_commissionManager.CalculateCommissionInPoints(m_position.Symbol(), commission, m_position.Volume());
             
             if(m_position.Magic() == m_magicNumber && m_position.Symbol() == m_symbol)
             {
@@ -258,35 +239,6 @@ public:
          }
       }
    }
-
-   //+------------------------------------------------------------------+
-//| Calcule les points équivalents à une commission                  |
-//+------------------------------------------------------------------+
-double CalculateCommissionInPoints(string symbol, double commission, double lots)
-{
-    // Vérifications
-    if(lots <= 0) return 0;
-    if(commission == 0) return 0;
-    
-    // Informations du symbole
-    double tickValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
-    double tickSize  = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
-    double point     = SymbolInfoDouble(symbol, SYMBOL_POINT);
-    
-    if(tickValue == 0 || tickSize == 0) 
-    {
-        Print("Erreur: impossible de récupérer les infos du symbole ", symbol);
-        return 0;
-    }
-    
-    // Valeur monétaire d'un point
-    double pointValue = (tickValue / tickSize) * point;
-    
-    // Commission en points = Commission totale / (Valeur d'un point × Volume)
-    double commissionPoints = MathAbs(commission) / (pointValue * lots);
-    
-    return 2*commissionPoints;
-}
    
    //+------------------------------------------------------------------+
    //| Fermer toutes les positions et ordres pour ce symbole          |
@@ -386,13 +338,14 @@ double CalculateCommissionInPoints(string symbol, double commission, double lots
    //+------------------------------------------------------------------+
    void RefreshSwingDisplay()
    {
-      DrawSwingPoints();
+      m_swingAnalyzer.RefreshSwingDisplay();
    }
    
+private:
    //+------------------------------------------------------------------+
    //| Vérifier si c'est une nouvelle barre                            |
    //+------------------------------------------------------------------+
-   bool CSymbolTrader::IsNewBar()
+   bool IsNewBar()
    {
       datetime currentTime = iTime(m_symbol, m_timeframe, 0);
       
@@ -406,67 +359,9 @@ double CalculateCommissionInPoints(string symbol, double commission, double lots
    }
    
    //+------------------------------------------------------------------+
-   //| Trouver le plus haut dans la période de lookback               |
-   //+------------------------------------------------------------------+
-   double CSymbolTrader::FindHigh()
-   {
-      double highestHigh = 0;
-      
-      for(int i = 0; i < 200; i++)
-      {
-         double high = iHigh(m_symbol, m_timeframe, i);
-         
-         if(i > m_barsN && iHighest(m_symbol, m_timeframe, MODE_HIGH, m_barsN*2+1, i-m_barsN) == i)
-         {
-            if(high > highestHigh)
-            {
-               // Stocker le point détecté
-               datetime barTime = iTime(m_symbol, m_timeframe, i);
-               AddHighPoint(high, barTime);
-               
-               return high;
-            }
-         }
-         
-         highestHigh = MathMax(high, highestHigh);
-      }
-      
-      return -1;
-   }
-   
-   //+------------------------------------------------------------------+
-   //| Trouver le plus bas dans la période de lookback                |
-   //+------------------------------------------------------------------+
-   double CSymbolTrader::FindLow()
-   {
-      double lowestLow = DBL_MAX;
-      
-      for(int i = 0; i < 200; i++)
-      {
-         double low = iLow(m_symbol, m_timeframe, i);
-         
-         if(i > m_barsN && iLowest(m_symbol, m_timeframe, MODE_LOW, m_barsN*2+1, i-m_barsN) == i)
-         {
-            if(low < lowestLow)
-            {
-               // Stocker le point détecté
-               datetime barTime = iTime(m_symbol, m_timeframe, i);
-               AddLowPoint(low, barTime);
-               
-               return low;
-            }
-         }
-         
-         lowestLow = MathMin(low, lowestLow);
-      }
-      
-      return -1;
-   }
-   
-   //+------------------------------------------------------------------+
    //| Calculer la taille du lot basée sur le risque                   |
    //+------------------------------------------------------------------+
-   double CSymbolTrader::CalcLots(double slPoints)
+   double CalcLots(double slPoints)
    {
       double risk = AccountInfoDouble(ACCOUNT_EQUITY) * m_riskPercent / 100;
       
@@ -491,7 +386,7 @@ double CalculateCommissionInPoints(string symbol, double commission, double lots
    //+------------------------------------------------------------------+
    //| Envoyer un ordre Buy (Stop ou Limit selon la stratégie)         |
    //+------------------------------------------------------------------+
-   void CSymbolTrader::SendBuyOrder(double entry)
+   void SendBuyOrder(double entry)
    {
       double ask = SymbolInfoDouble(m_symbol, SYMBOL_ASK);
       
@@ -503,7 +398,7 @@ double CalculateCommissionInPoints(string symbol, double commission, double lots
       
       datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
       
-      if(m_strategyMode == STRATEGY_BREAKOUT)
+      if(m_strategyMode == FOREX_STRATEGY_BREAKOUT)
       {
          // Mode BREAKOUT : utiliser BuyStop (attendre que le prix casse le niveau)
          if(ask > entry - m_orderDistPoints * m_point) return;
@@ -517,7 +412,7 @@ double CalculateCommissionInPoints(string symbol, double commission, double lots
             Print("✗ Failed to send Buy Stop order for ", m_symbol, " | Error: ", GetLastError());
          }
       }
-      else if(m_strategyMode == STRATEGY_REVERSION)
+      else if(m_strategyMode == FOREX_STRATEGY_REVERSION)
       {
          // Mode REVERSION : utiliser BuyLimit (attendre que le prix touche le niveau)
          if(ask < entry + m_orderDistPoints * m_point) return;
@@ -536,7 +431,7 @@ double CalculateCommissionInPoints(string symbol, double commission, double lots
    //+------------------------------------------------------------------+
    //| Envoyer un ordre Sell (Stop ou Limit selon la stratégie)         |
    //+------------------------------------------------------------------+
-   void CSymbolTrader::SendSellOrder(double entry)
+   void SendSellOrder(double entry)
    {
       double bid = SymbolInfoDouble(m_symbol, SYMBOL_BID);
       
@@ -548,7 +443,7 @@ double CalculateCommissionInPoints(string symbol, double commission, double lots
       
       datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
       
-      if(m_strategyMode == STRATEGY_BREAKOUT)
+      if(m_strategyMode == FOREX_STRATEGY_BREAKOUT)
       {
          // Mode BREAKOUT : utiliser SellStop (attendre que le prix casse le niveau)
          if(bid < entry + m_orderDistPoints * m_point) return;
@@ -562,7 +457,7 @@ double CalculateCommissionInPoints(string symbol, double commission, double lots
             Print("✗ Failed to send Sell Stop order for ", m_symbol, " | Error: ", GetLastError());
          }
       }
-      else if(m_strategyMode == STRATEGY_REVERSION)
+      else if(m_strategyMode == FOREX_STRATEGY_REVERSION)
       {
          // Mode REVERSION : utiliser SellLimit (attendre que le prix touche le niveau)
          if(bid > entry - m_orderDistPoints * m_point) return;
@@ -581,7 +476,7 @@ double CalculateCommissionInPoints(string symbol, double commission, double lots
    //+------------------------------------------------------------------+
    //| Mettre à jour les compteurs de positions/ordres                |
    //+------------------------------------------------------------------+
-   void CSymbolTrader::UpdateCounters()
+   void UpdateCounters()
    {
       m_buyTotal = 0;
       m_sellTotal = 0;
@@ -617,168 +512,9 @@ double CalculateCommissionInPoints(string symbol, double commission, double lots
    //+------------------------------------------------------------------+
    //| Vérifier si le trading est autorisé selon les heures            |
    //+------------------------------------------------------------------+
-   bool CSymbolTrader::IsTradingTimeAllowed()
+   bool IsTradingTimeAllowed()
    {
-      // Utiliser la fonction globale TF_IsTradingAllowed() du TimeFilter
-      return TF_IsTradingAllowed();
-   }
-   
-   //+------------------------------------------------------------------+
-   //| Supprimer un point d'un array                                   |
-   //+------------------------------------------------------------------+
-   void CSymbolTrader::RemovePointFromArray(double price, double &pointsArray[], datetime &timesArray[], string prefix)
-   {
-      for(int i = 0; i < 3; i++)
-      {
-         if(MathAbs(pointsArray[i] - price) < m_point * 10)
-         {
-            // Supprimer la ligne graphique correspondante
-            string objName = prefix + "_" + m_symbol + "_" + IntegerToString(m_magicNumber) + "_" + IntegerToString(i);
-            ObjectDelete(0, objName);
-            
-            // Réinitialiser les valeurs
-            pointsArray[i] = 0;
-            timesArray[i] = 0;
-            return;
-         }
-      }
-   }
-   
-   //+------------------------------------------------------------------+
-   //| Ajouter un high point à l'historique                             |
-   //+------------------------------------------------------------------+
-   void CSymbolTrader::AddHighPoint(double price, datetime time)
-   {
-      // Vérifier d'abord si ce point existe dans les low points et le supprimer
-      RemovePointFromArray(price, m_lastLowPoints, m_lastLowTimes, "SwingLow");
-      
-      // Vérifier si ce point n'est pas déjà dans l'historique des highs
-      for(int i = 0; i < 3; i++)
-      {
-         if(MathAbs(m_lastHighPoints[i] - price) < m_point * 10) // Tolérance de 10 points
-            return;
-      }
-      
-      // Décaler les anciens points
-      for(int i = 2; i > 0; i--)
-      {
-         m_lastHighPoints[i] = m_lastHighPoints[i-1];
-         m_lastHighTimes[i] = m_lastHighTimes[i-1];
-      }
-      
-      // Ajouter le nouveau point
-      m_lastHighPoints[0] = price;
-      m_lastHighTimes[0] = time;
-      
-      // Redessiner les lignes
-      DrawSwingPoints();
-   }
-   
-   //+------------------------------------------------------------------+
-   //| Ajouter un low point à l'historique                              |
-   //+------------------------------------------------------------------+
-   void CSymbolTrader::AddLowPoint(double price, datetime time)
-   {
-      // Vérifier d'abord si ce point existe dans les high points et le supprimer
-      RemovePointFromArray(price, m_lastHighPoints, m_lastHighTimes, "SwingHigh");
-      
-      // Vérifier si ce point n'est pas déjà dans l'historique des lows
-      for(int i = 0; i < 3; i++)
-      {
-         if(MathAbs(m_lastLowPoints[i] - price) < m_point * 10) // Tolérance de 10 points
-            return;
-      }
-      
-      // Décaler les anciens points
-      for(int i = 2; i > 0; i--)
-      {
-         m_lastLowPoints[i] = m_lastLowPoints[i-1];
-         m_lastLowTimes[i] = m_lastLowTimes[i-1];
-      }
-      
-      // Ajouter le nouveau point
-      m_lastLowPoints[0] = price;
-      m_lastLowTimes[0] = time;
-      
-      // Redessiner les lignes
-      DrawSwingPoints();
-   }
-   
-   //+------------------------------------------------------------------+
-   //| Dessiner les points swing sur le graphique                       |
-   //+------------------------------------------------------------------+
-   void CSymbolTrader::DrawSwingPoints()
-   {
-      // Supprimer les anciennes lignes
-      DeleteSwingLines();
-      
-      // Dessiner les high points (lignes vertes)
-      for(int i = 0; i < 3; i++)
-      {
-         if(m_lastHighPoints[i] > 0)
-         {
-            string name = "SwingHigh_" + m_symbol + "_" + IntegerToString(m_magicNumber) + "_" + IntegerToString(i);
-            
-            // Créer une ligne avec début et fin définis (50 barres de longueur)
-            datetime start_time = m_lastHighTimes[i];
-            datetime end_time = start_time + PeriodSeconds(m_timeframe) * 50;
-            
-            ObjectCreate(0, name, OBJ_TREND, 0, start_time, m_lastHighPoints[i], end_time, m_lastHighPoints[i]);
-            ObjectSetInteger(0, name, OBJPROP_COLOR, clrLimeGreen);
-            ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
-            ObjectSetInteger(0, name, OBJPROP_WIDTH, 2);
-            ObjectSetInteger(0, name, OBJPROP_BACK, true);
-            ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-            ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
-            ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-            ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false); // Ne pas étendre à l'infini
-            ObjectSetString(0, name, OBJPROP_TOOLTIP, m_symbol + " High: " + DoubleToString(m_lastHighPoints[i], _Digits));
-         }
-      }
-      
-      // Dessiner les low points (lignes rouges)
-      for(int i = 0; i < 3; i++)
-      {
-         if(m_lastLowPoints[i] > 0)
-         {
-            string name = "SwingLow_" + m_symbol + "_" + IntegerToString(m_magicNumber) + "_" + IntegerToString(i);
-            
-            // Créer une ligne avec début et fin définis (50 barres de longueur)
-            datetime start_time = m_lastLowTimes[i];
-            datetime end_time = start_time + PeriodSeconds(m_timeframe) * 50;
-            
-            ObjectCreate(0, name, OBJ_TREND, 0, start_time, m_lastLowPoints[i], end_time, m_lastLowPoints[i]);
-            ObjectSetInteger(0, name, OBJPROP_COLOR, clrRed);
-            ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
-            ObjectSetInteger(0, name, OBJPROP_WIDTH, 2);
-            ObjectSetInteger(0, name, OBJPROP_BACK, true);
-            ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-            ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
-            ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-            ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false); // Ne pas étendre à l'infini
-            ObjectSetString(0, name, OBJPROP_TOOLTIP, m_symbol + " Low: " + DoubleToString(m_lastLowPoints[i], _Digits));
-         }
-      }
-      
-      // Rafraîchir le graphique
-      ChartRedraw(0);
-   }
-   
-   //+------------------------------------------------------------------+
-   //| Supprimer toutes les lignes swing                                |
-   //+------------------------------------------------------------------+
-   void CSymbolTrader::DeleteSwingLines()
-   {
-      // Supprimer les high lines
-      for(int i = 0; i < 3; i++)
-      {
-         string nameHigh = "SwingHigh_" + m_symbol + "_" + IntegerToString(m_magicNumber) + "_" + IntegerToString(i);
-         ObjectDelete(0, nameHigh);
-         
-         string nameLow = "SwingLow_" + m_symbol + "_" + IntegerToString(m_magicNumber) + "_" + IntegerToString(i);
-         ObjectDelete(0, nameLow);
-      }
-      
-      ChartRedraw(0);
+      // Utiliser la fonction globale ForexIsTradingAllowed() du TimeFilter
+      return ForexIsTradingAllowed();
    }
 };
