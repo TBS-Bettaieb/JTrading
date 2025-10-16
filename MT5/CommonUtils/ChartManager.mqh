@@ -137,13 +137,13 @@ public:
    {
       string labelName = GenerateLabelName("TopRight");
       
+      // Supprimer l'ancien
+      ObjectDelete(m_chartId, labelName);
+      
       // Créer le label
       if(!ObjectCreate(m_chartId, labelName, OBJ_LABEL, 0, 0, 0))
       {
-         // Si existe déjà, le supprimer et recréer
-         ObjectDelete(m_chartId, labelName);
-         if(!ObjectCreate(m_chartId, labelName, OBJ_LABEL, 0, 0, 0))
-            return false;
+         return false;
       }
       
       // Positionner dans le coin supérieur droit
@@ -154,10 +154,10 @@ public:
       // Définir le texte
       ObjectSetString(m_chartId, labelName, OBJPROP_TEXT, text);
       
-      // Style
+      // Style avec BOLD et taille augmentée
       ObjectSetInteger(m_chartId, labelName, OBJPROP_COLOR, clr);
       ObjectSetInteger(m_chartId, labelName, OBJPROP_FONTSIZE, fontSize);
-      ObjectSetString(m_chartId, labelName, OBJPROP_FONT, "Arial");
+      ObjectSetString(m_chartId, labelName, OBJPROP_FONT, "Arial Bold");  // BOLD
       
       // Toujours visible
       ObjectSetInteger(m_chartId, labelName, OBJPROP_BACK, false);
@@ -287,19 +287,62 @@ public:
       int yDistanceStart = 30,
       int lineSpacing = 18,
       color clr = clrWhite,
-      int fontSize = 9
+      int fontSize = 9,
+      string groupName = "MultiLine",  // NOUVEAU: identifier le groupe
+      string fontName = "Arial Bold"  // NOUVEAU: Police Bold par défaut
    )
    {
       int arraySize = ArraySize(lines);
       
-      for(int i = 0; i < arraySize; i++)
+      // NOUVEAU: Supprimer les anciens labels de ce groupe
+      int total = ObjectsTotal(m_chartId);
+      for(int i = total - 1; i >= 0; i--)
       {
-         int yDistance = yDistanceStart + (i * lineSpacing);
+         string objName = ObjectName(m_chartId, i);
+         string searchPattern = m_labelPrefix + "_" + groupName + "_";
          
-         if(!ShowCustomLabel(lines[i], corner, xDistance, yDistance, clr, fontSize))
-            return false;
+         if(StringFind(objName, searchPattern) == 0)
+         {
+            ObjectDelete(m_chartId, objName);
+         }
       }
       
+      // Créer les nouveaux labels avec des noms prévisibles
+      for(int i = 0; i < arraySize; i++)
+      {
+         string labelName = m_labelPrefix + "_" + groupName + "_Line_" + IntegerToString(i);
+         int yDistance = yDistanceStart + (i * lineSpacing);
+         
+         // Supprimer si existe déjà (sécurité)
+         ObjectDelete(m_chartId, labelName);
+         
+         // Créer le label
+         if(!ObjectCreate(m_chartId, labelName, OBJ_LABEL, 0, 0, 0))
+         {
+            Print("❌ Erreur création label: ", labelName);
+            continue;
+         }
+         
+         // Position
+         ObjectSetInteger(m_chartId, labelName, OBJPROP_CORNER, corner);
+         ObjectSetInteger(m_chartId, labelName, OBJPROP_XDISTANCE, xDistance);
+         ObjectSetInteger(m_chartId, labelName, OBJPROP_YDISTANCE, yDistance);
+         
+         // Texte
+         ObjectSetString(m_chartId, labelName, OBJPROP_TEXT, lines[i]);
+         
+         // Style avec police Bold
+         ObjectSetInteger(m_chartId, labelName, OBJPROP_COLOR, clr);
+         ObjectSetInteger(m_chartId, labelName, OBJPROP_FONTSIZE, fontSize);
+         ObjectSetString(m_chartId, labelName, OBJPROP_FONT, fontName);  // Police Bold
+         
+         // Propriétés
+         ObjectSetInteger(m_chartId, labelName, OBJPROP_BACK, false);
+         ObjectSetInteger(m_chartId, labelName, OBJPROP_SELECTABLE, false);
+         ObjectSetInteger(m_chartId, labelName, OBJPROP_HIDDEN, true);
+      }
+      
+      ChartRedraw(m_chartId);
       return true;
    }
    
@@ -335,11 +378,11 @@ public:
    void ClearLabels()
    {
       // Supprimer tous les objets avec notre préfixe
-      int total = ObjectsTotal(m_chartId);
+      int total = ObjectsTotal(m_chartId, -1, -1);  // -1, -1 pour tous les objets
       
       for(int i = total - 1; i >= 0; i--)
       {
-         string objName = ObjectName(m_chartId, i);
+         string objName = ObjectName(m_chartId, i, -1, -1);
          
          // Vérifier si l'objet commence par notre préfixe
          if(StringFind(objName, m_labelPrefix + "_") == 0)
@@ -350,6 +393,8 @@ public:
       
       ChartRedraw(m_chartId);
       m_labelCounter = 0;
+      
+      Print("✅ Labels nettoyés pour préfixe: ", m_labelPrefix);
    }
    
    //+------------------------------------------------------------------+

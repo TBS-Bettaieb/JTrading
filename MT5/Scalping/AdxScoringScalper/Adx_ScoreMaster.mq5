@@ -82,8 +82,11 @@ int OnInit()
    
    chartManager.SetupChart();
    
-   // Nettoyer les labels existants
+   // NOUVEAU: Nettoyer TOUS les labels avant de commencer
    chartManager.ClearLabels();
+   
+   // Attendre un peu pour s'assurer que le nettoyage est effectif
+   Sleep(100);
    
    chartManager.ShowStrategyName("ADX Score Master v2.0");
    
@@ -214,6 +217,16 @@ void OnTick()
         return;
    }
    
+   // MODIFIÉ: Nettoyage moins fréquent pour éviter les saccades
+   static int cleanupTick = 0;
+   cleanupTick++;
+   if(cleanupTick % 50000 == 0)  // De 10000 à 50000
+   {
+      Print("🧹 Nettoyage périodique des labels...");
+      chartManager.ClearLabels();
+      Sleep(50);  // Réduit de 100 à 50ms
+   }
+   
    // Vérifier si le trading est autorisé selon le filtre temps
    bool tradingAllowed = timeManager.IsTradingAllowed();
    
@@ -227,9 +240,11 @@ void OnTick()
    if(scoreTrader != NULL)
       scoreTrader.TrailingStop();
    
-   // Mettre à jour l'affichage (toujours actif)
+   // Mettre à jour l'affichage PRINCIPAL à chaque tick (temps réel)
    UpdateChartDisplay();
-   DisplayGlobalStatus();  // NOUVEAU
+   
+   // Mettre à jour le statut global moins souvent
+   DisplayGlobalStatus();
 }
 
 //+------------------------------------------------------------------+
@@ -239,11 +254,8 @@ void UpdateChartDisplay()
 {
    if(chartManager == NULL || scoreTrader == NULL) return;
    
-   static int tickCount = 0;
-   tickCount++;
-   
-   // Mettre à jour toutes les 50 ticks au lieu de 100
-   if(tickCount % 50 != 0) return;
+   // SUPPRIMÉ: Les compteurs de ticks qui ralentissent
+   // On met à jour à CHAQUE tick pour avoir du temps réel
    
    // ═══ Affichage du statut principal (haut droite) ═══
    int buyScore = scoreTrader.GetBuyScore();
@@ -256,13 +268,14 @@ void UpdateChartDisplay()
    );
    
    color statusColor = GetStatusColor(buyScore, sellScore);
-   chartManager.ShowTopRightLabel(status, statusColor, 12, 10);  // Taille réduite à 12
+   // Police agrandie et en Bold
+   chartManager.ShowTopRightLabel(status, statusColor, 14, 10);  // Augmenté de 12 à 14
    
    // ═══ Affichage des indicateurs avec couleurs dynamiques ═══
    string indicators[];
    ArrayResize(indicators, 5);
    
-   // Titre
+   // Titre en Bold
    indicators[0] = "━━━ INDICATORS ━━━";
    
    // ADX avec code couleur
@@ -295,8 +308,8 @@ void UpdateChartDisplay()
    if(buyScore >= SCORE_MIN_ENTRY) indColor = clrLimeGreen;
    else if(sellScore >= SCORE_MIN_ENTRY) indColor = clrOrangeRed;
    
-   // Position déplacée: YDISTANCE de 80 → 100
-   chartManager.ShowMultiLineInfo(indicators, CORNER_LEFT_UPPER, 10, 100, 18, indColor, 9);
+   // Police agrandie de 9 à 11
+   chartManager.ShowMultiLineInfo(indicators, CORNER_LEFT_UPPER, 10, 100, 20, indColor, 11, "Indicators");
    
    // ═══ Affichage du breakdown du score ═══
    DisplayScoreBreakdown();
@@ -309,18 +322,18 @@ void DisplayScoreBreakdown()
 {
    if(chartManager == NULL || scoreTrader == NULL) return;
    
-   static int updateCount = 0;
-   updateCount++;
-   
-   // Mettre à jour toutes les 200 ticks au lieu de 500
-   if(updateCount % 200 != 0) return;
+   // SUPPRIMÉ: Le compteur updateCount qui ralentit
+   // Affichage TEMPS RÉEL pour voir les scores changer immédiatement
    
    string lines[];
-   ArrayResize(lines, 8);  // Réduit de 10 à 8 lignes
+   ArrayResize(lines, 6);
    
    lines[0] = "━━━ SCORE BREAKDOWN ━━━";
    
-   // Format compact avec séparateur
+   int buyScore = scoreTrader.GetBuyScore();
+   int sellScore = scoreTrader.GetSellScore();
+   
+   // Format compact avec scores détaillés
    lines[1] = StringFormat("BUY: ADX:%d RSI:%d MA:%d CF:%d", 
       scoreTrader.GetBuyADXScore(), scoreTrader.GetBuyRSIScore(), 
       scoreTrader.GetBuyMAScore(), scoreTrader.GetBuyConfluenceScore());
@@ -331,10 +344,7 @@ void DisplayScoreBreakdown()
    
    lines[3] = "─────────────────";
    
-   // Affichage des totaux avec indicateur visuel
-   int buyScore = scoreTrader.GetBuyScore();
-   int sellScore = scoreTrader.GetSellScore();
-   
+   // Totaux avec indicateurs visuels
    string buyIndicator = "";
    if(buyScore >= SCORE_HIGH_CONFIDENCE) buyIndicator = " ⭐⭐";
    else if(buyScore >= SCORE_MIN_ENTRY) buyIndicator = " ⭐";
@@ -357,8 +367,8 @@ void DisplayScoreBreakdown()
    else if(sellScore >= SCORE_MIN_ENTRY)
       textColor = clrOrange;
    
-   // Afficher dans le coin inférieur droit
-   chartManager.ShowMultiLineInfo(lines, CORNER_RIGHT_LOWER, 10, 30, 16, textColor, 9);
+   // Police agrandie de 9 à 11
+   chartManager.ShowMultiLineInfo(lines, CORNER_RIGHT_LOWER, 10, 30, 18, textColor, 11, "ScoreBreakdown");
 }
 
 //+------------------------------------------------------------------+
@@ -371,8 +381,8 @@ void DisplayGlobalStatus()
    static int statusTick = 0;
    statusTick++;
    
-   // Mettre à jour toutes les 300 ticks
-   if(statusTick % 300 != 0) return;
+   // Garder une fréquence réduite pour balance/time (toutes les 100 ticks au lieu de 300)
+   if(statusTick % 100 != 0) return;
    
    string statusLines[];
    ArrayResize(statusLines, 3);
@@ -390,8 +400,8 @@ void DisplayGlobalStatus()
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
    statusLines[2] = StringFormat("Bal: %.2f", balance);
    
-   // Afficher dans le coin inférieur gauche
-   chartManager.ShowMultiLineInfo(statusLines, CORNER_LEFT_LOWER, 10, 30, 18, clrDeepSkyBlue, 9);
+   // Police agrandie de 9 à 10
+   chartManager.ShowMultiLineInfo(statusLines, CORNER_LEFT_LOWER, 10, 30, 20, clrDeepSkyBlue, 10, "GlobalStatus");
 }
 
 //+------------------------------------------------------------------+
