@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property strict
 
-#include "../../CommonUtils/TradingUtils.mqh"
+#include "../../../CommonUtils/TradingUtils.mqh"
 
 //+------------------------------------------------------------------+
 //| Afficher les informations sur les symboles configurés           |

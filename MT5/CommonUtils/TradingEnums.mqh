@@ -15,14 +15,14 @@ enum ENUM_STRATEGY_MODE
 };
 
 //+------------------------------------------------------------------+
-//| Order Types for Trading                                         |
+//| Custom Order Types for Trading                                  |
 //+------------------------------------------------------------------+
-enum ENUM_ORDER_TYPE
+enum ENUM_CUSTOM_ORDER_TYPE
 {
-   ORDER_BUY_STOP,      // Achat au-dessus du prix actuel
-   ORDER_SELL_STOP,     // Vente en-dessous du prix actuel
-   ORDER_BUY_LIMIT,     // Achat en-dessous du prix actuel
-   ORDER_SELL_LIMIT     // Vente au-dessus du prix actuel
+   CUSTOM_ORDER_BUY_STOP,      // Achat au-dessus du prix actuel
+   CUSTOM_ORDER_SELL_STOP,     // Vente en-dessous du prix actuel
+   CUSTOM_ORDER_BUY_LIMIT,     // Achat en-dessous du prix actuel
+   CUSTOM_ORDER_SELL_LIMIT     // Vente au-dessus du prix actuel
 };
 
 //+------------------------------------------------------------------+

@@ -8,9 +8,9 @@
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
 #include <Trade\OrderInfo.mqh>
-#include "../../CommonUtils/TradingEnums.mqh"
+#include "../../../CommonUtils/TradingEnums.mqh"
 #include "ForexCommissionManager.mqh"
-#include "../../CommonUtils/TimeFilter.mqh"
+#include "../../../CommonUtils/TimeFilter.mqh"
 #include "ForexSwingAnalyzer.mqh"
 
 //+------------------------------------------------------------------+

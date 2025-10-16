@@ -10,9 +10,9 @@
 
 
 #include <Trade\Trade.mqh>
-#include "../CommonUtils/TradingEnums.mqh"
-#include "../CommonUtils/TradingUtils.mqh"
-#include "../CommonUtils/TimeFilter.mqh"
+#include "../../CommonUtils/TradingEnums.mqh"
+#include "../../CommonUtils/TradingUtils.mqh"
+#include "../../CommonUtils/TimeFilter.mqh"
 #include "common/ForexChartManager.mqh"
 #include "common/ForexSymbolTrader.mqh"
 #include "common/ForexSymbolManager.mqh"
@@ -38,7 +38,10 @@ input int      TslTriggerPoints   = 10;    // Points in profit before Trailing S
 input int      TslPoints          = 10;    // Trailing Stop Loss (10 points = 1 pip)
 input string   TradeComment       = "Scalping Robot";
 
-//--- Time Filters (moved to JT_TimeFilter.mqh)
+//--- Time Filters
+input group "=== Time Filter ==="
+input int SHInput = 7;  // Start Hour (0 = Inactive, 1-23 = Active)
+input int EHInput = 19; // End Hour (0 = Inactive, 1-23 = Active)
 
 //--- Bar management
 input group "=== Strategy Parameters ==="

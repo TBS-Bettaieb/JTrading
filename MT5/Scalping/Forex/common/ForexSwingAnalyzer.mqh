@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property strict
 
-#include "../../CommonUtils/TradingEnums.mqh"
+#include "../../../CommonUtils/TradingEnums.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe pour analyser les points swing                           |

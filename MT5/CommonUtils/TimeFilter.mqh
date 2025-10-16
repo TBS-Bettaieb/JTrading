@@ -1,23 +1,76 @@
 //+------------------------------------------------------------------+
 //|                                              TimeFilter.mqh       |
 //|                   Filtre horaire et jours pour le trading         |
+//|                                                                   |
+//| UTILISATION :                                                     |
+//| 1. Dans votre fichier .mq5 principal, ajoutez ces inputs :       |
+//|    input group "=== Time Filter ==="                              |
+//|    input int SHInput = 7;  // Start Hour (0-23)                  |
+//|    input int EHInput = 19; // End Hour (0-23)                     |
+//|                                                                   |
+//| 2. Incluez ce fichier : #include "../CommonUtils/TimeFilter.mqh"  |
+//|                                                                   |
+//| 3. Utilisez les fonctions :                                       |
+//|    - IsTradingAllowed() : utilise SHInput/EHInput automatiquement |
+//|    - IsTradingAllowed(start, end) : paramètres explicites         |
+//|    - CurrentHour() : heure actuelle                               |
+//|    - TimeFilter class : filtres avancés                          |
+//|                                                                   |
+//| EXEMPLES :                                                        |
+//| - SHInput=7, EHInput=19 : trading de 7h à 19h                    |
+//| - SHInput=22, EHInput=6 : trading de 22h à 6h (overnight)        |
+//| - SHInput=0, EHInput=0 : pas de filtre horaire                   |
 //+------------------------------------------------------------------+
 #property strict
 
 //---------------------------- Inputs (reusable) ---------------------
-// Ces inputs sont exposés à tout EA qui inclut ce fichier
-input group "=== Time Filter ==="
-input int SHInput = 7;  // Start Hour (0 = Inactive, 1-23 = Active)
-input int EHInput = 19;  // End Hour (0 = Inactive, 1-23 = Active)
+// ATTENTION DEVELOPPEUR : Pour utiliser ce TimeFilter dans votre EA, 
+// vous devez AJOUTER ces inputs dans votre fichier .mq5 principal :
+//
+// input group "=== Time Filter ==="
+// input int SHInput = 7;  // Start Hour (0 = Inactive, 1-23 = Active)
+// input int EHInput = 19; // End Hour (0 = Inactive, 1-23 = Active)
+//
+// Ces inputs ne peuvent PAS être définis dans un fichier .mqh (include)
+// Ils doivent être dans le fichier .mq5 principal de votre EA.
+//
+// Exemple d'utilisation dans votre EA :
+// 1. Ajoutez les inputs ci-dessus dans votre .mq5
+// 2. Incluez ce fichier : #include "../CommonUtils/TimeFilter.mqh"
+// 3. Utilisez les fonctions : IsTradingAllowed(), CurrentHour(), etc.
+//
+// Ces variables sont commentées ici car elles causeraient des erreurs de compilation
+// si définies dans un fichier include (.mqh)
+// input group "=== Time Filter ==="
+// input int SHInput = 7;  // Start Hour (0 = Inactive, 1-23 = Active)
+// input int EHInput = 19; // End Hour (0 = Inactive, 1-23 = Active)
 
-// Helpers globaux compatibles avec SHInput/EHInput
+//+------------------------------------------------------------------+
+//| Helpers globaux - Fonctions utilitaires                         |
+//+------------------------------------------------------------------+
 int CurrentHour()
 {
    MqlDateTime dt; TimeToStruct(TimeCurrent(), dt); return dt.hour;
 }
 
+//+------------------------------------------------------------------+
+//| Fonction principale de vérification horaire                     |
+//| IMPORTANT: Cette fonction utilise les variables SHInput et EHInput |
+//| qui doivent être définies dans le fichier .mq5 principal        |
+//+------------------------------------------------------------------+
 bool IsTradingAllowed()
 {
+   // Vérifier si les inputs sont définis (sinon retourner true par défaut)
+   #ifndef SHInput
+      Print("⚠️ WARNING: SHInput not defined in main EA file. Time filter disabled.");
+      return true;
+   #endif
+   
+   #ifndef EHInput
+      Print("⚠️ WARNING: EHInput not defined in main EA file. Time filter disabled.");
+      return true;
+   #endif
+   
    int h = CurrentHour();
    
    if(SHInput < EHInput) 
@@ -33,6 +86,32 @@ bool IsTradingAllowed()
    else 
    {
       // Pas de filtre ou égalité (SHInput == EHInput)
+      return true;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Fonction alternative avec paramètres explicites                 |
+//| Utilisez cette fonction si vous préférez passer les heures      |
+//| directement plutôt que d'utiliser les inputs globaux            |
+//+------------------------------------------------------------------+
+bool IsTradingAllowed(int startHour, int endHour)
+{
+   int h = CurrentHour();
+   
+   if(startHour < endHour) 
+   {
+      // Plage normale même journée (ex: 8h-17h)
+      return (h >= startHour && h <= endHour);
+   }
+   else if(startHour > endHour) 
+   {
+      // Plage overnight traverse minuit (ex: 22h-6h)
+      return (h >= startHour || h <= endHour);
+   }
+   else 
+   {
+      // Pas de filtre ou égalité
       return true;
    }
 }
