@@ -437,7 +437,12 @@ public:
       if(!m_useTrailingTP || m_trailingTP == NULL) return;
       if(!PositionSelectByTicket(ticket)) return;
       
-      CTrailingTP* newTrailing = new CTrailingTP();
+      // Vérifier que ce n'est pas déjà tracké
+      for(int i = 0; i < ArraySize(m_positionTrailings); i++) {
+         if(m_positionTrailings[i].ticket == ticket) return;
+      }
+      
+      CTrailingTP* newTrailing = new CTrailingTP(m_trailingTP.GetMode());
       newTrailing.Initialize(
          PositionGetDouble(POSITION_PRICE_OPEN),
          PositionGetDouble(POSITION_SL),
@@ -449,6 +454,8 @@ public:
       ArrayResize(m_positionTrailings, size + 1);
       m_positionTrailings[size].ticket = ticket;
       m_positionTrailings[size].trailing = newTrailing;
+      
+      Print("🎯 Trailing TP activé #", ticket, " | Mode: ", EnumToString(m_trailingTP.GetMode()));
    }
    
    //+------------------------------------------------------------------+
@@ -471,14 +478,46 @@ public:
    }
    
    //+------------------------------------------------------------------+
+   //| Détecter les nouvelles positions                                 |
+   //+------------------------------------------------------------------+
+   void CheckForNewPositions()
+   {
+      if(!m_useTrailingTP) return;
+      
+      for(int i = 0; i < PositionsTotal(); i++)
+      {
+         if(!m_position.SelectByIndex(i)) continue;
+         if(m_position.Magic() != m_magicNumber) continue;
+         if(m_position.Symbol() != m_symbol) continue;
+         
+         ulong ticket = m_position.Ticket();
+         
+         bool alreadyTracked = false;
+         for(int j = 0; j < ArraySize(m_positionTrailings); j++)
+         {
+            if(m_positionTrailings[j].ticket == ticket)
+            {
+               alreadyTracked = true;
+               break;
+            }
+         }
+         
+         if(!alreadyTracked) OnPositionOpened(ticket);
+      }
+   }
+   
+   //+------------------------------------------------------------------+
    //| Appliquer le Trailing TP à toutes les positions                 |
    //+------------------------------------------------------------------+
    void ApplyTrailingTP()
    {
       if(!m_useTrailingTP) return;
       
+      CheckForNewPositions();
+      
       for(int i = ArraySize(m_positionTrailings) - 1; i >= 0; i--) {
          ulong ticket = m_positionTrailings[i].ticket;
+         
          if(!PositionSelectByTicket(ticket)) {
             OnPositionClosed(ticket);
             continue;
@@ -490,7 +529,9 @@ public:
          
          double newSL, newTP;
          if(m_positionTrailings[i].trailing.Update(currentPrice, newSL, newTP)) {
-            m_trade.PositionModify(ticket, newSL, newTP);
+            if(newSL > 0 && newTP > 0) {
+               m_trade.PositionModify(ticket, newSL, newTP);
+            }
          }
       }
    }
@@ -560,10 +601,6 @@ private:
          if(m_trade.BuyStop(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
          {
             Print("✓ Buy Stop order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
-            if(m_useTrailingTP) {
-               ulong ticket = m_trade.ResultOrder();
-               OnPositionOpened(ticket);
-            }
          }
          else
          {
@@ -578,10 +615,6 @@ private:
          if(m_trade.BuyLimit(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
          {
             Print("✓ Buy Limit order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
-            if(m_useTrailingTP) {
-               ulong ticket = m_trade.ResultOrder();
-               OnPositionOpened(ticket);
-            }
          }
          else
          {
@@ -613,10 +646,6 @@ private:
          if(m_trade.SellStop(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
          {
             Print("✓ Sell Stop order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
-            if(m_useTrailingTP) {
-               ulong ticket = m_trade.ResultOrder();
-               OnPositionOpened(ticket);
-            }
          }
          else
          {
@@ -631,10 +660,6 @@ private:
          if(m_trade.SellLimit(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
          {
             Print("✓ Sell Limit order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
-            if(m_useTrailingTP) {
-               ulong ticket = m_trade.ResultOrder();
-               OnPositionOpened(ticket);
-            }
          }
          else
          {
