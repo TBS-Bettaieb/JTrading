@@ -169,36 +169,62 @@ public:
    }
    
    //+------------------------------------------------------------------+
-   //| Afficher le nom de la stratégie dans le coin supérieur gauche   |
+   //| Afficher le nom de la stratégie (fond + texte)                  |
    //+------------------------------------------------------------------+
-   bool ShowTopLeftLabel(string strategyName, color clr = clrCyan, int fontSize = 20)
+   bool ShowStrategyName(
+      string strategyName,
+      color textColor = clrWhite,
+      int fontSize = 13,
+      color backgroundColor = C'60,75,90'
+   )
    {
-      string labelName = GenerateLabelName("TopLeft");
-      
-      // Créer le label
-      if(!ObjectCreate(m_chartId, labelName, OBJ_LABEL, 0, 0, 0))
+      // Fond plus clair et plus présent pour ressortir sur fond noir
+      string bgName = m_labelPrefix + "_StrategyBg";
+      ObjectDelete(m_chartId, bgName);
+      if(ObjectCreate(m_chartId, bgName, OBJ_RECTANGLE_LABEL, 0, 0, 0))
       {
-         // Si existe déjà, le supprimer et recréer
-         ObjectDelete(m_chartId, labelName);
-         if(!ObjectCreate(m_chartId, labelName, OBJ_LABEL, 0, 0, 0))
-            return false;
+         // Position
+         ObjectSetInteger(m_chartId, bgName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+         ObjectSetInteger(m_chartId, bgName, OBJPROP_XDISTANCE, 15);
+         ObjectSetInteger(m_chartId, bgName, OBJPROP_YDISTANCE, 15);
+
+         // Dimensions augmentées pour plus de présence
+         ObjectSetInteger(m_chartId, bgName, OBJPROP_XSIZE, 340);
+         ObjectSetInteger(m_chartId, bgName, OBJPROP_YSIZE, 40);
+
+         // Couleur de fond bien plus claire (ou passer en paramètre)
+         ObjectSetInteger(m_chartId, bgName, OBJPROP_BGCOLOR, backgroundColor);
+
+         // Bordure vive et épaisse pour attirer l'œil
+         ObjectSetInteger(m_chartId, bgName, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+         ObjectSetInteger(m_chartId, bgName, OBJPROP_COLOR, C'0,180,255');
+         ObjectSetInteger(m_chartId, bgName, OBJPROP_WIDTH, 2);
+
+         // Derrière le texte
+         ObjectSetInteger(m_chartId, bgName, OBJPROP_BACK, true);
+         ObjectSetInteger(m_chartId, bgName, OBJPROP_SELECTABLE, false);
+         ObjectSetInteger(m_chartId, bgName, OBJPROP_HIDDEN, true);
       }
       
-      // Positionner dans le coin supérieur gauche
+      // Texte très visible au-dessus du fond
+      string labelName = m_labelPrefix + "_StrategyName";
+      ObjectDelete(m_chartId, labelName);
+      if(!ObjectCreate(m_chartId, labelName, OBJ_LABEL, 0, 0, 0))
+         return false;
+      
+      // Position (légers paddings pour centrage visuel)
       ObjectSetInteger(m_chartId, labelName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-      ObjectSetInteger(m_chartId, labelName, OBJPROP_XDISTANCE, 30);
-      ObjectSetInteger(m_chartId, labelName, OBJPROP_YDISTANCE, 30);
-      
-      // Définir le texte avec formatage
-      string displayText = "═══ " + strategyName + " ═══";
-      ObjectSetString(m_chartId, labelName, OBJPROP_TEXT, displayText);
-      
-      // Style
-      ObjectSetInteger(m_chartId, labelName, OBJPROP_COLOR, clr);
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_XDISTANCE, 40);
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_YDISTANCE, 31);
+
+      // Contenu
+      ObjectSetString(m_chartId, labelName, OBJPROP_TEXT, strategyName);
+
+      // Style: police plus grasse et taille supérieure pour lisibilité
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_COLOR, textColor);
       ObjectSetInteger(m_chartId, labelName, OBJPROP_FONTSIZE, fontSize);
-      ObjectSetString(m_chartId, labelName, OBJPROP_FONT, "Arial Bold");
-      
-      // Toujours visible
+      ObjectSetString(m_chartId, labelName, OBJPROP_FONT, "Arial Black");
+
       ObjectSetInteger(m_chartId, labelName, OBJPROP_BACK, false);
       ObjectSetInteger(m_chartId, labelName, OBJPROP_SELECTABLE, false);
       ObjectSetInteger(m_chartId, labelName, OBJPROP_HIDDEN, true);
@@ -334,6 +360,22 @@ public:
    {
       string labelName = m_labelPrefix + "_" + suffix;
       bool result = ObjectDelete(m_chartId, labelName);
+      ChartRedraw(m_chartId);
+      return result;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Supprimer le nom de la stratégie (fond + texte)                 |
+   //+------------------------------------------------------------------+
+   bool DeleteStrategyName()
+   {
+      // Supprimer le fond
+      ObjectDelete(m_chartId, m_labelPrefix + "_StrategyBg");
+      
+      // Supprimer le texte
+      string labelName = m_labelPrefix + "_StrategyName";
+      bool result = ObjectDelete(m_chartId, labelName);
+      
       ChartRedraw(m_chartId);
       return result;
    }

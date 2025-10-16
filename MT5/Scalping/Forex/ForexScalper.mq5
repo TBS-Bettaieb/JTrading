@@ -17,6 +17,9 @@
 #include "common/ForexSymbolTrader.mqh"
 #include "common/ForexSymbolManager.mqh"
 
+//--- Constantes
+const string STRATEGY_NAME = "Forex Scalper V1.1";
+
 // Objets globaux
 ChartManager* chartManager = NULL;
 ForexSymbolTrader* symbolTraders[];
@@ -133,7 +136,7 @@ int OnInit()
       chartManager.SetupChart();
       
       // Afficher le nom de la stratégie
-      chartManager.ShowTopLeftLabel("Scalping Robot v2.0 - Multi-Symbol", clrDarkBlue, 14);
+      chartManager.ShowStrategyName(STRATEGY_NAME);
       
       // Afficher les informations des symboles
       PrintSymbolsInfo(symbols, BaseMagic, Timeframe, "ScalpingRobot");
