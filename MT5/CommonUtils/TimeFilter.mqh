@@ -60,34 +60,44 @@ int CurrentHour()
 //+------------------------------------------------------------------+
 bool IsTradingAllowed()
 {
-   // Vérifier si les inputs sont définis (sinon retourner true par défaut)
-   #ifndef SHInput
-      Print("⚠️ WARNING: SHInput not defined in main EA file. Time filter disabled.");
-      return true;
-   #endif
-   
-   #ifndef EHInput
-      Print("⚠️ WARNING: EHInput not defined in main EA file. Time filter disabled.");
-      return true;
-   #endif
-   
    int h = CurrentHour();
+   
+   // Si les deux sont à 0, pas de filtre
+   if(SHInput == 0 && EHInput == 0)
+   {
+      return true;
+   }
+   
+   bool allowed = false;
    
    if(SHInput < EHInput) 
    {
-      // Plage normale même journée (ex: 8h-17h)
-      return (h >= SHInput && h <= EHInput);
+      // Plage normale même journée (ex: 7h-19h)
+      allowed = (h >= SHInput && h <= EHInput);
    }
    else if(SHInput > EHInput) 
    {
       // Plage overnight traverse minuit (ex: 22h-6h)
-      return (h >= SHInput || h <= EHInput);
+      allowed = (h >= SHInput || h <= EHInput);
    }
-   else 
+   else if(SHInput == EHInput && SHInput > 0)
    {
-      // Pas de filtre ou égalité (SHInput == EHInput)
-      return true;
+      // Une seule heure spécifique
+      allowed = (h == SHInput);
    }
+   
+   // Debug: afficher le statut du filtre temps (une fois par heure)
+   static int lastDebugHour = -1;
+   if(h != lastDebugHour)
+   {
+      if(allowed)
+         Print("✅ TimeFilter: Trading ALLOWED - Current=", h, "h, Range=", SHInput, "h-", EHInput, "h");
+      else
+         Print("🚫 TimeFilter: Trading BLOCKED - Current=", h, "h, Range=", SHInput, "h-", EHInput, "h");
+      lastDebugHour = h;
+   }
+   
+   return allowed;
 }
 
 //+------------------------------------------------------------------+

@@ -144,6 +144,15 @@ int OnInit()
       Print("⚠️ Warning: Chart Manager initialization failed");
    }
    
+   // Afficher la configuration du TimeFilter
+   Print("⏰ TimeFilter Configuration:");
+   Print("   Start Hour: ", SHInput, "h");
+   Print("   End Hour: ", EHInput, "h");
+   if(SHInput == 0 && EHInput == 0)
+      Print("   Filter Status: DISABLED (trading 24/7)");
+   else
+      Print("   Filter Status: ENABLED");
+   
    Print("✅ Initialization completed successfully!");
    Print("📈 Trading ", totalSymbols, " symbols simultaneously");
    Print("🕒 Timeframe: ", EnumToString(Timeframe));
@@ -203,15 +212,21 @@ void OnTick()
       return;
    }
    
+   // Vérifier si le trading est autorisé selon le filtre temps
+   bool tradingAllowed = IsTradingAllowed();
+   
    // Parcourir tous les symboles et traiter leurs ticks
    for(int i = 0; i < totalSymbols; i++)
    {
       if(symbolTraders[i] != NULL)
       {
-         // Traiter le tick pour ce symbole
-         symbolTraders[i].OnTick();
+         // Traiter le tick pour ce symbole SEULEMENT si le trading est autorisé
+         if(tradingAllowed)
+         {
+            symbolTraders[i].OnTick();
+         }
          
-         // Appliquer le trailing stop pour ce symbole
+         // Appliquer le trailing stop pour ce symbole (toujours actif)
          symbolTraders[i].TrailStop();
       }
    }

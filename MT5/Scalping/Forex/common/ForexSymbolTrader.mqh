@@ -203,6 +203,12 @@ public:
             {
                if(m_position.PositionType() == POSITION_TYPE_BUY)
                {
+                     if(m_position.StopLoss() >= m_position.PriceOpen() && m_position.StopLoss() != 0)
+                     {
+                        
+                        commissionPoints=0;
+                        //continue;
+                     }
                      // Profit actuel en points
                     double profitPoints = (bid - m_position.PriceOpen()) / m_point;
                     
@@ -220,6 +226,13 @@ public:
                }
                else if(m_position.PositionType() == POSITION_TYPE_SELL)
                {
+                  if(m_position.StopLoss() <= m_position.PriceOpen() && m_position.StopLoss() != 0)
+                     {
+                        
+                        commissionPoints=0;
+                        //continue;
+                     }
+                  
                   // Profit actuel en points
                     double profitPoints = (m_position.PriceOpen() - ask) / m_point;
                     
