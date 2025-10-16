@@ -49,33 +49,33 @@ public:
    //+------------------------------------------------------------------+
    bool SetupChart()
    {
-      // Fond blanc
-      ChartSetInteger(m_chartId, CHART_COLOR_BACKGROUND, clrWhite);
+      // Fond noir (RGB: 0,0,0)
+      ChartSetInteger(m_chartId, CHART_COLOR_BACKGROUND, clrBlack);
       
-      // Couleur du texte
-      ChartSetInteger(m_chartId, CHART_COLOR_FOREGROUND, clrBlack);
+      // Couleur du texte blanc (RGB: 255,255,255)
+      ChartSetInteger(m_chartId, CHART_COLOR_FOREGROUND, clrWhite);
       
       // Grille désactivée
       ChartSetInteger(m_chartId, CHART_SHOW_GRID, false);
       
       // Couleurs des bougies
-      ChartSetInteger(m_chartId, CHART_COLOR_CANDLE_BULL, clrLimeGreen);    // Bougie haussière (corps)
-      ChartSetInteger(m_chartId, CHART_COLOR_CHART_UP, clrLimeGreen);       // Bougie haussière (bordure)
-      ChartSetInteger(m_chartId, CHART_COLOR_CANDLE_BEAR, clrRed);          // Bougie baissière (corps)
-      ChartSetInteger(m_chartId, CHART_COLOR_CHART_DOWN, clrRed);           // Bougie baissière (bordure)
+      ChartSetInteger(m_chartId, CHART_COLOR_CANDLE_BULL, C'38,166,154');    // Bougie haussière (corps) - Vert turquoise
+      ChartSetInteger(m_chartId, CHART_COLOR_CHART_UP, C'38,166,154');       // Bougie haussière (bordure) - Vert turquoise
+      ChartSetInteger(m_chartId, CHART_COLOR_CANDLE_BEAR, C'239,83,80');      // Bougie baissière (corps) - Rouge
+      ChartSetInteger(m_chartId, CHART_COLOR_CHART_DOWN, C'239,83,80');       // Bougie baissière (bordure) - Rouge
       
-      // Lignes de prix
-      ChartSetInteger(m_chartId, CHART_COLOR_CHART_LINE, clrBlack);
+      // Lignes de prix - Vert clair
+      ChartSetInteger(m_chartId, CHART_COLOR_CHART_LINE, C'86,186,132');
       
-      // Volumes (si affichés)
-      ChartSetInteger(m_chartId, CHART_COLOR_VOLUME, clrGray);
+      // Volumes - Vert turquoise
+      ChartSetInteger(m_chartId, CHART_COLOR_VOLUME, C'38,166,154');
       
       // Bid/Ask lines
-      ChartSetInteger(m_chartId, CHART_COLOR_BID, clrBlue);
-      ChartSetInteger(m_chartId, CHART_COLOR_ASK, clrRed);
+      ChartSetInteger(m_chartId, CHART_COLOR_BID, C'38,166,154');             // Bid - Vert turquoise
+      ChartSetInteger(m_chartId, CHART_COLOR_ASK, C'239,83,80');              // Ask - Rouge
       
-      // Échelle de prix
-      ChartSetInteger(m_chartId, CHART_COLOR_STOP_LEVEL, clrRed);
+      // Stop levels - Rouge
+      ChartSetInteger(m_chartId, CHART_COLOR_STOP_LEVEL, C'239,83,80');
       
       // Rafraîchir le graphique
       ChartRedraw(m_chartId);
@@ -87,13 +87,13 @@ public:
    //| Configuration personnalisée du style du graphique               |
    //+------------------------------------------------------------------+
    bool SetupCustomChart(
-      color backgroundColor = clrWhite,
-      color foregroundColor = clrBlack,
+      color backgroundColor = clrBlack,
+      color foregroundColor = clrWhite,
       bool showGrid = false,
-      color bullCandleColor = clrLimeGreen,
-      color bearCandleColor = clrRed,
-      color bidColor = clrBlue,
-      color askColor = clrRed
+      color bullCandleColor = C'38,166,154',
+      color bearCandleColor = C'239,83,80',
+      color bidColor = C'38,166,154',
+      color askColor = C'239,83,80'
    )
    {
       // Fond
@@ -112,17 +112,17 @@ public:
       ChartSetInteger(m_chartId, CHART_COLOR_CHART_DOWN, bearCandleColor);
       
       // Lignes de prix
-      ChartSetInteger(m_chartId, CHART_COLOR_CHART_LINE, clrBlack);
+      ChartSetInteger(m_chartId, CHART_COLOR_CHART_LINE, C'86,186,132');
       
       // Volumes
-      ChartSetInteger(m_chartId, CHART_COLOR_VOLUME, clrGray);
+      ChartSetInteger(m_chartId, CHART_COLOR_VOLUME, bullCandleColor);
       
       // Bid/Ask lines
       ChartSetInteger(m_chartId, CHART_COLOR_BID, bidColor);
       ChartSetInteger(m_chartId, CHART_COLOR_ASK, askColor);
       
       // Échelle de prix
-      ChartSetInteger(m_chartId, CHART_COLOR_STOP_LEVEL, clrRed);
+      ChartSetInteger(m_chartId, CHART_COLOR_STOP_LEVEL, bearCandleColor);
       
       // Rafraîchir le graphique
       ChartRedraw(m_chartId);
@@ -133,7 +133,7 @@ public:
    //+------------------------------------------------------------------+
    //| Afficher un label dans le coin supérieur droit                  |
    //+------------------------------------------------------------------+
-   bool ShowTopRightLabel(string text, color clr = clrBlack, int fontSize = 18, int yDistance = 10)
+   bool ShowTopRightLabel(string text, color clr = clrWhite, int fontSize = 18, int yDistance = 10)
    {
       string labelName = GenerateLabelName("TopRight");
       
@@ -171,7 +171,7 @@ public:
    //+------------------------------------------------------------------+
    //| Afficher le nom de la stratégie dans le coin supérieur gauche   |
    //+------------------------------------------------------------------+
-   bool ShowTopLeftLabel(string strategyName, color clr = clrBlue, int fontSize = 20)
+   bool ShowTopLeftLabel(string strategyName, color clr = clrCyan, int fontSize = 20)
    {
       string labelName = GenerateLabelName("TopLeft");
       
@@ -215,7 +215,7 @@ public:
       ENUM_BASE_CORNER corner,
       int xDistance,
       int yDistance,
-      color clr = clrBlack,
+      color clr = clrWhite,
       int fontSize = 10,
       string font = "Arial"
    )
@@ -261,7 +261,7 @@ public:
       int xDistance = 10,
       int yDistanceStart = 30,
       int lineSpacing = 18,
-      color clr = clrBlack,
+      color clr = clrWhite,
       int fontSize = 9
    )
    {
@@ -289,17 +289,17 @@ public:
       int fontSize = 18
    )
    {
-      color statusColor = clrBlack;
+      color statusColor = clrWhite;
       
-      // Déterminer la couleur selon le contenu
+      // Déterminer la couleur selon le contenu - couleurs vives pour fond noir
       if(StringFind(text, "ACTIVE") >= 0 || StringFind(text, "PROFIT") >= 0)
-         statusColor = clrGreen;
+         statusColor = clrLime;
       else if(StringFind(text, "LOSS") >= 0 || StringFind(text, "ERROR") >= 0)
          statusColor = clrRed;
       else if(StringFind(text, "WAIT") >= 0 || StringFind(text, "OUTSIDE") >= 0)
-         statusColor = clrOrange;
+         statusColor = clrYellow;
       else if(StringFind(text, "INFO") >= 0)
-         statusColor = clrBlue;
+         statusColor = clrDeepSkyBlue;
       
       return ShowCustomLabel(text, corner, xDistance, yDistance, statusColor, fontSize);
    }
@@ -381,16 +381,16 @@ public:
       // Mettre à jour le texte
       ObjectSetString(m_chartId, labelName, OBJPROP_TEXT, newText);
       
-      // Mettre à jour la couleur selon le contenu
-      color statusColor = clrBlack;
+      // Mettre à jour la couleur selon le contenu - couleurs vives pour fond noir
+      color statusColor = clrWhite;
       if(StringFind(newText, "ACTIVE") >= 0 || StringFind(newText, "PROFIT") >= 0)
-         statusColor = clrGreen;
+         statusColor = clrLime;
       else if(StringFind(newText, "LOSS") >= 0 || StringFind(newText, "ERROR") >= 0)
          statusColor = clrRed;
       else if(StringFind(newText, "WAIT") >= 0 || StringFind(newText, "OUTSIDE") >= 0)
-         statusColor = clrOrange;
+         statusColor = clrYellow;
       else if(StringFind(newText, "INFO") >= 0)
-         statusColor = clrBlue;
+         statusColor = clrDeepSkyBlue;
       
       ObjectSetInteger(m_chartId, labelName, OBJPROP_COLOR, statusColor);
       ChartRedraw(m_chartId);
@@ -427,4 +427,64 @@ public:
    //| Obtenir le préfixe des labels                                   |
    //+------------------------------------------------------------------+
    string GetLabelPrefix() const { return m_labelPrefix; }
+   
+   //+------------------------------------------------------------------+
+   //| Afficher une alerte au centre du graphique                      |
+   //+------------------------------------------------------------------+
+   bool ShowAlert(
+      string alertText,
+      color textColor = clrYellow,
+      int fontSize = 42,
+      string font = "Arial Black"
+   )
+   {
+      string labelName = "AlertCenter";
+      
+      // Supprimer l'alerte existante si elle existe
+      ObjectDelete(m_chartId, labelName);
+      
+      // Créer le label
+      if(!ObjectCreate(m_chartId, labelName, OBJ_LABEL, 0, 0, 0))
+         return false;
+      
+      // Positionner au centre du graphique
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      
+      // Calculer la position centrale approximative
+      int chartWidth = (int)ChartGetInteger(m_chartId, CHART_WIDTH_IN_PIXELS);
+      int chartHeight = (int)ChartGetInteger(m_chartId, CHART_HEIGHT_IN_PIXELS);
+      
+      int xDistance = (chartWidth > 0) ? chartWidth / 2 - 150 : 400;  // Centrage approximatif
+      int yDistance = (chartHeight > 0) ? chartHeight / 2 - 25 : 300; // Centrage approximatif
+      
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_XDISTANCE, xDistance);
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_YDISTANCE, yDistance);
+      
+      // Définir le texte
+      ObjectSetString(m_chartId, labelName, OBJPROP_TEXT, alertText);
+      
+      // Style - très visible pour une alerte
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_COLOR, textColor);
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_FONTSIZE, fontSize);
+      ObjectSetString(m_chartId, labelName, OBJPROP_FONT, font);
+      
+      // Propriétés pour une alerte
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_BACK, false);    // Au premier plan
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_SELECTABLE, false); // Non sélectionnable
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_HIDDEN, true);   // Caché dans la liste
+      
+      ChartRedraw(m_chartId);
+      return true;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Supprimer l'alerte du centre du graphique                       |
+   //+------------------------------------------------------------------+
+   bool HideAlert()
+   {
+      string labelName = "AlertCenter";
+      bool result = ObjectDelete(m_chartId, labelName);
+      ChartRedraw(m_chartId);
+      return result;
+   }
 };
