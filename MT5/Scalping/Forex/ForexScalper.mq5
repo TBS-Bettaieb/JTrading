@@ -13,12 +13,12 @@
 #include "../../CommonUtils/TradingEnums.mqh"
 #include "../../CommonUtils/TradingUtils.mqh"
 #include "../../CommonUtils/TimeFilter.mqh"
-#include "common/ForexChartManager.mqh"
+#include "../../CommonUtils/ChartManager.mqh"
 #include "common/ForexSymbolTrader.mqh"
 #include "common/ForexSymbolManager.mqh"
 
 // Objets globaux
-ForexChartManager* chartManager = NULL;
+ChartManager* chartManager = NULL;
 ForexSymbolTrader* symbolTraders[];
 
 //--- Multi-Symbol Trading Inputs
@@ -125,7 +125,7 @@ int OnInit()
    }
    
    // ═══ Step 5: Initialize Chart Manager ═══
-   chartManager = new ForexChartManager(0, "ForexScalpBot");
+   chartManager = new ChartManager(0, "ForexScalpBot");
    
    if(chartManager != NULL)
    {

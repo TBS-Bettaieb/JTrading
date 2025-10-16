@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
-//|                                        ForexChartManager.mqh     |
-//|                      Gestionnaire d'affichage graphique Forex   |
+//|                                            ChartManager.mqh      |
+//|                      Gestionnaire d'affichage graphique universel |
 //+------------------------------------------------------------------+
 #property copyright "(c) 2025"
 #property version   "1.0"
@@ -8,7 +8,7 @@
 //+------------------------------------------------------------------+
 //| Classe de gestion de l'affichage du graphique                    |
 //+------------------------------------------------------------------+
-class ForexChartManager
+class ChartManager
 {
 private:
    long              m_chartId;              // ID du graphique
@@ -29,7 +29,7 @@ public:
    //+------------------------------------------------------------------+
    //| Constructor                                                       |
    //+------------------------------------------------------------------+
-   ForexChartManager(long chartId = 0, string prefix = "Forex")
+   ChartManager(long chartId = 0, string prefix = "Chart")
    {
       m_chartId = (chartId == 0) ? ChartID() : chartId;
       m_labelPrefix = prefix;
@@ -39,7 +39,7 @@ public:
    //+------------------------------------------------------------------+
    //| Destructor - Nettoyage automatique                              |
    //+------------------------------------------------------------------+
-   ~ForexChartManager()
+   ~ChartManager()
    {
       ClearLabels();
    }
@@ -73,6 +73,53 @@ public:
       // Bid/Ask lines
       ChartSetInteger(m_chartId, CHART_COLOR_BID, clrBlue);
       ChartSetInteger(m_chartId, CHART_COLOR_ASK, clrRed);
+      
+      // Échelle de prix
+      ChartSetInteger(m_chartId, CHART_COLOR_STOP_LEVEL, clrRed);
+      
+      // Rafraîchir le graphique
+      ChartRedraw(m_chartId);
+      
+      return true;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Configuration personnalisée du style du graphique               |
+   //+------------------------------------------------------------------+
+   bool SetupCustomChart(
+      color backgroundColor = clrWhite,
+      color foregroundColor = clrBlack,
+      bool showGrid = false,
+      color bullCandleColor = clrLimeGreen,
+      color bearCandleColor = clrRed,
+      color bidColor = clrBlue,
+      color askColor = clrRed
+   )
+   {
+      // Fond
+      ChartSetInteger(m_chartId, CHART_COLOR_BACKGROUND, backgroundColor);
+      
+      // Couleur du texte
+      ChartSetInteger(m_chartId, CHART_COLOR_FOREGROUND, foregroundColor);
+      
+      // Grille
+      ChartSetInteger(m_chartId, CHART_SHOW_GRID, showGrid);
+      
+      // Couleurs des bougies
+      ChartSetInteger(m_chartId, CHART_COLOR_CANDLE_BULL, bullCandleColor);
+      ChartSetInteger(m_chartId, CHART_COLOR_CHART_UP, bullCandleColor);
+      ChartSetInteger(m_chartId, CHART_COLOR_CANDLE_BEAR, bearCandleColor);
+      ChartSetInteger(m_chartId, CHART_COLOR_CHART_DOWN, bearCandleColor);
+      
+      // Lignes de prix
+      ChartSetInteger(m_chartId, CHART_COLOR_CHART_LINE, clrBlack);
+      
+      // Volumes
+      ChartSetInteger(m_chartId, CHART_COLOR_VOLUME, clrGray);
+      
+      // Bid/Ask lines
+      ChartSetInteger(m_chartId, CHART_COLOR_BID, bidColor);
+      ChartSetInteger(m_chartId, CHART_COLOR_ASK, askColor);
       
       // Échelle de prix
       ChartSetInteger(m_chartId, CHART_COLOR_STOP_LEVEL, clrRed);
@@ -232,6 +279,32 @@ public:
    }
    
    //+------------------------------------------------------------------+
+   //| Afficher un statut avec couleurs dynamiques                     |
+   //+------------------------------------------------------------------+
+   bool ShowStatusLabel(
+      string text,
+      ENUM_BASE_CORNER corner = CORNER_RIGHT_UPPER,
+      int xDistance = 10,
+      int yDistance = 10,
+      int fontSize = 18
+   )
+   {
+      color statusColor = clrBlack;
+      
+      // Déterminer la couleur selon le contenu
+      if(StringFind(text, "ACTIVE") >= 0 || StringFind(text, "PROFIT") >= 0)
+         statusColor = clrGreen;
+      else if(StringFind(text, "LOSS") >= 0 || StringFind(text, "ERROR") >= 0)
+         statusColor = clrRed;
+      else if(StringFind(text, "WAIT") >= 0 || StringFind(text, "OUTSIDE") >= 0)
+         statusColor = clrOrange;
+      else if(StringFind(text, "INFO") >= 0)
+         statusColor = clrBlue;
+      
+      return ShowCustomLabel(text, corner, xDistance, yDistance, statusColor, fontSize);
+   }
+   
+   //+------------------------------------------------------------------+
    //| Supprimer tous les labels créés par ce manager                  |
    //+------------------------------------------------------------------+
    void ClearLabels()
@@ -291,6 +364,35 @@ public:
          return false;
       
       ObjectSetInteger(m_chartId, labelName, OBJPROP_COLOR, clr);
+      ChartRedraw(m_chartId);
+      return true;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Mettre à jour un label de statut avec couleur dynamique         |
+   //+------------------------------------------------------------------+
+   bool UpdateStatusLabel(string suffix, string newText)
+   {
+      string labelName = m_labelPrefix + "_" + suffix;
+      
+      if(ObjectFind(m_chartId, labelName) < 0)
+         return false;
+      
+      // Mettre à jour le texte
+      ObjectSetString(m_chartId, labelName, OBJPROP_TEXT, newText);
+      
+      // Mettre à jour la couleur selon le contenu
+      color statusColor = clrBlack;
+      if(StringFind(newText, "ACTIVE") >= 0 || StringFind(newText, "PROFIT") >= 0)
+         statusColor = clrGreen;
+      else if(StringFind(newText, "LOSS") >= 0 || StringFind(newText, "ERROR") >= 0)
+         statusColor = clrRed;
+      else if(StringFind(newText, "WAIT") >= 0 || StringFind(newText, "OUTSIDE") >= 0)
+         statusColor = clrOrange;
+      else if(StringFind(newText, "INFO") >= 0)
+         statusColor = clrBlue;
+      
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_COLOR, statusColor);
       ChartRedraw(m_chartId);
       return true;
    }
