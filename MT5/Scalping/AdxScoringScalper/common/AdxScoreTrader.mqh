@@ -290,16 +290,20 @@ public:
          m_buyAdxScore = SCORE_ADX_WEAK;
       score += m_buyAdxScore;
       
-      // Score RSI (survente = opportunité achat)
+      // Score RSI (survente = opportunité achat) - AMÉLIORÉ
       m_buyRsiScore = 0;
       if(m_currentRSI < 20)
-         m_buyRsiScore = SCORE_RSI_EXTREME;
+         m_buyRsiScore = SCORE_RSI_EXTREME; // 4
       else if(m_currentRSI < 25)
-         m_buyRsiScore = SCORE_RSI_ZONE;
+         m_buyRsiScore = SCORE_RSI_ZONE; // 2
       else if(m_currentRSI < 30)
-         m_buyRsiScore = SCORE_RSI_MODERATE;
+         m_buyRsiScore = SCORE_RSI_MODERATE; // 0
+      else if(m_currentRSI >= 30 && m_currentRSI < 50)
+         m_buyRsiScore = 0; // Zone neutre acceptable
       else if(m_currentRSI >= 70) // Pénalité si surachat
          m_buyRsiScore = -2;
+      else // RSI entre 50-70 (neutre-haut, pas idéal pour BUY)
+         m_buyRsiScore = -1;
       score += m_buyRsiScore;
       
       // Score MA (tendance haussière)
@@ -354,16 +358,20 @@ public:
          m_sellAdxScore = SCORE_ADX_WEAK;
       score += m_sellAdxScore;
       
-      // Score RSI (surachat = opportunité vente)
+      // Score RSI (surachat = opportunité vente) - AMÉLIORÉ
       m_sellRsiScore = 0;
       if(m_currentRSI > 80)
-         m_sellRsiScore = SCORE_RSI_EXTREME;
+         m_sellRsiScore = SCORE_RSI_EXTREME; // 4
       else if(m_currentRSI > 75)
-         m_sellRsiScore = SCORE_RSI_ZONE;
+         m_sellRsiScore = SCORE_RSI_ZONE; // 2
       else if(m_currentRSI > 70)
-         m_sellRsiScore = SCORE_RSI_MODERATE;
+         m_sellRsiScore = SCORE_RSI_MODERATE; // 0
+      else if(m_currentRSI > 50 && m_currentRSI <= 70)
+         m_sellRsiScore = 0; // Zone neutre acceptable
       else if(m_currentRSI <= 30) // Pénalité si survendu
          m_sellRsiScore = -2;
+      else // RSI entre 30-50 (neutre-bas, pas idéal pour SELL)
+         m_sellRsiScore = -1;
       score += m_sellRsiScore;
       
       // Score MA (tendance baissière)
