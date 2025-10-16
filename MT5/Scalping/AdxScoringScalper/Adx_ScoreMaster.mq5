@@ -36,6 +36,17 @@ input int SL_POINTS = 200;                   // Stop Loss en points
 input int TP_MULTIPLIER = 2;                 // Multiplicateur TP (SL * TP_MULTIPLIER)
 input int MAX_POSITIONS = 1;                 // Nombre max de positions simultanées
 
+input group "=== Indicator Parameters ==="
+input int ADX_PERIOD = 14;                   // Période ADX
+input int RSI_PERIOD = 14;                   // Période RSI
+input int MA_PERIOD = 50;                    // Période MA
+input ENUM_MA_METHOD MA_METHOD = MODE_SMA;   // Méthode MA
+
+input group "=== Trailing Stop ==="
+input bool USE_TRAILING = false;             // Activer Trailing Stop
+input int TRAILING_START = 50;               // Points de profit pour démarrer
+input int TRAILING_STEP = 20;                // Points de trailing
+
 input group "=== Time Filter ==="
 input int SHInput = 0;                       // Start Hour (0 = disabled)
 input int EHInput = 0;                       // End Hour (0 = disabled)
@@ -102,7 +113,14 @@ int OnInit()
       RISK_PERCENT_HIGH,
       SL_POINTS,
       TP_MULTIPLIER,
-      MAX_POSITIONS
+      MAX_POSITIONS,
+      ADX_PERIOD,
+      RSI_PERIOD,
+      MA_PERIOD,
+      MA_METHOD,
+      USE_TRAILING,
+      TRAILING_START,
+      TRAILING_STEP
    );
    
    if(scoreTrader == NULL)
@@ -189,7 +207,7 @@ void OnTick()
    // Vérifier que les objets sont initialisés
    if(chartManager == NULL || timeManager == NULL || scoreTrader == NULL)
    {
-      return;
+        return;
    }
    
    // Vérifier si le trading est autorisé selon le filtre temps
@@ -201,6 +219,10 @@ void OnTick()
       scoreTrader.OnTick();
    }
    
+   // Appliquer le trailing stop (toujours actif)
+   if(scoreTrader != NULL)
+      scoreTrader.TrailingStop();
+   
    // Mettre à jour l'affichage (toujours actif)
    UpdateChartDisplay();
 }
@@ -211,6 +233,12 @@ void OnTick()
 void UpdateChartDisplay()
 {
    if(chartManager == NULL || scoreTrader == NULL) return;
+   
+   static int tickCount = 0;
+   tickCount++;
+   
+   // Mettre à jour toutes les 100 ticks pour réduire la charge
+   if(tickCount % 100 != 0) return;
    
    // ═══ Affichage du statut principal (haut droite) ═══
    int buyScore = scoreTrader.GetBuyScore();
@@ -247,17 +275,25 @@ void DisplayScoreBreakdown()
 {
    if(chartManager == NULL || scoreTrader == NULL) return;
    
+   static int updateCount = 0;
+   updateCount++;
+   
+   // Mettre à jour toutes les 500 ticks
+   if(updateCount % 500 != 0) return;
+   
    string lines[];
    ArrayResize(lines, 10);
    
    lines[0] = "━━━ SCORE BREAKDOWN ━━━";
-   lines[1] = StringFormat("ADX: +%d pts", scoreTrader.GetADXScore());
-   lines[2] = StringFormat("RSI: +%d pts", scoreTrader.GetRSIScore());
-   lines[3] = StringFormat("MA: +%d pts", scoreTrader.GetMAScore());
-   lines[4] = StringFormat("Confluence: +%d pts", scoreTrader.GetConfluenceScore());
-   lines[5] = "─────────────────";
-   lines[6] = StringFormat("TOTAL BUY: %d/%d", scoreTrader.GetBuyScore(), SCORE_MIN_ENTRY);
-   lines[7] = StringFormat("TOTAL SELL: %d/%d", scoreTrader.GetSellScore(), SCORE_MIN_ENTRY);
+   lines[1] = StringFormat("BUY: ADX+%d RSI+%d MA+%d CF+%d", 
+      scoreTrader.GetBuyADXScore(), scoreTrader.GetBuyRSIScore(), 
+      scoreTrader.GetBuyMAScore(), scoreTrader.GetBuyConfluenceScore());
+   lines[2] = StringFormat("SELL: ADX+%d RSI+%d MA+%d CF+%d", 
+      scoreTrader.GetSellADXScore(), scoreTrader.GetSellRSIScore(), 
+      scoreTrader.GetSellMAScore(), scoreTrader.GetSellConfluenceScore());
+   lines[3] = "─────────────────";
+   lines[4] = StringFormat("TOTAL BUY: %d/%d", scoreTrader.GetBuyScore(), SCORE_MIN_ENTRY);
+   lines[5] = StringFormat("TOTAL SELL: %d/%d", scoreTrader.GetSellScore(), SCORE_MIN_ENTRY);
    
    // Couleur selon le signal le plus fort
    color textColor = clrWhite;
