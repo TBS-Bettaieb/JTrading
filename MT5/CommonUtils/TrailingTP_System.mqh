@@ -564,14 +564,15 @@ private:
       
       if(m_currentLevel < m_levelCount)
       {
-         TrailingLevel &level = m_customLevels[m_currentLevel];
+         double levelProfit = m_customLevels[m_currentLevel].profitPercent;
+         double levelSlMove = m_customLevels[m_currentLevel].slMovePercent;  
+         double levelTpExtend = m_customLevels[m_currentLevel].tpExtendPercent;
          
-         if(m_maxProfit >= level.profitPercent)
+         if(m_maxProfit >= levelProfit)
          {
             // Calculer les nouveaux niveaux
-            double slMove = m_distanceSLTP * (level.slMovePercent / 100.0);
-            double tpExtend = m_distanceSLTP * (level.tpExtendPercent / 100.0);
-            
+            double slMove = m_distanceSLTP * (levelSlMove / 100.0);
+            double tpExtend = m_distanceSLTP * (levelTpExtend / 100.0);
             if(m_isBuy)
             {
                newSL = m_entryPrice + slMove;
