@@ -174,11 +174,11 @@ public:
    bool ShowStrategyName(
       string strategyName,
       color textColor = clrWhite,
-      int fontSize = 13,
+      int fontSize = 12,  // Réduit de 13 à 12
       color backgroundColor = C'60,75,90'
    )
    {
-      // Fond plus clair et plus présent pour ressortir sur fond noir
+      // Fond optimisé
       string bgName = m_labelPrefix + "_StrategyBg";
       ObjectDelete(m_chartId, bgName);
       if(ObjectCreate(m_chartId, bgName, OBJ_RECTANGLE_LABEL, 0, 0, 0))
@@ -188,42 +188,41 @@ public:
          ObjectSetInteger(m_chartId, bgName, OBJPROP_XDISTANCE, 15);
          ObjectSetInteger(m_chartId, bgName, OBJPROP_YDISTANCE, 15);
 
-         // Dimensions augmentées pour plus de présence
-         ObjectSetInteger(m_chartId, bgName, OBJPROP_XSIZE, 340);
-         ObjectSetInteger(m_chartId, bgName, OBJPROP_YSIZE, 40);
+         // Dimensions réduites
+         ObjectSetInteger(m_chartId, bgName, OBJPROP_XSIZE, 280);  // Réduit de 340 à 280
+         ObjectSetInteger(m_chartId, bgName, OBJPROP_YSIZE, 35);   // Réduit de 40 à 35
 
-         // Couleur de fond bien plus claire (ou passer en paramètre)
+         // Couleur de fond
          ObjectSetInteger(m_chartId, bgName, OBJPROP_BGCOLOR, backgroundColor);
 
-         // Bordure vive et épaisse pour attirer l'œil
+         // Bordure
          ObjectSetInteger(m_chartId, bgName, OBJPROP_BORDER_TYPE, BORDER_FLAT);
          ObjectSetInteger(m_chartId, bgName, OBJPROP_COLOR, C'0,180,255');
          ObjectSetInteger(m_chartId, bgName, OBJPROP_WIDTH, 2);
 
-         // Derrière le texte
          ObjectSetInteger(m_chartId, bgName, OBJPROP_BACK, true);
          ObjectSetInteger(m_chartId, bgName, OBJPROP_SELECTABLE, false);
          ObjectSetInteger(m_chartId, bgName, OBJPROP_HIDDEN, true);
       }
       
-      // Texte très visible au-dessus du fond
+      // Texte optimisé
       string labelName = m_labelPrefix + "_StrategyName";
       ObjectDelete(m_chartId, labelName);
       if(!ObjectCreate(m_chartId, labelName, OBJ_LABEL, 0, 0, 0))
          return false;
       
-      // Position (légers paddings pour centrage visuel)
+      // Position ajustée
       ObjectSetInteger(m_chartId, labelName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-      ObjectSetInteger(m_chartId, labelName, OBJPROP_XDISTANCE, 40);
-      ObjectSetInteger(m_chartId, labelName, OBJPROP_YDISTANCE, 31);
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_XDISTANCE, 30);  // Réduit de 40 à 30
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_YDISTANCE, 28);  // Réduit de 31 à 28
 
       // Contenu
       ObjectSetString(m_chartId, labelName, OBJPROP_TEXT, strategyName);
 
-      // Style: police plus grasse et taille supérieure pour lisibilité
+      // Style
       ObjectSetInteger(m_chartId, labelName, OBJPROP_COLOR, textColor);
       ObjectSetInteger(m_chartId, labelName, OBJPROP_FONTSIZE, fontSize);
-      ObjectSetString(m_chartId, labelName, OBJPROP_FONT, "Arial Black");
+      ObjectSetString(m_chartId, labelName, OBJPROP_FONT, "Arial Bold");  // Change de "Arial Black" à "Arial Bold"
 
       ObjectSetInteger(m_chartId, labelName, OBJPROP_BACK, false);
       ObjectSetInteger(m_chartId, labelName, OBJPROP_SELECTABLE, false);

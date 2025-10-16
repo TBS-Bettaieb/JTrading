@@ -81,6 +81,10 @@ int OnInit()
    }
    
    chartManager.SetupChart();
+   
+   // Nettoyer les labels existants
+   chartManager.ClearLabels();
+   
    chartManager.ShowStrategyName("ADX Score Master v2.0");
    
    // ═══ Step 2: Créer TradingTimeManager ═══
@@ -225,6 +229,7 @@ void OnTick()
    
    // Mettre à jour l'affichage (toujours actif)
    UpdateChartDisplay();
+   DisplayGlobalStatus();  // NOUVEAU
 }
 
 //+------------------------------------------------------------------+
@@ -237,8 +242,8 @@ void UpdateChartDisplay()
    static int tickCount = 0;
    tickCount++;
    
-   // Mettre à jour toutes les 100 ticks pour réduire la charge
-   if(tickCount % 100 != 0) return;
+   // Mettre à jour toutes les 50 ticks au lieu de 100
+   if(tickCount % 50 != 0) return;
    
    // ═══ Affichage du statut principal (haut droite) ═══
    int buyScore = scoreTrader.GetBuyScore();
@@ -246,25 +251,54 @@ void UpdateChartDisplay()
    string signal = GetSignalText(buyScore, sellScore);
    
    string status = StringFormat(
-      "Score: BUY %d | SELL %d | %s",
+      "BUY:%d SELL:%d %s",  // Format raccourci
       buyScore, sellScore, signal
    );
    
    color statusColor = GetStatusColor(buyScore, sellScore);
-   chartManager.ShowTopRightLabel(status, statusColor, 14, 10);
+   chartManager.ShowTopRightLabel(status, statusColor, 12, 10);  // Taille réduite à 12
    
-   // ═══ Affichage des indicateurs (gauche) ═══
+   // ═══ Affichage des indicateurs avec couleurs dynamiques ═══
    string indicators[];
    ArrayResize(indicators, 5);
+   
+   // Titre
    indicators[0] = "━━━ INDICATORS ━━━";
-   indicators[1] = StringFormat("ADX: %.1f", scoreTrader.GetADX());
-   indicators[2] = StringFormat("RSI: %.1f", scoreTrader.GetRSI());
-   indicators[3] = StringFormat("MA50: %.5f", scoreTrader.GetMA());
-   indicators[4] = StringFormat("Positions: %d/%d", scoreTrader.GetCurrentPositions(), scoreTrader.GetMaxPositions());
    
-   chartManager.ShowMultiLineInfo(indicators, CORNER_LEFT_UPPER, 10, 80, 16);
+   // ADX avec code couleur
+   double adx = scoreTrader.GetADX();
+   string adxStatus = "";
+   if(adx > 35) adxStatus = " 🔥";  // Très fort
+   else if(adx > 25) adxStatus = " ⚡";  // Fort
+   else if(adx > 20) adxStatus = " →";  // Modéré
+   indicators[1] = StringFormat("ADX: %.1f%s", adx, adxStatus);
    
-   // ═══ Affichage du breakdown du score (droite bas) ═══
+   // RSI avec code couleur
+   double rsi = scoreTrader.GetRSI();
+   string rsiStatus = "";
+   if(rsi < 30) rsiStatus = " 🔵";  // Survente
+   else if(rsi > 70) rsiStatus = " 🔴";  // Surachat
+   indicators[2] = StringFormat("RSI: %.1f%s", rsi, rsiStatus);
+   
+   // MA avec distance
+   double ma = scoreTrader.GetMA();
+   double price = scoreTrader.GetPrice();
+   double distance = ((price - ma) / ma) * 100;
+   string maStatus = distance > 0 ? " ↑" : " ↓";
+   indicators[3] = StringFormat("MA: %.4f%s", ma, maStatus);
+   
+   // Positions
+   indicators[4] = StringFormat("Pos: %d/%d", scoreTrader.GetCurrentPositions(), scoreTrader.GetMaxPositions());
+   
+   // Couleur dynamique selon signal
+   color indColor = clrWhite;
+   if(buyScore >= SCORE_MIN_ENTRY) indColor = clrLimeGreen;
+   else if(sellScore >= SCORE_MIN_ENTRY) indColor = clrOrangeRed;
+   
+   // Position déplacée: YDISTANCE de 80 → 100
+   chartManager.ShowMultiLineInfo(indicators, CORNER_LEFT_UPPER, 10, 100, 18, indColor, 9);
+   
+   // ═══ Affichage du breakdown du score ═══
    DisplayScoreBreakdown();
 }
 
@@ -278,36 +312,86 @@ void DisplayScoreBreakdown()
    static int updateCount = 0;
    updateCount++;
    
-   // Mettre à jour toutes les 500 ticks
-   if(updateCount % 500 != 0) return;
+   // Mettre à jour toutes les 200 ticks au lieu de 500
+   if(updateCount % 200 != 0) return;
    
    string lines[];
-   ArrayResize(lines, 10);
+   ArrayResize(lines, 8);  // Réduit de 10 à 8 lignes
    
    lines[0] = "━━━ SCORE BREAKDOWN ━━━";
-   lines[1] = StringFormat("BUY: ADX+%d RSI+%d MA+%d CF+%d", 
+   
+   // Format compact avec séparateur
+   lines[1] = StringFormat("BUY: ADX:%d RSI:%d MA:%d CF:%d", 
       scoreTrader.GetBuyADXScore(), scoreTrader.GetBuyRSIScore(), 
       scoreTrader.GetBuyMAScore(), scoreTrader.GetBuyConfluenceScore());
-   lines[2] = StringFormat("SELL: ADX+%d RSI+%d MA+%d CF+%d", 
+   
+   lines[2] = StringFormat("SELL: ADX:%d RSI:%d MA:%d CF:%d", 
       scoreTrader.GetSellADXScore(), scoreTrader.GetSellRSIScore(), 
       scoreTrader.GetSellMAScore(), scoreTrader.GetSellConfluenceScore());
+   
    lines[3] = "─────────────────";
-   lines[4] = StringFormat("TOTAL BUY: %d/%d", scoreTrader.GetBuyScore(), SCORE_MIN_ENTRY);
-   lines[5] = StringFormat("TOTAL SELL: %d/%d", scoreTrader.GetSellScore(), SCORE_MIN_ENTRY);
+   
+   // Affichage des totaux avec indicateur visuel
+   int buyScore = scoreTrader.GetBuyScore();
+   int sellScore = scoreTrader.GetSellScore();
+   
+   string buyIndicator = "";
+   if(buyScore >= SCORE_HIGH_CONFIDENCE) buyIndicator = " ⭐⭐";
+   else if(buyScore >= SCORE_MIN_ENTRY) buyIndicator = " ⭐";
+   
+   string sellIndicator = "";
+   if(sellScore >= SCORE_HIGH_CONFIDENCE) sellIndicator = " ⭐⭐";
+   else if(sellScore >= SCORE_MIN_ENTRY) sellIndicator = " ⭐";
+   
+   lines[4] = StringFormat("BUY: %d/%d%s", buyScore, SCORE_MIN_ENTRY, buyIndicator);
+   lines[5] = StringFormat("SELL: %d/%d%s", sellScore, SCORE_MIN_ENTRY, sellIndicator);
    
    // Couleur selon le signal le plus fort
    color textColor = clrWhite;
-   if(scoreTrader.GetBuyScore() >= SCORE_HIGH_CONFIDENCE)
+   if(buyScore >= SCORE_HIGH_CONFIDENCE)
       textColor = clrLime;
-   else if(scoreTrader.GetSellScore() >= SCORE_HIGH_CONFIDENCE)
+   else if(sellScore >= SCORE_HIGH_CONFIDENCE)
       textColor = clrRed;
-   else if(scoreTrader.GetBuyScore() >= SCORE_MIN_ENTRY)
+   else if(buyScore >= SCORE_MIN_ENTRY)
       textColor = clrYellow;
-   else if(scoreTrader.GetSellScore() >= SCORE_MIN_ENTRY)
+   else if(sellScore >= SCORE_MIN_ENTRY)
       textColor = clrOrange;
    
    // Afficher dans le coin inférieur droit
-   chartManager.ShowMultiLineInfo(lines, CORNER_RIGHT_LOWER, 10, 30, 14, textColor, 9);
+   chartManager.ShowMultiLineInfo(lines, CORNER_RIGHT_LOWER, 10, 30, 16, textColor, 9);
+}
+
+//+------------------------------------------------------------------+
+//| Afficher le statut global                                       |
+//+------------------------------------------------------------------+
+void DisplayGlobalStatus()
+{
+   if(chartManager == NULL || scoreTrader == NULL || timeManager == NULL) return;
+   
+   static int statusTick = 0;
+   statusTick++;
+   
+   // Mettre à jour toutes les 300 ticks
+   if(statusTick % 300 != 0) return;
+   
+   string statusLines[];
+   ArrayResize(statusLines, 3);
+   
+   // Ligne 1: Statut trading
+   string tradingStatus = timeManager.IsTradingAllowed() ? "🟢 ACTIVE" : "🔴 PAUSED";
+   statusLines[0] = "Status: " + tradingStatus;
+   
+   // Ligne 2: Heure actuelle
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   statusLines[1] = StringFormat("Time: %02d:%02d", dt.hour, dt.min);
+   
+   // Ligne 3: Balance
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   statusLines[2] = StringFormat("Bal: %.2f", balance);
+   
+   // Afficher dans le coin inférieur gauche
+   chartManager.ShowMultiLineInfo(statusLines, CORNER_LEFT_LOWER, 10, 30, 18, clrDeepSkyBlue, 9);
 }
 
 //+------------------------------------------------------------------+
@@ -316,15 +400,15 @@ void DisplayScoreBreakdown()
 string GetSignalText(int buyScore, int sellScore)
 {
    if(buyScore >= SCORE_HIGH_CONFIDENCE)
-      return "🟢 BUY Signal (HIGH) ⭐";
+      return "🟢 BUY⭐⭐";  // Format ultra-compact
    else if(sellScore >= SCORE_HIGH_CONFIDENCE)
-      return "🔴 SELL Signal (HIGH) ⭐";
+      return "🔴 SELL⭐⭐";
    else if(buyScore >= SCORE_MIN_ENTRY)
-      return "🟡 BUY Signal";
+      return "🟡 BUY⭐";
    else if(sellScore >= SCORE_MIN_ENTRY)
-      return "🟠 SELL Signal";
+      return "🟠 SELL⭐";
    else
-      return "⚪ No Signal";
+      return "⚪ WAIT";
 }
 
 //+------------------------------------------------------------------+
