@@ -12,7 +12,7 @@
 #include <Trade\Trade.mqh>
 #include "../../CommonUtils/TradingEnums.mqh"
 #include "../../CommonUtils/TradingUtils.mqh"
-#include "../../CommonUtils/TimeFilter.mqh"
+#include "../../CommonUtils/TradingTimeManager.mqh"
 #include "../../CommonUtils/ChartManager.mqh"
 #include "common/ForexSymbolTrader.mqh"
 #include "common/ForexSymbolManager.mqh"
@@ -22,6 +22,7 @@ const string STRATEGY_NAME = "Forex Scalper V1.1";
 
 // Objets globaux
 ChartManager* chartManager = NULL;
+TradingTimeManager* timeManager = NULL;
 ForexSymbolTrader* symbolTraders[];
 
 //--- Multi-Symbol Trading Inputs
@@ -45,6 +46,12 @@ input string   TradeComment       = "Scalping Robot";
 input group "=== Time Filter ==="
 input int SHInput = 7;  // Start Hour (0 = Inactive, 1-23 = Active)
 input int EHInput = 19; // End Hour (0 = Inactive, 1-23 = Active)
+
+//--- Alert Messages
+input group "=== Alert Messages ==="
+input string HourBlockMsg = "⏰ TRADING PAUSED - Outside Trading Hours";
+input string DayBlockMsg = "📅 TRADING PAUSED - Outside Trading Days";
+input string BothBlockMsg = "🚫 TRADING PAUSED - Outside Trading Schedule";
 
 //--- Bar management
 input group "=== Strategy Parameters ==="
@@ -147,14 +154,23 @@ int OnInit()
       Print("⚠️ Warning: Chart Manager initialization failed");
    }
    
-   // Afficher la configuration du TimeFilter
-   Print("⏰ TimeFilter Configuration:");
-   Print("   Start Hour: ", SHInput, "h");
-   Print("   End Hour: ", EHInput, "h");
-   if(SHInput == 0 && EHInput == 0)
-      Print("   Filter Status: DISABLED (trading 24/7)");
-   else
-      Print("   Filter Status: ENABLED");
+   // ═══ Step 6: Initialize Time Manager ═══
+   timeManager = new TradingTimeManager(chartManager);
+   timeManager.Initialize(
+      (SHInput != 0 || EHInput != 0),  // useTimeFilter
+      IntegerToString(SHInput) + "-" + IntegerToString(EHInput),  // hourRanges
+      false,  // useDayFilter (pas utilisé pour l'instant)
+      "",     // dayRanges
+      true    // showVisualAlerts
+   );
+   timeManager.SetVerboseLogging(true);
+   
+   // Configurer les messages d'alerte personnalisés
+   timeManager.SetAlertMessages(HourBlockMsg, DayBlockMsg, BothBlockMsg);
+   
+   // Afficher la configuration du Time Manager
+   Print("⏰ Time Manager Configuration:");
+   Print(timeManager.GetDetailedInfo());
    
    Print("✅ Initialization completed successfully!");
    Print("📈 Trading ", totalSymbols, " symbols simultaneously");
@@ -189,6 +205,14 @@ void OnDeinit(const int reason)
       Print("✅ Symbol Traders cleaned up");
    }
    
+   // ═══ Cleanup Time Manager ═══
+   if(timeManager != NULL)
+   {
+      delete timeManager;
+      timeManager = NULL;
+      Print("✅ Time Manager cleaned up");
+   }
+   
    // ═══ Cleanup Chart Manager ═══
    if(chartManager != NULL)
    {
@@ -210,23 +234,28 @@ void OnDeinit(const int reason)
 void OnTick()
 {
    // Vérifier que les objets sont initialisés
-   if(chartManager == NULL || ArraySize(symbolTraders) == 0)
+   if(chartManager == NULL || timeManager == NULL || ArraySize(symbolTraders) == 0)
    {
       return;
    }
    
    // Vérifier si le trading est autorisé selon le filtre temps
-   bool tradingAllowed = IsTradingAllowed();
+   bool tradingAllowed = timeManager.IsTradingAllowed();
    
    // Parcourir tous les symboles et traiter leurs ticks
    for(int i = 0; i < totalSymbols; i++)
    {
       if(symbolTraders[i] != NULL)
       {
-         // Traiter le tick pour ce symbole SEULEMENT si le trading est autorisé
          if(tradingAllowed)
          {
+            // Trading autorisé: traiter les signaux
             symbolTraders[i].OnTick();
+         }
+         else
+         {
+            // Trading bloqué: annuler tous les ordres pending
+            symbolTraders[i].CancelAllPendingOrders();
          }
          
          // Appliquer le trailing stop pour ce symbole (toujours actif)
@@ -255,22 +284,20 @@ void UpdateChartInfo()
    // Construire le texte de statut global
    string globalStatus = GetGlobalSymbolsStatus(symbols, symbolTraders);
    
-   // Vérifier si on est dans les heures de trading
-   bool tradingAllowed = IsTradingAllowed();
+   // Obtenir le statut du TimeManager pour affichage
+   string timeStatus = timeManager.GetStatusDescription();
+   globalStatus = timeStatus + " | " + globalStatus;
    
-   if(tradingAllowed)
-      globalStatus = "Status: ACTIVE | " + globalStatus;
-   else
-      globalStatus = "Status: OUTSIDE HOURS | " + globalStatus;
-   
-   // Mettre à jour la couleur selon le statut
+   // Couleur basée sur le statut trading et P/L
    color statusColor = clrGreen;
-   if(!tradingAllowed) 
-      statusColor = clrOrange;
-   else if(StringFind(globalStatus, "P/L: -") >= 0) 
-      statusColor = clrRed;
+   ENUM_TRADING_STATUS status = timeManager.GetCurrentStatus();
+   
+   if(status != TRADING_ACTIVE)
+      statusColor = clrOrange;  // Trading bloqué
+   else if(StringFind(globalStatus, "P/L: -") >= 0)
+      statusColor = clrRed;     // Trading actif mais en perte
    else if(StringFind(globalStatus, "P/L: ") >= 0)
-      statusColor = clrGreen;
+      statusColor = clrLime;    // Trading actif en profit
    
    // Mettre à jour le label principal
    chartManager.UpdateLabelText("TopRight", globalStatus);

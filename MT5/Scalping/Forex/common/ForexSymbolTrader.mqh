@@ -10,7 +10,6 @@
 #include <Trade\OrderInfo.mqh>
 #include "../../../CommonUtils/TradingEnums.mqh"
 #include "ForexCommissionManager.mqh"
-#include "../../../CommonUtils/TimeFilter.mqh"
 #include "ForexSwingAnalyzer.mqh"
 
 //+------------------------------------------------------------------+
@@ -127,8 +126,25 @@ public:
       // Vérifier les heures de trading
       if(!IsTradingTimeAllowed())
       {
+         // Log uniquement lors d'un changement d'état (anti-spam)
+         static bool lastWasBlocked = false;
+         if(!lastWasBlocked)
+         {
+            Print("⏸️ ", m_symbol, ": Trading paused, closing orders");
+            lastWasBlocked = true;
+         }
+         
          CloseAllOrders();
          return;
+      }
+      else
+      {
+         static bool lastWasBlocked = false;
+         if(lastWasBlocked)
+         {
+            Print("▶️ ", m_symbol, ": Trading resumed");
+            lastWasBlocked = false;
+         }
       }
       
       // Mettre à jour les compteurs
@@ -281,6 +297,36 @@ public:
                m_trade.OrderDelete(ticket);
             }
          }
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Annuler tous les ordres pending sans fermer les positions       |
+   //+------------------------------------------------------------------+
+   void CancelAllPendingOrders()
+   {
+      int cancelledCount = 0;
+      
+      // Supprimer uniquement les ordres en attente (ne pas toucher aux positions ouvertes)
+      for(int i = OrdersTotal() - 1; i >= 0; i--)
+      {
+         ulong ticket = OrderGetTicket(i);
+         if(OrderSelect(ticket))
+         {
+            if(OrderGetInteger(ORDER_MAGIC) == m_magicNumber && OrderGetString(ORDER_SYMBOL) == m_symbol)
+            {
+               if(m_trade.OrderDelete(ticket))
+               {
+                  cancelledCount++;
+               }
+            }
+         }
+      }
+      
+      // Log seulement si des ordres ont été annulés
+      if(cancelledCount > 0)
+      {
+         Print("🚫 ", m_symbol, ": ", cancelledCount, " pending order(s) cancelled (trading paused)");
       }
    }
    
@@ -527,7 +573,7 @@ private:
    //+------------------------------------------------------------------+
    bool IsTradingTimeAllowed()
    {
-      // Utiliser la fonction globale ForexIsTradingAllowed() du TimeFilter
-      return IsTradingAllowed();
+      // Le contrôle se fait maintenant au niveau global dans OnTick()
+      return true;
    }
 };
