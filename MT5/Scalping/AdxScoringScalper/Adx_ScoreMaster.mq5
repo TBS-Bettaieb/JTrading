@@ -1,569 +1,309 @@
 //+------------------------------------------------------------------+
-//|                                        EA_ADX_RSI_MA50_Score.mq5 |
-//|                                                                  |
-//|  Stratégie avec système de scoring ADX + RSI + MA50             |
+//|                                        Adx_ScoreMaster.mq5       |
+//|                   ADX Score Master v2.0 - Refactorisé            |
+//|                   Utilise ChartManager et TradingTimeManager     |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025"
-#property version   "2.00"
+#property version   "2.0"
 #property strict
 
-#include <Trade\Trade.mqh>
-#include "../../CommonUtils/TimeFilter.mqh"
+//+------------------------------------------------------------------+
+//| Includes                                                         |
+//+------------------------------------------------------------------+
+#include "../../CommonUtils/ChartManager.mqh"
+#include "../../CommonUtils/TradingTimeManager.mqh"
 #include "../../CommonUtils/TradingUtils.mqh"
 #include "../../CommonUtils/TradingEnums.mqh"
+#include "common/AdxScoreTrader.mqh"
 
 //+------------------------------------------------------------------+
-//| PARAMÈTRES FIGÉS (pas d'inputs)                                 |
+//| Inputs                                                           |
 //+------------------------------------------------------------------+
+input group "=== Trading Parameters ==="
+input string SYMBOL = "EURUSD";              // Symbol to trade
+input int MAGIC_NUMBER = 12345;              // Magic number
+input ENUM_TIMEFRAMES TIMEFRAME = PERIOD_M5; // Timeframe
 
+input group "=== Scoring System ==="
+input int SCORE_MIN_ENTRY = 6;               // Score minimum pour entrer en position
+input int SCORE_HIGH_CONFIDENCE = 9;         // Score haute confiance (lot plus important)
 
-// Système de scoring
-input int SCORE_MIN_ENTRY = 6;           // Score minimum pour entrer en position
-input int SCORE_HIGH_CONFIDENCE = 9;     // Score haute confiance (lot plus important)
-
-
-// Gestion du risque
 input group "=== Risk Management ==="
 input ENUM_RISK_MODE RISK_MODE = RISK_PERCENTAGE;  // Mode de gestion du risque
-input double RISK_PERCENT_NORMAL = 0.8;   // Risque normal
-input double RISK_PERCENT_HIGH = 1.2;     // Risque si haute confiance
-const double MIN_RR_RATIO = 1.5;          // Ratio R:R minimum
-input int SL_POINTS = 400;                // Stop Loss en points
-input int TP_MULTIPLIER = 2;              // TP = SL * multiplier
+input double RISK_PERCENT_NORMAL = 0.8;      // Risque normal
+input double RISK_PERCENT_HIGH = 1.2;        // Risque si haute confiance
+input int SL_POINTS = 200;                   // Stop Loss en points
+input int TP_MULTIPLIER = 2;                 // Multiplicateur TP (SL * TP_MULTIPLIER)
+input int MAX_POSITIONS = 1;                 // Nombre max de positions simultanées
 
-
-
-// Indicateurs
-const int ADX_PERIOD = 5;
-const int RSI_PERIOD = 3;
-const int MA_PERIOD = 50;
-const ENUM_MA_METHOD MA_METHOD = MODE_EMA;
-input ENUM_TIMEFRAMES TIMEFRAME = PERIOD_CURRENT;
-
-
-
-
-
-// Trading
-const int BASE_MAGIC_NUMBER = 20251015;
-const string TRADE_COMMENT = "Score_EA";
-const string STRATEGY_NAME = "ScoreMaster";
-input int MAX_POSITIONS = 1;
-input bool USE_TRAILING = true;
-input int TRAILING_START = 25;
-input int TRAILING_STEP = 10;
-
-// Filtre horaire (géré par CommonUtils/TimeFilter.mqh)
 input group "=== Time Filter ==="
-input int SHInput = 8;   // Start Hour (0-23)
-input int EHInput = 18;  // End Hour (0-23)
+input int SHInput = 0;                       // Start Hour (0 = disabled)
+input int EHInput = 0;                       // End Hour (0 = disabled)
+
+input group "=== Alert Messages ==="
+input string HourBlockMsg = "⏰ TRADING PAUSED - Outside Trading Hours";
+input string DayBlockMsg = "📅 TRADING PAUSED - Outside Trading Days";
+input string BothBlockMsg = "🚫 TRADING PAUSED - Outside Trading Schedule";
 
 //+------------------------------------------------------------------+
-//| SYSTÈME DE SCORING - POIDS DES CONDITIONS                       |
+//| Global Variables                                                 |
 //+------------------------------------------------------------------+
-
-// ADX (force de tendance)
-const int SCORE_ADX_WEAK = 0;        // ADX < 20
-const int SCORE_ADX_MODERATE = 1;    // ADX 20-25
-const int SCORE_ADX_STRONG = 2;      // ADX 25-35
-const int SCORE_ADX_VERY_STRONG = 3; // ADX > 35
-
-// RSI (momentum)
-const int SCORE_RSI_EXTREME = 4;     
-const int SCORE_RSI_ZONE = 2;        
-const int SCORE_RSI_MODERATE = 0;    
-
-
-// MA (tendance)
-const int SCORE_MA_TREND = 2;        // Prix dans le sens de MA
-const int SCORE_MA_DISTANCE_CLOSE = 1; // Prix proche de MA (<0.5%)
-const int SCORE_MA_DISTANCE_FAR = -1;  // Prix très éloigné (>2%)
-
-// Confluence (conditions multiples alignées)
-const int SCORE_CONFLUENCE_BONUS = 2; // Bonus si ADX>30 + RSI zone + MA alignée
-
-// Croisements
-const int SCORE_PRICE_CROSS_MA = 1;   // Prix vient de croiser MA
-
-//--- Variables globales
-CTrade trade;
-TimeFilter timeFilter;
-int handle_ADX;
-int handle_RSI;
-int handle_MA;
-int MAGIC_NUMBER;
-
-double adx_buffer[];
-double rsi_buffer[];
-double ma_buffer[];
-
-datetime last_bar_time = 0;
-int total_bars = 0;
+ChartManager* chartManager = NULL;
+TradingTimeManager* timeManager = NULL;
+AdxScoreTrader* scoreTrader = NULL;
 
 //+------------------------------------------------------------------+
-//| Expert initialization                                            |
+//| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
 {
-    // Générer un magic number unique et valider le symbole
-    if(!ValidateSymbol(_Symbol))
-    {
-        Print("❌ Symbole invalide: ", _Symbol);
-        return(INIT_FAILED);
-    }
-    MAGIC_NUMBER = GenerateMagicNumber(BASE_MAGIC_NUMBER, 0, TIMEFRAME, STRATEGY_NAME);
-    
-    trade.SetExpertMagicNumber(MAGIC_NUMBER);
-    trade.SetMarginMode();
-    trade.SetTypeFillingBySymbol(_Symbol);
-    trade.SetDeviationInPoints(30);
-    
-    handle_ADX = iADX(_Symbol, TIMEFRAME, ADX_PERIOD);
-    handle_RSI = iRSI(_Symbol, TIMEFRAME, RSI_PERIOD, PRICE_CLOSE);
-    handle_MA = iMA(_Symbol, TIMEFRAME, MA_PERIOD, 0, MA_METHOD, PRICE_CLOSE);
-    
-    if(handle_ADX == INVALID_HANDLE || handle_RSI == INVALID_HANDLE || handle_MA == INVALID_HANDLE)
-    {
-        Print("Erreur création indicateurs");
-        return(INIT_FAILED);
-    }
-    
-    ArraySetAsSeries(adx_buffer, true);
-    ArraySetAsSeries(rsi_buffer, true);
-    ArraySetAsSeries(ma_buffer, true);
-    
-    // Initialiser le filtre horaire
-    timeFilter.InitFromSimpleHours(SHInput, EHInput);
-    timeFilter.SetLogPrefix("[ScoreMaster] ");
-    Print("╔════════════════════════════════════════════════════════╗");
-    Print("║      EA ADX + RSI + MA50 - SYSTÈME DE SCORING         ║");
-    Print("╚════════════════════════════════════════════════════════╝");
-    Print("Symbole: ", _Symbol, " | Timeframe: ", EnumToString(TIMEFRAME));
-    Print("Magic Number: ", MAGIC_NUMBER, " | Stratégie: ", STRATEGY_NAME);
-    Print("Score minimum: ", SCORE_MIN_ENTRY, " | Haute confiance: ", SCORE_HIGH_CONFIDENCE);
-    Print("Mode risque: ", EnumToString(RISK_MODE), " | Normal: ", RISK_PERCENT_NORMAL, "% | Élevé: ", RISK_PERCENT_HIGH, "%");
-    Print("ADX:", ADX_PERIOD, " | RSI:", RSI_PERIOD, " | MA:", MA_PERIOD);
-    Print("Filtre horaire: ", timeFilter.Describe());
-    
-    return(INIT_SUCCEEDED);
+   Print("═══════════════════════════════════════");
+   Print("🚀 Initializing ADX Score Master v2.0");
+   Print("═══════════════════════════════════════");
+   
+   // ═══ Step 1: Créer ChartManager ═══
+   chartManager = new ChartManager(0, "AdxScoreMaster");
+   if(chartManager == NULL)
+   {
+      Print("❌ Erreur création ChartManager");
+      return INIT_FAILED;
+   }
+   
+   chartManager.SetupChart();
+   chartManager.ShowStrategyName("ADX Score Master v2.0");
+   
+   // ═══ Step 2: Créer TradingTimeManager ═══
+   timeManager = new TradingTimeManager(chartManager);
+   if(timeManager == NULL)
+   {
+      Print("❌ Erreur création TradingTimeManager");
+      return INIT_FAILED;
+   }
+   
+   timeManager.Initialize(
+      (SHInput != 0 || EHInput != 0), // useTimeFilter
+      IntegerToString(SHInput) + "-" + IntegerToString(EHInput), // hourRanges
+      false, // useDayFilter
+      "", // dayRanges
+      true // showVisualAlerts
+   );
+   
+   timeManager.SetVerboseLogging(true);
+   timeManager.SetAlertMessages(HourBlockMsg, DayBlockMsg, BothBlockMsg);
+   
+   // ═══ Step 3: Créer AdxScoreTrader ═══
+   scoreTrader = new AdxScoreTrader(
+      SYMBOL,
+      MAGIC_NUMBER,
+      TIMEFRAME,
+      SCORE_MIN_ENTRY,
+      SCORE_HIGH_CONFIDENCE,
+      RISK_PERCENT_NORMAL,
+      RISK_PERCENT_HIGH,
+      SL_POINTS,
+      TP_MULTIPLIER,
+      MAX_POSITIONS
+   );
+   
+   if(scoreTrader == NULL)
+   {
+      Print("❌ Erreur création AdxScoreTrader");
+      return INIT_FAILED;
+   }
+   
+   if(!scoreTrader.Initialize())
+   {
+      Print("❌ Erreur initialisation AdxScoreTrader");
+      return INIT_FAILED;
+   }
+   
+   // ═══ Step 4: Afficher la configuration ═══
+   Print("📊 Configuration:");
+   Print("  Symbol: ", SYMBOL);
+   Print("  Magic: ", MAGIC_NUMBER);
+   Print("  Timeframe: ", EnumToString(TIMEFRAME));
+   Print("  Score Min: ", SCORE_MIN_ENTRY);
+   Print("  Score High: ", SCORE_HIGH_CONFIDENCE);
+   Print("  Risk Normal: ", RISK_PERCENT_NORMAL, "%");
+   Print("  Risk High: ", RISK_PERCENT_HIGH, "%");
+   Print("  SL Points: ", SL_POINTS);
+   Print("  TP Multiplier: ", TP_MULTIPLIER);
+   Print("  Max Positions: ", MAX_POSITIONS);
+   
+   // Afficher la configuration du Time Manager
+   Print("⏰ Time Manager Configuration:");
+   Print(timeManager.GetDetailedInfo());
+   
+   Print("✅ Initialization completed successfully!");
+   
+   if(timeManager.IsTradingAllowed())
+   {
+      Print("🎯 TRADING: ACTIVE");
+   }
+   else
+   {
+      Print("⏸️ TRADING: PAUSED (Time Filter)");
+   }
+   
+   Print("═══════════════════════════════════════");
+   
+   return INIT_SUCCEEDED;
 }
 
 //+------------------------------------------------------------------+
-//| Expert deinitialization                                          |
+//| Expert deinitialization function                                 |
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-    if(handle_ADX != INVALID_HANDLE) IndicatorRelease(handle_ADX);
-    if(handle_RSI != INVALID_HANDLE) IndicatorRelease(handle_RSI);
-    if(handle_MA != INVALID_HANDLE) IndicatorRelease(handle_MA);
-    
-    Comment("");
-    Print("EA arrêté");
+   Print("🔄 Deinitializing ADX Score Master...");
+   
+   if(scoreTrader != NULL)
+   {
+      delete scoreTrader;
+      scoreTrader = NULL;
+      Print("✅ AdxScoreTrader cleaned up");
+   }
+   
+   if(timeManager != NULL)
+   {
+      delete timeManager;
+      timeManager = NULL;
+      Print("✅ Time Manager cleaned up");
+   }
+   
+   if(chartManager != NULL)
+   {
+      delete chartManager;
+      chartManager = NULL;
+      Print("✅ Chart Manager cleaned up");
+   }
+   
+   Print("✅ Deinitialization completed");
 }
 
 //+------------------------------------------------------------------+
-//| Expert tick                                                      |
+//| Expert tick function                                             |
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   if(USE_TRAILING) TrailingStop();
-    if(!IsNewBar()) return;
-    
-    if(!IsTimeToTrade()) return;
-    
-    if(CopyBuffer(handle_ADX, 0, 0, 3, adx_buffer) <= 0) return;
-    if(CopyBuffer(handle_RSI, 0, 0, 3, rsi_buffer) <= 0) return;
-    if(CopyBuffer(handle_MA, 0, 0, 3, ma_buffer) <= 0) return;
-    
-    double adx_curr = adx_buffer[1];
-    double adx_prev = adx_buffer[2];
-    double rsi_curr = rsi_buffer[1];
-    double rsi_prev = rsi_buffer[2];
-    double ma_curr = ma_buffer[1];
-    double ma_prev = ma_buffer[2];
-    
-    double close_curr = iClose(_Symbol, TIMEFRAME, 1);
-    double close_prev = iClose(_Symbol, TIMEFRAME, 2);
-    double high_curr = iHigh(_Symbol, TIMEFRAME, 1);
-    double low_curr = iLow(_Symbol, TIMEFRAME, 1);
-    
-    //--- Calculer les scores
-    int buy_score = CalculateBuyScore(adx_curr, rsi_curr, rsi_prev, ma_curr, close_curr, close_prev);
-    int sell_score = CalculateSellScore(adx_curr, rsi_curr, rsi_prev, ma_curr, close_curr, close_prev);
-    
-    //--- Affichage
-    string signal = "⚪ NEUTRE";
-    int max_score = MathMax(buy_score, sell_score);
-    
-    if(buy_score >= SCORE_MIN_ENTRY) 
-        signal = StringFormat("🟢 ACHAT (Score: %d)", buy_score);
-    else if(sell_score >= SCORE_MIN_ENTRY) 
-        signal = StringFormat("🔴 VENTE (Score: %d)", sell_score);
-    
-    Comment(StringFormat(
-        "╔═══════════════════════════════════════╗\n" +
-        "║  %s - %s\n" +
-        "╠═══════════════════════════════════════╣\n" +
-        "║ ADX: %.1f | RSI: %.1f | MA: %.5f\n" +
-        "║ Prix: %.5f | Positions: %d/%d\n" +
-        "╠═══════════════════════════════════════╣\n" +
-        "║ Score ACHAT:  %2d / %d %s\n" +
-        "║ Score VENTE:  %2d / %d %s\n" +
-        "╠═══════════════════════════════════════╣\n" +
-        "║ %s\n" +
-        "╚═══════════════════════════════════════╝",
-        _Symbol, EnumToString(TIMEFRAME),
-        adx_curr, rsi_curr, ma_curr,
-        close_curr, CountPositions(), MAX_POSITIONS,
-        buy_score, SCORE_MIN_ENTRY, (buy_score >= SCORE_HIGH_CONFIDENCE ? "⭐" : ""),
-        sell_score, SCORE_MIN_ENTRY, (sell_score >= SCORE_HIGH_CONFIDENCE ? "⭐" : ""),
-        signal
-    ));
-    
-    if(CountPositions() >= MAX_POSITIONS) return;
-    
-    
-    
-    //--- Exécuter les trades
-    if(buy_score >= SCORE_MIN_ENTRY)
-    {
-        bool high_confidence = (buy_score >= SCORE_HIGH_CONFIDENCE);
-        OpenBuy(buy_score, high_confidence);
-    }
-    else if(sell_score >= SCORE_MIN_ENTRY)
-    {
-        bool high_confidence = (sell_score >= SCORE_HIGH_CONFIDENCE);
-        OpenSell(sell_score, high_confidence);
-    }
+   // Vérifier que les objets sont initialisés
+   if(chartManager == NULL || timeManager == NULL || scoreTrader == NULL)
+   {
+      return;
+   }
+   
+   // Vérifier si le trading est autorisé selon le filtre temps
+   bool tradingAllowed = timeManager.IsTradingAllowed();
+   
+   if(tradingAllowed)
+   {
+      // Trading autorisé: traiter les signaux
+      scoreTrader.OnTick();
+   }
+   
+   // Mettre à jour l'affichage (toujours actif)
+   UpdateChartDisplay();
 }
 
 //+------------------------------------------------------------------+
-//| Calcule le score pour un signal ACHAT                           |
+//| Mettre à jour l'affichage du graphique                          |
 //+------------------------------------------------------------------+
-int CalculateBuyScore(double adx, double rsi, double rsi_prev, double ma, double close, double close_prev)
+void UpdateChartDisplay()
 {
-    int score = 0;
-    
-    //--- 1. SCORE ADX (force de tendance)
-    if(adx > 30)
-        score += SCORE_ADX_VERY_STRONG;
-    else if(adx > 25)
-        score += SCORE_ADX_STRONG;
-    else if(adx > 20)
-        score += SCORE_ADX_MODERATE;
-    else
-        score += SCORE_ADX_WEAK;
-    
-    //--- 2. SCORE RSI (survente = opportunité achat)
-    if(rsi < 20)
-        score += SCORE_RSI_EXTREME;
-    else if(rsi < 25)
-        score += SCORE_RSI_ZONE;
-    else if(rsi < 30)
-        score += SCORE_RSI_MODERATE;
-    else if(rsi >= 31)
-        score += -2; // Pénalité si surachat
-    
-    
-    //--- 3. SCORE MA (tendance haussière)
-    double distance_pct = (close - ma) / ma * 100;
-    
-    if(close > ma) // Prix au-dessus de MA (tendance haussière)
-    {
-        score += SCORE_MA_TREND;
-        
-        if(MathAbs(distance_pct) < 0.5) // Très proche
-            score += SCORE_MA_DISTANCE_CLOSE;
-        else if(MathAbs(distance_pct) > 2.0) // Trop éloigné
-            score += SCORE_MA_DISTANCE_FAR;
-    }
-    else // Prix sous MA
-    {
-        if(MathAbs(distance_pct) < 0.3) // Très proche, pourrait rebondir
-            score += 1;
-        else
-            score -= 1; // Contre-tendance
-    }
-    
-    //--- 4. BONUS CONFLUENCE
-    if(adx > 30 && rsi < 35 && close > ma)
-    {
-        score += SCORE_CONFLUENCE_BONUS;
-    }
-    
-    //--- 5. CROISEMENT MA
-    if(close > ma && close_prev <= ma) // Prix vient de croiser MA à la hausse
-    {
-        score += SCORE_PRICE_CROSS_MA;
-    }
-    
-    //--- 6. RSI MOMENTUM (sortie de survente)
-    if(rsi > rsi_prev && rsi_prev < 30 && rsi < 50)
-    {
-        score += 1; // RSI remonte de la survente
-    }
-    
-    return score;
+   if(chartManager == NULL || scoreTrader == NULL) return;
+   
+   // ═══ Affichage du statut principal (haut droite) ═══
+   int buyScore = scoreTrader.GetBuyScore();
+   int sellScore = scoreTrader.GetSellScore();
+   string signal = GetSignalText(buyScore, sellScore);
+   
+   string status = StringFormat(
+      "Score: BUY %d | SELL %d | %s",
+      buyScore, sellScore, signal
+   );
+   
+   color statusColor = GetStatusColor(buyScore, sellScore);
+   chartManager.ShowTopRightLabel(status, statusColor, 14, 10);
+   
+   // ═══ Affichage des indicateurs (gauche) ═══
+   string indicators[];
+   ArrayResize(indicators, 5);
+   indicators[0] = "━━━ INDICATORS ━━━";
+   indicators[1] = StringFormat("ADX: %.1f", scoreTrader.GetADX());
+   indicators[2] = StringFormat("RSI: %.1f", scoreTrader.GetRSI());
+   indicators[3] = StringFormat("MA50: %.5f", scoreTrader.GetMA());
+   indicators[4] = StringFormat("Positions: %d/%d", scoreTrader.GetCurrentPositions(), scoreTrader.GetMaxPositions());
+   
+   chartManager.ShowMultiLineInfo(indicators, CORNER_LEFT_UPPER, 10, 80, 16);
+   
+   // ═══ Affichage du breakdown du score (droite bas) ═══
+   DisplayScoreBreakdown();
 }
 
 //+------------------------------------------------------------------+
-//| Calcule le score pour un signal VENTE                           |
+//| Afficher le breakdown détaillé du score                         |
 //+------------------------------------------------------------------+
-int CalculateSellScore(double adx, double rsi, double rsi_prev, double ma, double close, double close_prev)
+void DisplayScoreBreakdown()
 {
-    int score = 0;
-    
-    //--- 1. SCORE ADX (force de tendance)
-    if(adx > 30)
-        score += SCORE_ADX_VERY_STRONG;
-    else if(adx > 25)
-        score += SCORE_ADX_STRONG;
-    else if(adx > 20)
-        score += SCORE_ADX_MODERATE;
-    else
-        score += SCORE_ADX_WEAK;
-    
-    //--- 2. SCORE RSI (surachat = opportunité vente)
-    if(rsi > 80)
-        score += SCORE_RSI_EXTREME;
-    else if(rsi > 75)
-        score += SCORE_RSI_ZONE;
-    else if(rsi > 70)
-        score += SCORE_RSI_MODERATE;
-    else if(rsi <= 69)
-        score -= 2; // Pénalité si survente
-    
-    //--- 3. SCORE MA (tendance baissière)
-    double distance_pct = (ma - close) / ma * 100;
-    
-    if(close < ma) // Prix sous MA (tendance baissière)
-    {
-        score += SCORE_MA_TREND;
-        
-        if(MathAbs(distance_pct) < 0.5)
-            score += SCORE_MA_DISTANCE_CLOSE;
-        else if(MathAbs(distance_pct) > 2.0)
-            score += SCORE_MA_DISTANCE_FAR;
-    }
-    else // Prix au-dessus MA
-    {
-        if(MathAbs(distance_pct) < 0.3)
-            score += 1;
-        else
-            score -= 1;
-    }
-    
-    //--- 4. BONUS CONFLUENCE
-    if(adx > 30 && rsi > 65 && close < ma)
-    {
-        score += SCORE_CONFLUENCE_BONUS;
-    }
-    
-    //--- 5. CROISEMENT MA
-    if(close < ma && close_prev >= ma) // Prix vient de croiser MA à la baisse
-    {
-        score += SCORE_PRICE_CROSS_MA;
-    }
-    
-    //--- 6. RSI MOMENTUM (sortie de surachat)
-    if(rsi < rsi_prev && rsi_prev > 70 && rsi > 50)
-    {
-        score += 1; // RSI redescend du surachat
-    }
-    
-    return score;
+   if(chartManager == NULL || scoreTrader == NULL) return;
+   
+   string lines[];
+   ArrayResize(lines, 10);
+   
+   lines[0] = "━━━ SCORE BREAKDOWN ━━━";
+   lines[1] = StringFormat("ADX: +%d pts", scoreTrader.GetADXScore());
+   lines[2] = StringFormat("RSI: +%d pts", scoreTrader.GetRSIScore());
+   lines[3] = StringFormat("MA: +%d pts", scoreTrader.GetMAScore());
+   lines[4] = StringFormat("Confluence: +%d pts", scoreTrader.GetConfluenceScore());
+   lines[5] = "─────────────────";
+   lines[6] = StringFormat("TOTAL BUY: %d/%d", scoreTrader.GetBuyScore(), SCORE_MIN_ENTRY);
+   lines[7] = StringFormat("TOTAL SELL: %d/%d", scoreTrader.GetSellScore(), SCORE_MIN_ENTRY);
+   
+   // Couleur selon le signal le plus fort
+   color textColor = clrWhite;
+   if(scoreTrader.GetBuyScore() >= SCORE_HIGH_CONFIDENCE)
+      textColor = clrLime;
+   else if(scoreTrader.GetSellScore() >= SCORE_HIGH_CONFIDENCE)
+      textColor = clrRed;
+   else if(scoreTrader.GetBuyScore() >= SCORE_MIN_ENTRY)
+      textColor = clrYellow;
+   else if(scoreTrader.GetSellScore() >= SCORE_MIN_ENTRY)
+      textColor = clrOrange;
+   
+   // Afficher dans le coin inférieur droit
+   chartManager.ShowMultiLineInfo(lines, CORNER_RIGHT_LOWER, 10, 30, 14, textColor, 9);
 }
 
 //+------------------------------------------------------------------+
-//| Ouvre position ACHAT                                             |
+//| Obtenir le texte du signal                                      |
 //+------------------------------------------------------------------+
-void OpenBuy(int score, bool high_confidence)
+string GetSignalText(int buyScore, int sellScore)
 {
-    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-    double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-    int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
-    
-    double sl = NormalizeDouble(ask - SL_POINTS * point, digits);
-    double tp = NormalizeDouble(ask + (SL_POINTS * TP_MULTIPLIER * point), digits);
-    
-    double risk_pct = high_confidence ? RISK_PERCENT_HIGH : RISK_PERCENT_NORMAL;
-    double lot = CalculateLotSize(ask, sl, risk_pct);
-    
-    if(lot < SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN))
-        return;
-    
-    string comment = StringFormat("%s|BUY|S%d%s", TRADE_COMMENT, score, (high_confidence ? "|HC" : ""));
-    
-    if(trade.Buy(lot, _Symbol, ask, sl, tp, comment))
-    {
-        Print(StringFormat("✓ ACHAT | Score: %d%s | Lot: %.2f | SL: %.5f | TP: %.5f", 
-                          score, (high_confidence ? " ⭐" : ""), lot, sl, tp));
-    }
-    else
-    {
-        Print("✗ Erreur ACHAT: ", trade.ResultRetcodeDescription());
-    }
+   if(buyScore >= SCORE_HIGH_CONFIDENCE)
+      return "🟢 BUY Signal (HIGH) ⭐";
+   else if(sellScore >= SCORE_HIGH_CONFIDENCE)
+      return "🔴 SELL Signal (HIGH) ⭐";
+   else if(buyScore >= SCORE_MIN_ENTRY)
+      return "🟡 BUY Signal";
+   else if(sellScore >= SCORE_MIN_ENTRY)
+      return "🟠 SELL Signal";
+   else
+      return "⚪ No Signal";
 }
 
 //+------------------------------------------------------------------+
-//| Ouvre position VENTE                                             |
+//| Obtenir la couleur du statut                                    |
 //+------------------------------------------------------------------+
-void OpenSell(int score, bool high_confidence)
+color GetStatusColor(int buyScore, int sellScore)
 {
-    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-    double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-    int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
-    
-    double sl = NormalizeDouble(bid + SL_POINTS * point, digits);
-    double tp = NormalizeDouble(bid - (SL_POINTS * TP_MULTIPLIER * point), digits);
-    
-    double risk_pct = high_confidence ? RISK_PERCENT_HIGH : RISK_PERCENT_NORMAL;
-    double lot = CalculateLotSize(bid, sl, risk_pct);
-    
-    if(lot < SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN))
-        return;
-    
-    string comment = StringFormat("%s|SELL|S%d%s", TRADE_COMMENT, score, (high_confidence ? "|HC" : ""));
-    
-    if(trade.Sell(lot, _Symbol, bid, sl, tp, comment))
-    {
-        Print(StringFormat("✓ VENTE | Score: %d%s | Lot: %.2f | SL: %.5f | TP: %.5f", 
-                          score, (high_confidence ? " ⭐" : ""), lot, sl, tp));
-    }
-    else
-    {
-        Print("✗ Erreur VENTE: ", trade.ResultRetcodeDescription());
-    }
+   if(buyScore >= SCORE_HIGH_CONFIDENCE)
+      return clrLime;
+   else if(sellScore >= SCORE_HIGH_CONFIDENCE)
+      return clrRed;
+   else if(buyScore >= SCORE_MIN_ENTRY)
+      return clrYellow;
+   else if(sellScore >= SCORE_MIN_ENTRY)
+      return clrOrange;
+   else
+      return clrWhite;
 }
-
-//+------------------------------------------------------------------+
-//| Calcule taille du lot                                           |
-//+------------------------------------------------------------------+
-double CalculateLotSize(double entry, double sl, double risk_pct)
-{
-    if(sl == 0) return SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-    
-    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
-    double risk_amount = balance * risk_pct / 100.0;
-    
-    double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-    double tick_value = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-    
-    double sl_distance = MathAbs(entry - sl) / point;
-    double lot = risk_amount / (sl_distance * tick_value);
-    
-    double min_lot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-    double max_lot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
-    double lot_step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-    
-    lot = MathFloor(lot / lot_step) * lot_step;
-    lot = MathMax(min_lot, MathMin(max_lot, lot));
-    
-    return lot;
-}
-
-//+------------------------------------------------------------------+
-//| Trailing Stop                                                    |
-//+------------------------------------------------------------------+
-void TrailingStop()
-{
-    for(int i = PositionsTotal() - 1; i >= 0; i--)
-    {
-        ulong ticket = PositionGetTicket(i);
-        if(ticket <= 0) continue;
-        
-        if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
-        if(PositionGetInteger(POSITION_MAGIC) != MAGIC_NUMBER) continue;
-        
-        double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-        int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
-        
-        double pos_open = PositionGetDouble(POSITION_PRICE_OPEN);
-        double pos_sl = PositionGetDouble(POSITION_SL);
-        double pos_tp = PositionGetDouble(POSITION_TP);
-        
-        ENUM_POSITION_TYPE pos_type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-        
-        if(pos_type == POSITION_TYPE_BUY)
-        {
-            double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-            double profit_points = (bid - pos_open) / point;
-            
-            if(profit_points >= TRAILING_START)
-            {
-                double new_sl = bid - TRAILING_STEP * point;
-                new_sl = NormalizeDouble(new_sl, digits);
-                
-                if(new_sl > pos_sl + point)
-                {
-                    trade.PositionModify(ticket, new_sl, pos_tp);
-                }
-            }
-        }
-        else
-        {
-            double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-            double profit_points = (pos_open - ask) / point;
-            
-            if(profit_points >= TRAILING_START)
-            {
-                double new_sl = ask + TRAILING_STEP * point;
-                new_sl = NormalizeDouble(new_sl, digits);
-                
-                if(new_sl < pos_sl - point || pos_sl == 0)
-                {
-                    trade.PositionModify(ticket, new_sl, pos_tp);
-                }
-            }
-        }
-    }
-}
-
-//+------------------------------------------------------------------+
-//| Compte positions                                                 |
-//+------------------------------------------------------------------+
-int CountPositions()
-{
-    int count = 0;
-    for(int i = PositionsTotal() - 1; i >= 0; i--)
-    {
-        ulong ticket = PositionGetTicket(i);
-        if(ticket <= 0) continue;
-        
-        if(PositionGetString(POSITION_SYMBOL) == _Symbol && 
-           PositionGetInteger(POSITION_MAGIC) == MAGIC_NUMBER)
-            count++;
-    }
-    return count;
-}
-
-//+------------------------------------------------------------------+
-//| Vérifie nouvelle barre                                          |
-//+------------------------------------------------------------------+
-bool IsNewBar()
-{
-    int bars = iBars(_Symbol, TIMEFRAME);
-    if(bars != total_bars)
-    {
-        total_bars = bars;
-        return true;
-    }
-    return false;
-}
-
-//+------------------------------------------------------------------+
-//| Vérifie filtre horaire                                          |
-//+------------------------------------------------------------------+
-bool IsTimeToTrade()
-{
-    MqlDateTime time_struct;
-    TimeToStruct(TimeCurrent(), time_struct);
-    int current_hour = time_struct.hour;
-    
-    if(SHInput <= EHInput)
-        return (current_hour >= SHInput && current_hour < EHInput);
-    else
-        return (current_hour >= SHInput || current_hour < EHInput);
-}
-
-//+------------------------------------------------------------------+
