@@ -64,6 +64,7 @@ input int      OrderDistPoints = 100;
 input group "=== Trailing Take Profit ==="
 input bool UseTrailingTP = true;  // Activer Trailing TP
 input ENUM_TRAILING_TP_MODE TrailingTPMode = TRAILING_TP_STEPPED;  // Mode Trailing TP
+input string CustomTPLevels = "50:0:0, 75:25:50, 100:50:100";  // Custom TP Levels (profit:slMove:tpExtend)
 
 //--- Global variables
 string symbols[];                    // Array of trading symbols
@@ -131,7 +132,8 @@ int OnInit()
          TradeComment,                  // trade comment
          StrategyMode,                  // strategy mode
          UseTrailingTP,                 // use trailing TP
-         TrailingTPMode                 // trailing TP mode
+         TrailingTPMode,                // trailing TP mode
+         CustomTPLevels                 // custom TP levels
       );
       
       if(symbolTraders[i] == NULL)

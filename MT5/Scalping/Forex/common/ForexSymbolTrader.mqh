@@ -56,6 +56,7 @@ private:
    // Trailing TP
    CTrailingTP*      m_trailingTP;
    bool              m_useTrailingTP;
+   string            m_customTPLevels;  // Custom TP levels string
    struct PositionTrailing {
       ulong ticket;
       CTrailingTP* trailing;
@@ -84,7 +85,8 @@ public:
                      string tradeComment,
                      ENUM_STRATEGY_MODE strategyMode,
                      bool useTrailingTP = false,
-                     ENUM_TRAILING_TP_MODE trailingTPMode = TRAILING_TP_STEPPED)
+                     ENUM_TRAILING_TP_MODE trailingTPMode = TRAILING_TP_STEPPED,
+                     string customTPLevels = "")
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -116,10 +118,19 @@ public:
       // Initialiser l'analyseur de swing
       m_swingAnalyzer = ForexSwingAnalyzer(symbol, timeframe, magicNumber, barsN);
       
+      m_customTPLevels = customTPLevels;
+      
       // Initialiser le Trailing TP
       m_useTrailingTP = useTrailingTP;
       if(m_useTrailingTP) {
-         m_trailingTP = new CTrailingTP(trailingTPMode);
+         m_trailingTP = new CTrailingTP(trailingTPMode, customTPLevels);
+         
+         if(!m_trailingTP.ValidateConfiguration()) {
+            Print("⚠️ Config Trailing TP invalide pour ", symbol);
+            delete m_trailingTP;
+            m_trailingTP = NULL;
+            m_useTrailingTP = false;
+         }
       } else {
          m_trailingTP = NULL;
       }
@@ -442,7 +453,12 @@ public:
          if(m_positionTrailings[i].ticket == ticket) return;
       }
       
-      CTrailingTP* newTrailing = new CTrailingTP(m_trailingTP.GetMode());
+      // MODIFIER: Passer customLevels
+      CTrailingTP* newTrailing = new CTrailingTP(
+         m_trailingTP.GetMode(),
+         m_trailingTP.GetCustomLevelsString()  // <-- AJOUTER
+      );
+      
       newTrailing.Initialize(
          PositionGetDouble(POSITION_PRICE_OPEN),
          PositionGetDouble(POSITION_SL),
@@ -455,7 +471,8 @@ public:
       m_positionTrailings[size].ticket = ticket;
       m_positionTrailings[size].trailing = newTrailing;
       
-      Print("🎯 Trailing TP activé #", ticket, " | Mode: ", EnumToString(m_trailingTP.GetMode()));
+      Print("🎯 Trailing TP #", ticket, " | Mode: ", EnumToString(m_trailingTP.GetMode()),
+            " | Niveaux: ", newTrailing.GetLevelCount());
    }
    
    //+------------------------------------------------------------------+

@@ -1,331 +1,499 @@
 //+------------------------------------------------------------------+
-//|                                          TrailingTP_System.mqh   |
-//|                              Système de Trailing Take Profit     |
+//|                                        TrailingTP_System.mqh     |
+//|                   Système de Trailing Take Profit avancé        |
+//|                   avec modes Linear, Stepped, Exponential et CUSTOM |
+//|                                                                   |
+//| VERSION: 2.0 - Mode CUSTOM ajouté                                |
 //+------------------------------------------------------------------+
+#property copyright "(c) 2025"
+#property version   "2.0"
+#property strict
 
-//--- Énumération pour le mode de trailing TP
+//+------------------------------------------------------------------+
+//| Énumération des modes de Trailing TP                            |
+//+------------------------------------------------------------------+
 enum ENUM_TRAILING_TP_MODE
 {
-   TRAILING_TP_OFF,          // Désactivé
-   TRAILING_TP_LINEAR,       // Linéaire (votre système)
-   TRAILING_TP_STEPPED,      // Par paliers (recommandé)
-   TRAILING_TP_EXPONENTIAL   // Exponentiel (agressif)
-};
-
-//--- Structure pour un palier de trailing
-struct TrailingLevel
-{
-   double profitPercent;     // % de profit atteint (0-100)
-   double slMoveToPercent;   // Déplacer SL à ce % (0-100)
-   double tpExtendPercent;   // Étendre TP de ce %
-   bool triggered;           // Palier déclenché
+   TRAILING_TP_LINEAR,        // Mode linéaire (75% → SL+50%, TP+25%)
+   TRAILING_TP_STEPPED,       // Mode par paliers (50% → BE, puis +50% TP)
+   TRAILING_TP_EXPONENTIAL,   // Mode exponentiel (gains x8+)
+   TRAILING_TP_CUSTOM         // Mode personnalisé avec niveaux définis
 };
 
 //+------------------------------------------------------------------+
-//| Classe de gestion du Trailing TP                                |
+//| Structure pour les niveaux personnalisés                        |
+//+------------------------------------------------------------------+
+struct TrailingLevel
+{
+   double profitPercent;      // Pourcentage de profit pour déclencher
+   double slMovePercent;      // Pourcentage de déplacement du SL
+   double tpExtendPercent;    // Pourcentage d'extension du TP
+};
+
+//+------------------------------------------------------------------+
+//| Classe principale du système de Trailing TP                     |
 //+------------------------------------------------------------------+
 class CTrailingTP
 {
 private:
-   // Paramètres
+   // Configuration
    ENUM_TRAILING_TP_MODE m_mode;
-   TrailingLevel m_levels[];
-   int m_levelCount;
+   string m_customLevelsString;  // String des niveaux custom
+   TrailingLevel m_customLevels[]; // Array des niveaux custom
+   int m_levelCount;             // Nombre de niveaux custom
    
-   // Données de position
+   // État de la position
    double m_entryPrice;
-   double m_originalSL;
-   double m_originalTP;
-   double m_currentSL;
-   double m_currentTP;
-   double m_riskPoints;
-   double m_rewardPoints;
+   double m_initialSL;
+   double m_initialTP;
    bool m_isBuy;
    
-   // Statistiques
-   int m_currentLevel;
+   // Suivi des profits
    double m_maxProfit;
+   double m_currentProfit;
+   int m_currentLevel;           // Niveau actuel (0 = pas encore déclenché)
+   
+   // Validation
+   bool m_isInitialized;
+   bool m_isValidConfig;
 
 public:
    //+------------------------------------------------------------------+
-   //| Constructeur                                                     |
+   //| Constructeur                                                    |
    //+------------------------------------------------------------------+
-   CTrailingTP(ENUM_TRAILING_TP_MODE mode = TRAILING_TP_STEPPED)
+   CTrailingTP(ENUM_TRAILING_TP_MODE mode = TRAILING_TP_STEPPED, string customLevels = "")
    {
       m_mode = mode;
-      m_currentLevel = 0;
-      m_maxProfit = 0;
+      m_customLevelsString = customLevels;
+      m_levelCount = 0;
       
-      // Initialiser les paliers par défaut
-      InitializeDefaultLevels();
-   }
-   
-   //+------------------------------------------------------------------+
-   //| Initialiser les paliers par défaut                              |
-   //+------------------------------------------------------------------+
-   void InitializeDefaultLevels()
-   {
-      switch(m_mode)
+      m_entryPrice = 0;
+      m_initialSL = 0;
+      m_initialTP = 0;
+      m_isBuy = true;
+      
+      m_maxProfit = 0;
+      m_currentProfit = 0;
+      m_currentLevel = 0;
+      
+      m_isInitialized = false;
+      m_isValidConfig = true;
+      
+      // Parser les niveaux custom si fournis
+      if(mode == TRAILING_TP_CUSTOM && customLevels != "")
       {
-         case TRAILING_TP_LINEAR:
-            // Votre système original
-            ArrayResize(m_levels, 4);
-            m_levelCount = 4;
-            
-            // Niveau 1: 75% profit atteint
-            m_levels[0].profitPercent = 75.0;
-            m_levels[0].slMoveToPercent = 50.0;
-            m_levels[0].tpExtendPercent = 25.0;
-            m_levels[0].triggered = false;
-            
-            // Niveau 2: 100% profit (TP original atteint)
-            m_levels[1].profitPercent = 100.0;
-            m_levels[1].slMoveToPercent = 75.0;
-            m_levels[1].tpExtendPercent = 25.0;
-            m_levels[1].triggered = false;
-            
-            // Niveau 3: 125%
-            m_levels[2].profitPercent = 125.0;
-            m_levels[2].slMoveToPercent = 100.0;
-            m_levels[2].tpExtendPercent = 25.0;
-            m_levels[2].triggered = false;
-            
-            // Niveau 4: 150%
-            m_levels[3].profitPercent = 150.0;
-            m_levels[3].slMoveToPercent = 125.0;
-            m_levels[3].tpExtendPercent = 25.0;
-            m_levels[3].triggered = false;
-            break;
-            
-         case TRAILING_TP_STEPPED:
-            // Système par paliers (RECOMMANDÉ)
-            ArrayResize(m_levels, 5);
-            m_levelCount = 5;
-            
-            // Palier 1: 50% → SL à BE
-            m_levels[0].profitPercent = 50.0;
-            m_levels[0].slMoveToPercent = 0.0;  // Break-even
-            m_levels[0].tpExtendPercent = 0.0;
-            m_levels[0].triggered = false;
-            
-            // Palier 2: 75% → SL à 25%, TP +50%
-            m_levels[1].profitPercent = 75.0;
-            m_levels[1].slMoveToPercent = 25.0;
-            m_levels[1].tpExtendPercent = 50.0;
-            m_levels[1].triggered = false;
-            
-            // Palier 3: 100% → SL à 50%, TP +50%
-            m_levels[2].profitPercent = 100.0;
-            m_levels[2].slMoveToPercent = 50.0;
-            m_levels[2].tpExtendPercent = 50.0;
-            m_levels[2].triggered = false;
-            
-            // Palier 4: 150% → SL à 100%, TP +100%
-            m_levels[3].profitPercent = 150.0;
-            m_levels[3].slMoveToPercent = 100.0;
-            m_levels[3].tpExtendPercent = 100.0;
-            m_levels[3].triggered = false;
-            
-            // Palier 5: 200% → SL à 150%, TP +100%
-            m_levels[4].profitPercent = 200.0;
-            m_levels[4].slMoveToPercent = 150.0;
-            m_levels[4].tpExtendPercent = 100.0;
-            m_levels[4].triggered = false;
-            break;
-            
-         case TRAILING_TP_EXPONENTIAL:
-            // Système exponentiel (agressif)
-            ArrayResize(m_levels, 4);
-            m_levelCount = 4;
-            
-            m_levels[0].profitPercent = 50.0;
-            m_levels[0].slMoveToPercent = 0.0;
-            m_levels[0].tpExtendPercent = 50.0;
-            m_levels[0].triggered = false;
-            
-            m_levels[1].profitPercent = 100.0;
-            m_levels[1].slMoveToPercent = 50.0;
-            m_levels[1].tpExtendPercent = 100.0;
-            m_levels[1].triggered = false;
-            
-            m_levels[2].profitPercent = 200.0;
-            m_levels[2].slMoveToPercent = 100.0;
-            m_levels[2].tpExtendPercent = 200.0;
-            m_levels[2].triggered = false;
-            
-            m_levels[3].profitPercent = 400.0;
-            m_levels[3].slMoveToPercent = 200.0;
-            m_levels[3].tpExtendPercent = 400.0;
-            m_levels[3].triggered = false;
-            break;
-            
-         default:
-            ArrayResize(m_levels, 0);
-            m_levelCount = 0;
-            break;
+         ParseCustomLevels(customLevels);
       }
    }
-   
+
    //+------------------------------------------------------------------+
-   //| Initialiser avec une position                                   |
+   //| Destructor                                                      |
    //+------------------------------------------------------------------+
-   void Initialize(double entryPrice, double sl, double tp, bool isBuy)
+   ~CTrailingTP()
    {
+      ArrayFree(m_customLevels);
+   }
+
+   //+------------------------------------------------------------------+
+   //| Initialiser avec les données de position                       |
+   //+------------------------------------------------------------------+
+   bool Initialize(double entryPrice, double initialSL, double initialTP, bool isBuy)
+   {
+      if(entryPrice <= 0 || initialTP <= 0)
+      {
+         Print("❌ TrailingTP: Paramètres invalides - Entry: ", entryPrice, " TP: ", initialTP);
+         return false;
+      }
+      
       m_entryPrice = entryPrice;
-      m_originalSL = sl;
-      m_originalTP = tp;
-      m_currentSL = sl;
-      m_currentTP = tp;
+      m_initialSL = initialSL;
+      m_initialTP = initialTP;
       m_isBuy = isBuy;
       
-      // Calculer les points de risque/récompense
-      if(isBuy)
-      {
-         m_riskPoints = entryPrice - sl;
-         m_rewardPoints = tp - entryPrice;
-      }
-      else
-      {
-         m_riskPoints = sl - entryPrice;
-         m_rewardPoints = entryPrice - tp;
-      }
-      
-      // Réinitialiser les paliers
-      for(int i = 0; i < m_levelCount; i++)
-      {
-         m_levels[i].triggered = false;
-      }
-      
-      m_currentLevel = 0;
       m_maxProfit = 0;
+      m_currentProfit = 0;
+      m_currentLevel = 0;
+      
+      m_isInitialized = true;
+      
+      // Validation de la configuration
+      m_isValidConfig = ValidateConfiguration();
+      
+      if(!m_isValidConfig)
+      {
+         Print("❌ TrailingTP: Configuration invalide pour le mode ", EnumToString(m_mode));
+         return false;
+      }
+      
+      return true;
    }
-   
+
    //+------------------------------------------------------------------+
-   //| Calculer le profit actuel en %                                  |
-   //+------------------------------------------------------------------+
-   double CalculateCurrentProfitPercent(double currentPrice)
-   {
-      double profit;
-      
-      if(m_isBuy)
-         profit = currentPrice - m_entryPrice;
-      else
-         profit = m_entryPrice - currentPrice;
-      
-      // % par rapport au reward original
-      if(m_rewardPoints > 0)
-         return (profit / m_rewardPoints) * 100.0;
-      
-      return 0.0;
-   }
-   
-   //+------------------------------------------------------------------+
-   //| Mettre à jour le trailing (appelé sur chaque tick)              |
+   //| Mettre à jour avec le prix actuel                              |
    //+------------------------------------------------------------------+
    bool Update(double currentPrice, double &newSL, double &newTP)
    {
-      if(m_mode == TRAILING_TP_OFF)
+      if(!m_isInitialized || !m_isValidConfig)
          return false;
       
-      // Calculer le profit actuel en %
-      double currentProfitPercent = CalculateCurrentProfitPercent(currentPrice);
+      // Calculer le profit actuel
+      double profit = CalculateProfit(currentPrice);
+      m_currentProfit = profit;
       
       // Mettre à jour le profit maximum
-      if(currentProfitPercent > m_maxProfit)
-         m_maxProfit = currentProfitPercent;
+      if(profit > m_maxProfit)
+         m_maxProfit = profit;
       
+      // Appliquer la logique selon le mode
       bool modified = false;
       
-      // Vérifier chaque palier
-      for(int i = m_currentLevel; i < m_levelCount; i++)
+      switch(m_mode)
       {
-         if(!m_levels[i].triggered && currentProfitPercent >= m_levels[i].profitPercent)
-         {
-            // Déclencher ce palier
-            m_levels[i].triggered = true;
-            m_currentLevel = i + 1;
+         case TRAILING_TP_LINEAR:
+            modified = UpdateLinear(currentPrice, newSL, newTP);
+            break;
             
-            // Calculer le nouveau SL
-            double slMoveDistance = m_riskPoints + (m_rewardPoints * m_levels[i].slMoveToPercent / 100.0);
-            if(m_isBuy)
-               m_currentSL = m_entryPrice + slMoveDistance;
-            else
-               m_currentSL = m_entryPrice - slMoveDistance;
+         case TRAILING_TP_STEPPED:
+            modified = UpdateStepped(currentPrice, newSL, newTP);
+            break;
             
-            // Calculer le nouveau TP
-            double tpExtension = m_rewardPoints * (m_levels[i].tpExtendPercent / 100.0);
-            if(m_isBuy)
-               m_currentTP = m_currentTP + tpExtension;
-            else
-               m_currentTP = m_currentTP - tpExtension;
+         case TRAILING_TP_EXPONENTIAL:
+            modified = UpdateExponential(currentPrice, newSL, newTP);
+            break;
             
-            newSL = m_currentSL;
-            newTP = m_currentTP;
-            modified = true;
-            
-            Print("🎯 Trailing TP Niveau ", i+1, " déclenché!");
-            Print("   Profit: ", DoubleToString(currentProfitPercent, 2), "%");
-            Print("   Nouveau SL: ", DoubleToString(newSL, _Digits));
-            Print("   Nouveau TP: ", DoubleToString(newTP, _Digits));
-         }
+         case TRAILING_TP_CUSTOM:
+            modified = UpdateCustom(currentPrice, newSL, newTP);
+            break;
       }
       
       return modified;
    }
+
+   //+------------------------------------------------------------------+
+   //| Obtenir le mode actuel                                         |
+   //+------------------------------------------------------------------+
+   ENUM_TRAILING_TP_MODE GetMode() const { return m_mode; }
    
    //+------------------------------------------------------------------+
-   //| Obtenir les informations de statut                              |
+   //| Obtenir la string des niveaux custom                           |
+   //+------------------------------------------------------------------+
+   string GetCustomLevelsString() const { return m_customLevelsString; }
+   
+   //+------------------------------------------------------------------+
+   //| Obtenir le nombre de niveaux custom                            |
+   //+------------------------------------------------------------------+
+   int GetLevelCount() const { return m_levelCount; }
+
+   //+------------------------------------------------------------------+
+   //| Obtenir les informations de statut                             |
    //+------------------------------------------------------------------+
    string GetStatusInfo()
    {
       string info = "Trailing TP: ";
       info += EnumToString(m_mode);
-      info += " | Niveau: " + IntegerToString(m_currentLevel) + "/" + IntegerToString(m_levelCount);
-      info += " | Max Profit: " + DoubleToString(m_maxProfit, 2) + "%";
-      return info;
-   }
-   
-   //+------------------------------------------------------------------+
-   //| Obtenir le mode actuel                                           |
-   //+------------------------------------------------------------------+
-   ENUM_TRAILING_TP_MODE GetMode() const { return m_mode; }
-   
-   //+------------------------------------------------------------------+
-   //| Définir des paliers personnalisés                               |
-   //+------------------------------------------------------------------+
-   void SetCustomLevels(TrailingLevel &levels[])
-   {
-      m_levelCount = ArraySize(levels);
-      ArrayResize(m_levels, m_levelCount);
-      ArrayCopy(m_levels, levels);
-   }
-};
-
-//+------------------------------------------------------------------+
-//| Fonction d'aide pour appliquer le trailing TP à une position    |
-//+------------------------------------------------------------------+
-bool ApplyTrailingTP(ulong ticket, CTrailingTP &trailingTP, double currentPrice)
-{
-   if(!PositionSelectByTicket(ticket))
-      return false;
-   
-   double newSL, newTP;
-   
-   if(trailingTP.Update(currentPrice, newSL, newTP))
-   {
-      // Modifier la position
-      CTrade trade;
-      if(trade.PositionModify(ticket, newSL, newTP))
+      
+      if(m_mode == TRAILING_TP_CUSTOM)
       {
-         Print("✅ Position ", ticket, " modifiée - SL: ", newSL, " TP: ", newTP);
-         return true;
+         info += " | Niveau: " + IntegerToString(m_currentLevel) + "/" + IntegerToString(m_levelCount);
       }
       else
       {
-         Print("❌ Erreur modification position ", ticket, ": ", GetLastError());
-         return false;
+         info += " | Niveau: " + IntegerToString(m_currentLevel);
+      }
+      
+      info += " | Max Profit: " + DoubleToString(m_maxProfit, 2) + "%";
+      return info;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Validation de la configuration                                 |
+   //+------------------------------------------------------------------+
+   bool ValidateConfiguration()
+   {
+      switch(m_mode)
+      {
+         case TRAILING_TP_LINEAR:
+         case TRAILING_TP_STEPPED:
+         case TRAILING_TP_EXPONENTIAL:
+            return true; // Modes prédéfinis toujours valides
+            
+         case TRAILING_TP_CUSTOM:
+            return ValidateCustomLevels();
+            
+         default:
+            return false;
       }
    }
-   
-   return false;
-}
+
+   //+------------------------------------------------------------------+
+   //| Définir des paliers personnalisés                              |
+   //+------------------------------------------------------------------+
+   void SetCustomLevels(TrailingLevel &levels[])
+   {
+      if(m_mode != TRAILING_TP_CUSTOM) return;
+      
+      int size = ArraySize(levels);
+      ArrayResize(m_customLevels, size);
+      
+      for(int i = 0; i < size; i++)
+      {
+         m_customLevels[i] = levels[i];
+      }
+      
+      m_levelCount = size;
+   }
+
+private:
+   //+------------------------------------------------------------------+
+   //| Calculer le profit en pourcentage                              |
+   //+------------------------------------------------------------------+
+   double CalculateProfit(double currentPrice)
+   {
+      if(m_isBuy)
+      {
+         return ((currentPrice - m_entryPrice) / m_entryPrice) * 100;
+      }
+      else
+      {
+         return ((m_entryPrice - currentPrice) / m_entryPrice) * 100;
+      }
+   }
+
+   //+------------------------------------------------------------------+
+   //| Mode linéaire : 75% → SL+50%, TP+25%                          |
+   //+------------------------------------------------------------------+
+   bool UpdateLinear(double currentPrice, double &newSL, double &newTP)
+   {
+      if(m_currentLevel > 0) return false; // Déjà activé
+      
+      if(m_maxProfit >= 75.0) // 75% de profit
+      {
+         double slMove = (m_initialTP - m_initialSL) * 0.5; // 50% de la distance SL-TP
+         double tpExtend = (m_initialTP - m_initialSL) * 0.25; // 25% de la distance SL-TP
+         
+         if(m_isBuy)
+         {
+            newSL = m_initialSL + slMove;
+            newTP = m_initialTP + tpExtend;
+         }
+         else
+         {
+            newSL = m_initialSL - slMove;
+            newTP = m_initialTP - tpExtend;
+         }
+         
+         m_currentLevel = 1;
+         return true;
+      }
+      
+      return false;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Mode par paliers : 50% → BE, puis +50% TP                     |
+   //+------------------------------------------------------------------+
+   bool UpdateStepped(double currentPrice, double &newSL, double &newTP)
+   {
+      if(m_maxProfit >= 50.0 && m_currentLevel == 0) // Premier palier : 50%
+      {
+         // Mettre SL à BE
+         newSL = m_entryPrice;
+         newTP = m_initialTP; // Garder TP initial
+         m_currentLevel = 1;
+         return true;
+      }
+      else if(m_maxProfit >= 100.0 && m_currentLevel == 1) // Deuxième palier : 100%
+      {
+         // Étendre TP de 50%
+         double tpExtend = (m_initialTP - m_entryPrice) * 0.5;
+         
+         if(m_isBuy)
+         {
+            newSL = m_entryPrice; // Garder SL à BE
+            newTP = m_initialTP + tpExtend;
+         }
+         else
+         {
+            newSL = m_entryPrice; // Garder SL à BE
+            newTP = m_initialTP - tpExtend;
+         }
+         
+         m_currentLevel = 2;
+         return true;
+      }
+      
+      return false;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Mode exponentiel : gains x8+                                  |
+   //+------------------------------------------------------------------+
+   bool UpdateExponential(double currentPrice, double &newSL, double &newTP)
+   {
+      if(m_maxProfit >= 25.0 && m_currentLevel == 0) // 25% → SL à BE
+      {
+         newSL = m_entryPrice;
+         newTP = m_initialTP;
+         m_currentLevel = 1;
+         return true;
+      }
+      else if(m_maxProfit >= 50.0 && m_currentLevel == 1) // 50% → TP x2
+      {
+         double tpExtend = (m_initialTP - m_entryPrice);
+         
+         if(m_isBuy)
+         {
+            newSL = m_entryPrice;
+            newTP = m_initialTP + tpExtend;
+         }
+         else
+         {
+            newSL = m_entryPrice;
+            newTP = m_initialTP - tpExtend;
+         }
+         
+         m_currentLevel = 2;
+         return true;
+      }
+      else if(m_maxProfit >= 100.0 && m_currentLevel == 2) // 100% → TP x4
+      {
+         double tpExtend = (m_initialTP - m_entryPrice) * 3;
+         
+         if(m_isBuy)
+         {
+            newSL = m_entryPrice;
+            newTP = m_initialTP + tpExtend;
+         }
+         else
+         {
+            newSL = m_entryPrice;
+            newTP = m_initialTP - tpExtend;
+         }
+         
+         m_currentLevel = 3;
+         return true;
+      }
+      else if(m_maxProfit >= 200.0 && m_currentLevel == 3) // 200% → TP x8
+      {
+         double tpExtend = (m_initialTP - m_entryPrice) * 7;
+         
+         if(m_isBuy)
+         {
+            newSL = m_entryPrice;
+            newTP = m_initialTP + tpExtend;
+         }
+         else
+         {
+            newSL = m_entryPrice;
+            newTP = m_initialTP - tpExtend;
+         }
+         
+         m_currentLevel = 4;
+         return true;
+      }
+      
+      return false;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Mode personnalisé : niveaux définis par l'utilisateur          |
+   //+------------------------------------------------------------------+
+   bool UpdateCustom(double currentPrice, double &newSL, double &newTP)
+   {
+      if(m_levelCount == 0) return false;
+      
+      // Vérifier si on peut passer au niveau suivant
+      if(m_currentLevel < m_levelCount)
+      {
+         TrailingLevel &level = m_customLevels[m_currentLevel];
+         
+         if(m_maxProfit >= level.profitPercent)
+         {
+            // Calculer les nouveaux SL et TP
+            double slMove = (m_initialTP - m_initialSL) * (level.slMovePercent / 100.0);
+            double tpExtend = (m_initialTP - m_initialSL) * (level.tpExtendPercent / 100.0);
+            
+            if(m_isBuy)
+            {
+               newSL = m_initialSL + slMove;
+               newTP = m_initialTP + tpExtend;
+            }
+            else
+            {
+               newSL = m_initialSL - slMove;
+               newTP = m_initialTP - tpExtend;
+            }
+            
+            m_currentLevel++;
+            return true;
+         }
+      }
+      
+      return false;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Parser la string des niveaux custom                            |
+   //+------------------------------------------------------------------+
+   void ParseCustomLevels(string levelsString)
+   {
+      string tokens[];
+      int n = StringSplit(levelsString, ',', tokens);
+      
+      ArrayResize(m_customLevels, n);
+      m_levelCount = 0;
+      
+      for(int i = 0; i < n; i++)
+      {
+         string token = tokens[i];
+         StringTrimLeft(token);
+         StringTrimRight(token);
+         
+         // Format: "profit:slMove:tpExtend"
+         string parts[];
+         int partsCount = StringSplit(token, ':', parts);
+         
+         if(partsCount == 3)
+         {
+            TrailingLevel level;
+            level.profitPercent = StringToDouble(parts[0]);
+            level.slMovePercent = StringToDouble(parts[1]);
+            level.tpExtendPercent = StringToDouble(parts[2]);
+            
+            m_customLevels[m_levelCount] = level;
+            m_levelCount++;
+         }
+      }
+   }
+
+   //+------------------------------------------------------------------+
+   //| Validation des niveaux custom                                  |
+   //+------------------------------------------------------------------+
+   bool ValidateCustomLevels()
+   {
+      if(m_levelCount == 0) return false;
+      
+      // Vérifier que les niveaux sont dans l'ordre croissant
+      for(int i = 0; i < m_levelCount; i++)
+      {
+         TrailingLevel &level = m_customLevels[i];
+         
+         // Vérifications de base
+         if(level.profitPercent <= 0 || level.slMovePercent < 0 || level.tpExtendPercent < 0)
+         {
+            Print("❌ TrailingTP Custom: Niveau ", i, " invalide - profit: ", level.profitPercent, 
+                  " slMove: ", level.slMovePercent, " tpExtend: ", level.tpExtendPercent);
+            return false;
+         }
+         
+         // Vérifier l'ordre croissant
+         if(i > 0 && level.profitPercent <= m_customLevels[i-1].profitPercent)
+         {
+            Print("❌ TrailingTP Custom: Niveaux non ordonnés - niveau ", i, " doit être > niveau ", i-1);
+            return false;
+         }
+      }
+      
+      return true;
+   }
+};
