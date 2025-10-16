@@ -5,12 +5,12 @@
 //+------------------------------------------------------------------+
 #property strict
 
-#include "ForexUtils.mqh"
+#include "../../CommonUtils/TradingUtils.mqh"
 
 //+------------------------------------------------------------------+
 //| Afficher les informations sur les symboles configurés           |
 //+------------------------------------------------------------------+
-void ForexPrintSymbolsInfo(string &symbolArray[], int baseMagic, ENUM_TIMEFRAMES timeframe, string strategyName = "")
+void PrintSymbolsInfo(string &symbolArray[], int baseMagic, ENUM_TIMEFRAMES timeframe, string strategyName = "")
 {
    int count = ArraySize(symbolArray);
    
@@ -23,7 +23,7 @@ void ForexPrintSymbolsInfo(string &symbolArray[], int baseMagic, ENUM_TIMEFRAMES
    
    for(int i = 0; i < count; i++)
    {
-      int magic = ForexGenerateMagicNumber(baseMagic, i, timeframe, strategyName);
+      int magic = GenerateMagicNumber(baseMagic, i, timeframe, strategyName);
       string symbol = symbolArray[i];
       
       // Informations sur le symbole
@@ -43,7 +43,7 @@ void ForexPrintSymbolsInfo(string &symbolArray[], int baseMagic, ENUM_TIMEFRAMES
 //+------------------------------------------------------------------+
 //| Obtenir les statistiques globales des symboles                  |
 //+------------------------------------------------------------------+
-string ForexGetGlobalSymbolsStatus(string &symbolArray[], ForexSymbolTrader* &traders[])
+string GetGlobalSymbolsStatus(string &symbolArray[], ForexSymbolTrader* &traders[])
 {
    if(ArraySize(symbolArray) != ArraySize(traders))
       return "ERROR: Array size mismatch";

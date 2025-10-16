@@ -8,9 +8,9 @@
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
 #include <Trade\OrderInfo.mqh>
-#include "ForexEnums.mqh"
+#include "../../CommonUtils/TradingEnums.mqh"
 #include "ForexCommissionManager.mqh"
-#include "ForexTimeFilter.mqh"
+#include "../../CommonUtils/TimeFilter.mqh"
 #include "ForexSwingAnalyzer.mqh"
 
 //+------------------------------------------------------------------+
@@ -44,7 +44,7 @@ private:
    int               m_expirationBars;      // Expiration des ordres
    int               m_orderDistPoints;     // Distance des ordres
    string            m_tradeComment;        // Commentaire des trades
-   ENUM_FOREX_STRATEGY_MODE m_strategyMode; // Mode de stratégie (Breakout/Reversion)
+   ENUM_STRATEGY_MODE m_strategyMode; // Mode de stratégie (Breakout/Reversion)
    
    // Objets de trading
    CTrade            m_trade;               // Objet de trading
@@ -73,7 +73,7 @@ public:
                      int expirationBars,
                      int orderDistPoints,
                      string tradeComment,
-                     ENUM_FOREX_STRATEGY_MODE strategyMode)
+                     ENUM_STRATEGY_MODE strategyMode)
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -137,7 +137,7 @@ public:
       // Chercher des signaux de trading seulement si pas de positions/ordres existants
       if(m_buyTotal <= 0)
       {
-         if(m_strategyMode == FOREX_STRATEGY_BREAKOUT)
+         if(m_strategyMode == STRATEGY_BREAKOUT)
          {
             // Mode BREAKOUT : acheter quand le prix CASSE un swing high (suivre la tendance)
             double high = m_swingAnalyzer.FindHigh();
@@ -146,7 +146,7 @@ public:
                SendBuyOrder(high);
             }
          }
-         else if(m_strategyMode == FOREX_STRATEGY_REVERSION)
+         else if(m_strategyMode == STRATEGY_REVERSION)
          {
             // Mode REVERSION : acheter quand le prix TOUCHE un swing low et rebondit (contre-tendance)
             double low = m_swingAnalyzer.FindLow();
@@ -159,7 +159,7 @@ public:
       
       if(m_sellTotal <= 0)
       {
-         if(m_strategyMode == FOREX_STRATEGY_BREAKOUT)
+         if(m_strategyMode == STRATEGY_BREAKOUT)
          {
             // Mode BREAKOUT : vendre quand le prix CASSE un swing low (suivre la tendance)
             double low = m_swingAnalyzer.FindLow();
@@ -168,7 +168,7 @@ public:
                SendSellOrder(low);
             }
          }
-         else if(m_strategyMode == FOREX_STRATEGY_REVERSION)
+         else if(m_strategyMode == STRATEGY_REVERSION)
          {
             // Mode REVERSION : vendre quand le prix TOUCHE un swing high et redescend (contre-tendance)
             double high = m_swingAnalyzer.FindHigh();
@@ -398,7 +398,7 @@ private:
       
       datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
       
-      if(m_strategyMode == FOREX_STRATEGY_BREAKOUT)
+      if(m_strategyMode == STRATEGY_BREAKOUT)
       {
          // Mode BREAKOUT : utiliser BuyStop (attendre que le prix casse le niveau)
          if(ask > entry - m_orderDistPoints * m_point) return;
@@ -412,7 +412,7 @@ private:
             Print("✗ Failed to send Buy Stop order for ", m_symbol, " | Error: ", GetLastError());
          }
       }
-      else if(m_strategyMode == FOREX_STRATEGY_REVERSION)
+      else if(m_strategyMode == STRATEGY_REVERSION)
       {
          // Mode REVERSION : utiliser BuyLimit (attendre que le prix touche le niveau)
          if(ask < entry + m_orderDistPoints * m_point) return;
@@ -443,7 +443,7 @@ private:
       
       datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
       
-      if(m_strategyMode == FOREX_STRATEGY_BREAKOUT)
+      if(m_strategyMode == STRATEGY_BREAKOUT)
       {
          // Mode BREAKOUT : utiliser SellStop (attendre que le prix casse le niveau)
          if(bid < entry + m_orderDistPoints * m_point) return;
@@ -457,7 +457,7 @@ private:
             Print("✗ Failed to send Sell Stop order for ", m_symbol, " | Error: ", GetLastError());
          }
       }
-      else if(m_strategyMode == FOREX_STRATEGY_REVERSION)
+      else if(m_strategyMode == STRATEGY_REVERSION)
       {
          // Mode REVERSION : utiliser SellLimit (attendre que le prix touche le niveau)
          if(bid > entry - m_orderDistPoints * m_point) return;
@@ -515,6 +515,6 @@ private:
    bool IsTradingTimeAllowed()
    {
       // Utiliser la fonction globale ForexIsTradingAllowed() du TimeFilter
-      return ForexIsTradingAllowed();
+      return IsTradingAllowed();
    }
 };

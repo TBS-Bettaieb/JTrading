@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
-//|                                           ForexTimeFilter.mqh    |
-//|                   Filtre horaire et jours pour le Forex         |
+//|                                              TimeFilter.mqh       |
+//|                   Filtre horaire et jours pour le trading         |
 //+------------------------------------------------------------------+
 #property strict
 
@@ -11,14 +11,14 @@ input int SHInput = 7;  // Start Hour (0 = Inactive, 1-23 = Active)
 input int EHInput = 19;  // End Hour (0 = Inactive, 1-23 = Active)
 
 // Helpers globaux compatibles avec SHInput/EHInput
-int ForexCurrentHour()
+int CurrentHour()
 {
    MqlDateTime dt; TimeToStruct(TimeCurrent(), dt); return dt.hour;
 }
 
-bool ForexIsTradingAllowed()
+bool IsTradingAllowed()
 {
-   int h = ForexCurrentHour();
+   int h = CurrentHour();
    
    if(SHInput < EHInput) 
    {
@@ -40,7 +40,7 @@ bool ForexIsTradingAllowed()
 //+------------------------------------------------------------------+
 //| Classe de gestion des filtres temporels                           |
 //+------------------------------------------------------------------+
-class ForexTimeFilter
+class TimeFilter
 {
 private:
    // Configuration
@@ -59,7 +59,7 @@ public:
    //+------------------------------------------------------------------+
    //| Constructor                                                      |
    //+------------------------------------------------------------------+
-   ForexTimeFilter()
+   TimeFilter()
    {
       m_useHourFilter = false;
       m_hourRanges = "";
@@ -67,7 +67,7 @@ public:
       m_dayRanges = "";
       m_lastLoggedHour = -1;
       m_lastLoggedDay = -1;
-      m_logPrefix = "[ForexTimeFilter] ";
+      m_logPrefix = "[TimeFilter] ";
       m_lastBlockReason = "";
    }
 

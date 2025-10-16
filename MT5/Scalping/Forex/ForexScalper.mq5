@@ -10,10 +10,10 @@
 
 
 #include <Trade\Trade.mqh>
-#include "common/ForexEnums.mqh"
-#include "common/ForexUtils.mqh"
+#include "../CommonUtils/TradingEnums.mqh"
+#include "../CommonUtils/TradingUtils.mqh"
+#include "../CommonUtils/TimeFilter.mqh"
 #include "common/ForexChartManager.mqh"
-#include "common/ForexTimeFilter.mqh"
 #include "common/ForexSymbolTrader.mqh"
 #include "common/ForexSymbolManager.mqh"
 
@@ -42,7 +42,7 @@ input string   TradeComment       = "Scalping Robot";
 
 //--- Bar management
 input group "=== Strategy Parameters ==="
-input ENUM_FOREX_STRATEGY_MODE StrategyMode = FOREX_STRATEGY_BREAKOUT; // Strategy Mode: Breakout or Reversion
+input ENUM_STRATEGY_MODE StrategyMode = STRATEGY_BREAKOUT; // Strategy Mode: Breakout or Reversion
 input int      BarsN = 5;
 input int      ExpirationBars = 50;
 input int      OrderDistPoints = 100;
@@ -63,12 +63,12 @@ int OnInit()
    // ═══ Step 1: Parse and validate symbols ═══
    if(UseAllSymbols)
    {
-      totalSymbols = ForexGetSymbolsFromMarketWatch(symbols);
+      totalSymbols = GetSymbolsFromMarketWatch(symbols);
       Print("📊 Using all symbols from Market Watch: ", totalSymbols, " symbols");
    }
    else
    {
-      totalSymbols = ForexParseSymbolsList(SymbolsList, symbols);
+      totalSymbols = ParseSymbolsList(SymbolsList, symbols);
       Print("📊 Using custom symbols list: ", totalSymbols, " symbols");
    }
    
@@ -81,14 +81,14 @@ int OnInit()
    // ═══ Step 2: Validate historical data ═══
    for(int i = 0; i < totalSymbols; i++)
    {
-      if(!ForexCheckHistoricalData(symbols[i], Timeframe))
+      if(!CheckHistoricalData(symbols[i], Timeframe))
       {
          Print("⚠️ Warning: Limited historical data for ", symbols[i]);
       }
    }
    
    // ═══ Step 3: Calculate risk per symbol ═══
-   double riskPerSymbol = ForexCalculateRiskPerSymbol(RiskPercent, totalSymbols);
+   double riskPerSymbol = CalculateRiskPerSymbol(RiskPercent, totalSymbols);
    Print("💰 Risk per symbol: ", DoubleToString(riskPerSymbol, 2), "% (Total: ", DoubleToString(RiskPercent, 2), "%)");
    
    // ═══ Step 4: Create ForexSymbolTrader objects ═══
@@ -96,7 +96,7 @@ int OnInit()
    
    for(int i = 0; i < totalSymbols; i++)
    {
-      int magicNumber = ForexGenerateMagicNumber(BaseMagic, i, Timeframe, "ScalpingRobot");
+      int magicNumber = GenerateMagicNumber(BaseMagic, i, Timeframe, "ScalpingRobot");
       
       symbolTraders[i] = new ForexSymbolTrader(
          symbols[i],                    // symbol
@@ -133,7 +133,7 @@ int OnInit()
       chartManager.ShowTopLeftLabel("Scalping Robot v2.0 - Multi-Symbol", clrDarkBlue, 14);
       
       // Afficher les informations des symboles
-      ForexPrintSymbolsInfo(symbols, BaseMagic, Timeframe, "ScalpingRobot");
+      PrintSymbolsInfo(symbols, BaseMagic, Timeframe, "ScalpingRobot");
       
    }
    else
@@ -232,10 +232,10 @@ void UpdateChartInfo()
    if(tickCount % 100 != 0) return;
    
    // Construire le texte de statut global
-   string globalStatus = ForexGetGlobalSymbolsStatus(symbols, symbolTraders);
+   string globalStatus = GetGlobalSymbolsStatus(symbols, symbolTraders);
    
    // Vérifier si on est dans les heures de trading
-   bool tradingAllowed = ForexIsTradingAllowed();
+   bool tradingAllowed = IsTradingAllowed();
    
    if(tradingAllowed)
       globalStatus = "Status: ACTIVE | " + globalStatus;
