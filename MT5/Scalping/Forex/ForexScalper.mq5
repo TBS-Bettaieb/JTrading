@@ -79,6 +79,24 @@ int OnInit()
    Print("🚀 Initializing Scalping Robot v2.0");
    Print("═══════════════════════════════════════");
    
+   // Validation Trailing TP CUSTOM
+   if(UseTrailingTP && TrailingTPMode == TRAILING_TP_CUSTOM)
+   {
+      Print("🔍 Validation Custom Trailing TP...");
+      string errorMessage;
+      bool isValid = CTrailingTPValidator::ValidateCustomLevelsString(CustomTPLevels, errorMessage);
+      
+      if(!isValid)
+      {
+         Print("❌ ERREUR: ", errorMessage);
+         Print("💡 Exemple: \"50:0:0, 75:25:50, 100:50:100\"");
+         return(INIT_PARAMETERS_INCORRECT);
+      }
+      
+      CTrailingTPValidator::PrintParsedLevels(CustomTPLevels);
+      Print(errorMessage);
+   }
+   
    // ═══ Step 1: Parse and validate symbols ═══
    if(UseAllSymbols)
    {
@@ -184,6 +202,14 @@ int OnInit()
    Print("✅ Initialization completed successfully!");
    Print("📈 Trading ", totalSymbols, " symbols simultaneously");
    Print("🕒 Timeframe: ", EnumToString(Timeframe));
+   
+   if(UseTrailingTP)
+   {
+      Print("🎯 TRAILING TP: ", EnumToString(TrailingTPMode));
+      if(TrailingTPMode == TRAILING_TP_CUSTOM)
+         Print("   Niveaux: ", CustomTPLevels);
+   }
+   
    Print("═══════════════════════════════════════");
    
    return(INIT_SUCCEEDED);
