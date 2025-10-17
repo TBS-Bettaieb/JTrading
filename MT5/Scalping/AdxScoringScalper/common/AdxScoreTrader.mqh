@@ -9,25 +9,16 @@
 #include <Trade\Trade.mqh>
 #include "../../../CommonUtils/TradingUtils.mqh"
 #include "../../../CommonUtils/TradingEnums.mqh"
+#include "scorers/IFilterScorer.mqh"
+#include "scorers/AdxScorer.mqh"
+#include "scorers/RsiScorer.mqh"
+#include "scorers/MaScorer.mqh"
 
 //+------------------------------------------------------------------+
 //| Constantes de scoring (comme dans l'original)                   |
 //+------------------------------------------------------------------+
-#define SCORE_ADX_WEAK -2
-#define SCORE_ADX_MODERATE 0
-#define SCORE_ADX_STRONG 1
-#define SCORE_ADX_VERY_STRONG 3
-
-#define SCORE_RSI_EXTREME 4
-#define SCORE_RSI_ZONE 1
-#define SCORE_RSI_MODERATE 0
-
-#define SCORE_MA_TREND 2
-#define SCORE_MA_DISTANCE_CLOSE 0
-#define SCORE_MA_DISTANCE_FAR -2
 
 #define SCORE_CONFLUENCE_BONUS 3
-#define SCORE_PRICE_CROSS_MA 1
 
 //+------------------------------------------------------------------+
 //| Classe principale de trading ADX Score                          |
@@ -40,10 +31,10 @@ private:
    int m_magicNumber;
    ENUM_TIMEFRAMES m_timeframe;
    
-   // Indicateurs
-   int m_handleADX;
-   int m_handleRSI;
-   int m_handleMA;
+   // Scorers
+   AdxScorer* m_adxScorer;
+   RsiScorer* m_rsiScorer;
+   MaScorer* m_maScorer;
    
    // Paramètres indicateurs
    int m_adxPeriod;
@@ -143,9 +134,9 @@ public:
       m_trailingStart = trailingStart;
       m_trailingStep = trailingStep;
       
-      m_handleADX = INVALID_HANDLE;
-      m_handleRSI = INVALID_HANDLE;
-      m_handleMA = INVALID_HANDLE;
+      m_adxScorer = NULL;
+      m_rsiScorer = NULL;
+      m_maScorer = NULL;
       
       m_lastBarTime = 0;
       m_currentBuyScore = 0;
@@ -185,9 +176,9 @@ public:
    //+------------------------------------------------------------------+
    ~AdxScoreTrader()
    {
-      if(m_handleADX != INVALID_HANDLE) IndicatorRelease(m_handleADX);
-      if(m_handleRSI != INVALID_HANDLE) IndicatorRelease(m_handleRSI);
-      if(m_handleMA != INVALID_HANDLE) IndicatorRelease(m_handleMA);
+      if(m_adxScorer != NULL) delete m_adxScorer;
+      if(m_rsiScorer != NULL) delete m_rsiScorer;
+      if(m_maScorer != NULL) delete m_maScorer;
    }
 
    //+------------------------------------------------------------------+
@@ -202,15 +193,15 @@ public:
          return false;
       }
       
-      // Créer les indicateurs avec paramètres configurables
-      m_handleADX = iADX(m_symbol, m_timeframe, m_adxPeriod);
-      m_handleRSI = iRSI(m_symbol, m_timeframe, m_rsiPeriod, PRICE_CLOSE);
-      m_handleMA = iMA(m_symbol, m_timeframe, m_maPeriod, 0, m_maMethod, PRICE_CLOSE);
+      // Créer les scorers
+      m_adxScorer = new AdxScorer(m_symbol, m_timeframe, m_adxPeriod);
+      m_rsiScorer = new RsiScorer(m_symbol, m_timeframe, m_rsiPeriod);
+      m_maScorer = new MaScorer(m_symbol, m_timeframe, m_maPeriod, m_maMethod);
       
-      if(m_handleADX == INVALID_HANDLE || m_handleRSI == INVALID_HANDLE || m_handleMA == INVALID_HANDLE)
+      // Initialiser les scorers
+      if(!m_adxScorer.Initialize() || !m_rsiScorer.Initialize() || !m_maScorer.Initialize())
       {
-         Print("❌ Erreur création indicateurs pour ", m_symbol);
-         Print("   ADX: ", m_handleADX, " | RSI: ", m_handleRSI, " | MA: ", m_handleMA);
+         Print("❌ Erreur initialisation scorers pour ", m_symbol);
          return false;
       }
       
@@ -291,24 +282,16 @@ public:
       m_prevPrice = m_currentPrice;
       m_prevMA = m_currentMA;
       
-      double adxValues[3];
-      double rsiValues[1];
-      double maValues[1];
+      // Mettre à jour les scorers
+      m_adxScorer.Update();
+      m_rsiScorer.Update();
+      m_maScorer.Update();
       
-      int copiedADX = CopyBuffer(m_handleADX, 0, 1, 3, adxValues);
-      int copiedRSI = CopyBuffer(m_handleRSI, 0, 1, 1, rsiValues);
-      int copiedMA = CopyBuffer(m_handleMA, 0, 1, 1, maValues);
-      
-      if(copiedADX <= 0 || copiedRSI <= 0 || copiedMA <= 0)
-      {
-         Print("⚠️ Erreur copie indicateurs: ADX=", copiedADX, " RSI=", copiedRSI, " MA=", copiedMA);
-         return;
-      }
-      
-      m_currentADX = adxValues[0];
-      m_currentRSI = rsiValues[0];
-      m_currentMA = maValues[0];
-      m_currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
+      // Récupérer les valeurs actuelles
+      m_currentADX = m_adxScorer.GetCurrentValue();
+      m_currentRSI = m_rsiScorer.GetCurrentValue();
+      m_currentMA = m_maScorer.GetCurrentValue();
+      m_currentPrice = m_maScorer.GetCurrentPrice();
    }
 
    //+------------------------------------------------------------------+
@@ -316,61 +299,21 @@ public:
    //+------------------------------------------------------------------+
    int CalculateBuyScore()
    {
-      int score = 0;
-      
-      // Score ADX (force de tendance)
-      m_buyAdxScore = 0;
-      if(m_currentADX > 35)
-         m_buyAdxScore = SCORE_ADX_VERY_STRONG;
-      else if(m_currentADX > 25)
-         m_buyAdxScore = SCORE_ADX_STRONG;
-      else if(m_currentADX > 20)
-         m_buyAdxScore = SCORE_ADX_MODERATE;
-      else
-         m_buyAdxScore = SCORE_ADX_WEAK;
-      score += m_buyAdxScore;
-      
-      // Score RSI (survente = opportunité achat)
-      m_buyRsiScore = 0;
-      if(m_currentRSI < 20)
-         m_buyRsiScore = SCORE_RSI_EXTREME;
-      else if(m_currentRSI < 30)
-         m_buyRsiScore = SCORE_RSI_ZONE;
-      else if(m_currentRSI >= 35) // Pénalité si surachat
-         m_buyRsiScore = 0;
-      score += m_buyRsiScore;
-      
-      // Score MA (tendance haussière)
-      m_buyMaScore = 0;
-      double distance_pct = (m_currentPrice - m_currentMA) / m_currentMA * 100;
-      
-      if(m_currentPrice > m_currentMA)
-      {
-         m_buyMaScore = SCORE_MA_TREND;
-         
-         if(MathAbs(distance_pct) < 0.5)
-            m_buyMaScore += SCORE_MA_DISTANCE_CLOSE;
-         else if(MathAbs(distance_pct) > 2.0)
-            m_buyMaScore += SCORE_MA_DISTANCE_FAR;
-      }
-      else
-      {
-         if(MathAbs(distance_pct) < 0.3)
-            m_buyMaScore = 1;
-         else
-            m_buyMaScore = -1;
-      }
-      score += m_buyMaScore;
+      // Obtenir les scores des scorers
+      m_buyAdxScore = m_adxScorer.GetBuyScore();
+      m_buyRsiScore = m_rsiScorer.GetBuyScore();
+      m_buyMaScore = m_maScorer.GetBuyScore();
       
       // Bonus confluence
       m_buyConfluenceScore = 0;
-      if(m_currentADX > 35 && m_currentRSI < 20 && m_currentPrice > m_currentMA)
+      if(m_adxScorer.IsHighTrend() && 
+         m_rsiScorer.IsHighTrend() && 
+         m_maScorer.IsHighTrend())
       {
          m_buyConfluenceScore = SCORE_CONFLUENCE_BONUS;
       }
-      score += m_buyConfluenceScore;
       
-      return score;
+      return m_buyAdxScore + m_buyRsiScore + m_buyMaScore + m_buyConfluenceScore;
    }
 
    //+------------------------------------------------------------------+
@@ -378,63 +321,21 @@ public:
    //+------------------------------------------------------------------+
    int CalculateSellScore()
    {
-      int score = 0;
-      
-      // Score ADX (force de tendance)
-      m_sellAdxScore = 0;
-      if(m_currentADX > 35)
-         m_sellAdxScore = SCORE_ADX_VERY_STRONG;
-      else if(m_currentADX > 25)
-         m_sellAdxScore = SCORE_ADX_STRONG;
-      else if(m_currentADX > 20)
-         m_sellAdxScore = SCORE_ADX_MODERATE;
-      else
-         m_sellAdxScore = SCORE_ADX_WEAK;
-      score += m_sellAdxScore;
-      
-      // Score RSI (surachat = opportunité vente)
-      m_sellRsiScore = 0;
-      if(m_currentRSI > 80)
-         m_sellRsiScore = SCORE_RSI_EXTREME;
-      else if(m_currentRSI > 75)
-         m_sellRsiScore = SCORE_RSI_ZONE;
-      else if(m_currentRSI > 70)
-         m_sellRsiScore = SCORE_RSI_MODERATE;
-      else if(m_currentRSI <= 55) // Pénalité si survendu
-         m_sellRsiScore = 0;
-      score += m_sellRsiScore;
-      
-      // Score MA (tendance baissière)
-      m_sellMaScore = 0;
-      double distance_pct = (m_currentPrice - m_currentMA) / m_currentMA * 100;
-      
-      if(m_currentPrice < m_currentMA)
-      {
-         m_sellMaScore = SCORE_MA_TREND;
-         
-         if(MathAbs(distance_pct) < 0.5)
-            m_sellMaScore += SCORE_MA_DISTANCE_CLOSE;
-         else if(MathAbs(distance_pct) > 2.0)
-            m_sellMaScore += SCORE_MA_DISTANCE_FAR;
-      }
-      else
-      {
-         if(MathAbs(distance_pct) < 0.3)
-            m_sellMaScore = 1;
-         else
-            m_sellMaScore = -1;
-      }
-      score += m_sellMaScore;
+      // Obtenir les scores des scorers
+      m_sellAdxScore = m_adxScorer.GetSellScore();
+      m_sellRsiScore = m_rsiScorer.GetSellScore();
+      m_sellMaScore = m_maScorer.GetSellScore();
       
       // Bonus confluence
       m_sellConfluenceScore = 0;
-      if(m_currentADX > 30 && m_currentRSI > 80 && m_currentPrice < m_currentMA)
+      if(m_adxScorer.IsHighTrend() && 
+         m_rsiScorer.IsHighTrend() && 
+         m_maScorer.IsHighTrend())
       {
          m_sellConfluenceScore = SCORE_CONFLUENCE_BONUS;
       }
-      score += m_sellConfluenceScore;
       
-      return score;
+      return m_sellAdxScore + m_sellRsiScore + m_sellMaScore + m_sellConfluenceScore;
    }
 
 
@@ -641,10 +542,10 @@ public:
    //+------------------------------------------------------------------+
    int GetBuyScore() const { return m_currentBuyScore; }
    int GetSellScore() const { return m_currentSellScore; }
-   double GetADX() const { return m_currentADX; }
-   double GetRSI() const { return m_currentRSI; }
-   double GetMA() const { return m_currentMA; }
-   double GetPrice() const { return m_currentPrice; }
+   double GetADX() const { return m_adxScorer != NULL ? m_adxScorer.GetCurrentValue() : 0; }
+   double GetRSI() const { return m_rsiScorer != NULL ? m_rsiScorer.GetCurrentValue() : 0; }
+   double GetMA() const { return m_maScorer != NULL ? m_maScorer.GetCurrentValue() : 0; }
+   double GetPrice() const { return m_maScorer != NULL ? m_maScorer.GetCurrentPrice() : 0; }
    
    // Getters pour les scores BUY
    int GetBuyADXScore() const { return m_buyAdxScore; }
@@ -666,9 +567,13 @@ public:
    //+------------------------------------------------------------------+
    string GetStatusInfo()
    {
+      double adx = GetADX();
+      double rsi = GetRSI();
+      double ma = GetMA();
+      
       string info = StringFormat(
          "ADX: %.1f | RSI: %.1f | MA: %.5f | BUY: %d | SELL: %d | Pos: %d/%d",
-         m_currentADX, m_currentRSI, m_currentMA, 
+         adx, rsi, ma, 
          m_currentBuyScore, m_currentSellScore,
          CountPositions(), m_maxPositions
       );
