@@ -11,6 +11,7 @@
 #include "../../../CommonUtils/TradingEnums.mqh"
 #include "scorers/IFilterScorer.mqh"
 #include "scorers/AdxScorer.mqh"
+#include "scorers/AdxDirectionalScorer.mqh"
 #include "scorers/RsiScorer.mqh"
 #include "scorers/MaScorer.mqh"
 
@@ -33,6 +34,7 @@ private:
    
    // Scorers
    AdxScorer* m_adxScorer;
+   AdxDirectionalScorer* m_adxDirectionalScorer;
    RsiScorer* m_rsiScorer;
    MaScorer* m_maScorer;
    
@@ -78,12 +80,14 @@ private:
    
    // Composantes du score BUY
    int m_buyAdxScore;
+   int m_buyDirectionalScore;
    int m_buyRsiScore;
    int m_buyMaScore;
    int m_buyConfluenceScore;
    
    // Composantes du score SELL
    int m_sellAdxScore;
+   int m_sellDirectionalScore;
    int m_sellRsiScore;
    int m_sellMaScore;
    int m_sellConfluenceScore;
@@ -135,6 +139,7 @@ public:
       m_trailingStep = trailingStep;
       
       m_adxScorer = NULL;
+      m_adxDirectionalScorer = NULL;
       m_rsiScorer = NULL;
       m_maScorer = NULL;
       
@@ -154,12 +159,14 @@ public:
       
       // Composantes du score BUY
       m_buyAdxScore = 0;
+      m_buyDirectionalScore = 0;
       m_buyRsiScore = 0;
       m_buyMaScore = 0;
       m_buyConfluenceScore = 0;
       
       // Composantes du score SELL
       m_sellAdxScore = 0;
+      m_sellDirectionalScore = 0;
       m_sellRsiScore = 0;
       m_sellMaScore = 0;
       m_sellConfluenceScore = 0;
@@ -177,6 +184,7 @@ public:
    ~AdxScoreTrader()
    {
       if(m_adxScorer != NULL) delete m_adxScorer;
+      if(m_adxDirectionalScorer != NULL) delete m_adxDirectionalScorer;
       if(m_rsiScorer != NULL) delete m_rsiScorer;
       if(m_maScorer != NULL) delete m_maScorer;
    }
@@ -195,11 +203,12 @@ public:
       
       // Créer les scorers
       m_adxScorer = new AdxScorer(m_symbol, m_timeframe, m_adxPeriod);
+      m_adxDirectionalScorer = new AdxDirectionalScorer(m_symbol, m_timeframe, m_adxPeriod);
       m_rsiScorer = new RsiScorer(m_symbol, m_timeframe, m_rsiPeriod);
       m_maScorer = new MaScorer(m_symbol, m_timeframe, m_maPeriod, m_maMethod);
       
       // Initialiser les scorers
-      if(!m_adxScorer.Initialize() || !m_rsiScorer.Initialize() || !m_maScorer.Initialize())
+      if(!m_adxScorer.Initialize() || !m_adxDirectionalScorer.Initialize() || !m_rsiScorer.Initialize() || !m_maScorer.Initialize())
       {
          Print("❌ Erreur initialisation scorers pour ", m_symbol);
          return false;
@@ -284,6 +293,7 @@ public:
       
       // Mettre à jour les scorers
       m_adxScorer.Update();
+      m_adxDirectionalScorer.Update();
       m_rsiScorer.Update();
       m_maScorer.Update();
       
@@ -301,19 +311,25 @@ public:
    {
       // Obtenir les scores des scorers
       m_buyAdxScore = m_adxScorer.GetBuyScore();
+      m_buyDirectionalScore = m_adxDirectionalScorer.GetBuyScore();
       m_buyRsiScore = m_rsiScorer.GetBuyScore();
       m_buyMaScore = m_maScorer.GetBuyScore();
+      
+      // Bonus croisement D+/D-
+      if(m_adxDirectionalScorer.IsCrossover())
+         m_buyDirectionalScore += 2;  // Bonus croisement haussier
       
       // Bonus confluence
       m_buyConfluenceScore = 0;
       if(m_adxScorer.IsHighTrend() && 
          m_rsiScorer.IsHighTrend() && 
-         m_maScorer.IsHighTrend())
+         m_maScorer.IsHighTrend() &&
+         m_adxDirectionalScorer.IsHighTrend())  // NOUVEAU
       {
          m_buyConfluenceScore = SCORE_CONFLUENCE_BONUS;
       }
       
-      return m_buyAdxScore + m_buyRsiScore + m_buyMaScore + m_buyConfluenceScore;
+      return m_buyAdxScore + m_buyDirectionalScore + m_buyRsiScore + m_buyMaScore + m_buyConfluenceScore;
    }
 
    //+------------------------------------------------------------------+
@@ -323,19 +339,25 @@ public:
    {
       // Obtenir les scores des scorers
       m_sellAdxScore = m_adxScorer.GetSellScore();
+      m_sellDirectionalScore = m_adxDirectionalScorer.GetSellScore();
       m_sellRsiScore = m_rsiScorer.GetSellScore();
       m_sellMaScore = m_maScorer.GetSellScore();
+      
+      // Bonus croisement D-/D+
+      if(m_adxDirectionalScorer.IsCrossunder())
+         m_sellDirectionalScore += 2;  // Bonus croisement baissier
       
       // Bonus confluence
       m_sellConfluenceScore = 0;
       if(m_adxScorer.IsHighTrend() && 
          m_rsiScorer.IsHighTrend() && 
-         m_maScorer.IsHighTrend())
+         m_maScorer.IsHighTrend() &&
+         m_adxDirectionalScorer.IsHighTrend())  // NOUVEAU
       {
          m_sellConfluenceScore = SCORE_CONFLUENCE_BONUS;
       }
       
-      return m_sellAdxScore + m_sellRsiScore + m_sellMaScore + m_sellConfluenceScore;
+      return m_sellAdxScore + m_sellDirectionalScore + m_sellRsiScore + m_sellMaScore + m_sellConfluenceScore;
    }
 
 
@@ -543,18 +565,22 @@ public:
    int GetBuyScore() const { return m_currentBuyScore; }
    int GetSellScore() const { return m_currentSellScore; }
    double GetADX() const { return m_adxScorer != NULL ? m_adxScorer.GetCurrentValue() : 0; }
+   double GetDPlus() const { return m_adxDirectionalScorer != NULL ? m_adxDirectionalScorer.GetDPlus() : 0; }
+   double GetDMinus() const { return m_adxDirectionalScorer != NULL ? m_adxDirectionalScorer.GetDMinus() : 0; }
    double GetRSI() const { return m_rsiScorer != NULL ? m_rsiScorer.GetCurrentValue() : 0; }
    double GetMA() const { return m_maScorer != NULL ? m_maScorer.GetCurrentValue() : 0; }
    double GetPrice() const { return m_maScorer != NULL ? m_maScorer.GetCurrentPrice() : 0; }
    
    // Getters pour les scores BUY
    int GetBuyADXScore() const { return m_buyAdxScore; }
+   int GetBuyDirectionalScore() const { return m_buyDirectionalScore; }
    int GetBuyRSIScore() const { return m_buyRsiScore; }
    int GetBuyMAScore() const { return m_buyMaScore; }
    int GetBuyConfluenceScore() const { return m_buyConfluenceScore; }
    
    // Getters pour les scores SELL
    int GetSellADXScore() const { return m_sellAdxScore; }
+   int GetSellDirectionalScore() const { return m_sellDirectionalScore; }
    int GetSellRSIScore() const { return m_sellRsiScore; }
    int GetSellMAScore() const { return m_sellMaScore; }
    int GetSellConfluenceScore() const { return m_sellConfluenceScore; }

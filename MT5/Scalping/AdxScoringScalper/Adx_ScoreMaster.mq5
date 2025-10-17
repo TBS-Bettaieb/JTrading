@@ -282,7 +282,7 @@ void UpdateChartDisplay()
    
    // ═══ Affichage des indicateurs avec couleurs dynamiques ═══
    string indicators[];
-   ArrayResize(indicators, 6);
+   ArrayResize(indicators, 8);
    
    // Titre en Bold
    indicators[0] = "━━━ INDICATORS ━━━";
@@ -295,25 +295,41 @@ void UpdateChartDisplay()
    else if(adx > 20) adxStatus = " →";  // Modéré
    indicators[1] = StringFormat("ADX: %.1f%s", adx, adxStatus);
    
+   // D+ et D- avec code couleur
+   double dPlus = scoreTrader.GetDPlus();
+   double dMinus = scoreTrader.GetDMinus();
+   string directionalStatus = "";
+   if(dPlus > dMinus + 20) directionalStatus = " 🟢";  // D+ très dominant
+   else if(dMinus > dPlus + 20) directionalStatus = " 🔴";  // D- très dominant
+   else if(MathAbs(dPlus - dMinus) > 10) directionalStatus = " ⚡";  // Écart significatif
+   indicators[2] = StringFormat("D+: %.1f | D-: %.1f%s", dPlus, dMinus, directionalStatus);
+   
    // RSI avec code couleur
    double rsi = scoreTrader.GetRSI();
    string rsiStatus = "";
    if(rsi < 30) rsiStatus = " 🔵";  // Survente
    else if(rsi > 70) rsiStatus = " 🔴";  // Surachat
-   indicators[2] = StringFormat("RSI: %.1f%s", rsi, rsiStatus);
+   indicators[3] = StringFormat("RSI: %.1f%s", rsi, rsiStatus);
    
    // MA avec distance
    double ma = scoreTrader.GetMA();
    double price = scoreTrader.GetPrice();
    double distance = ((price - ma) / ma) * 100;
    string maStatus = distance > 0 ? " ↑" : " ↓";
-   indicators[3] = StringFormat("MA: %.4f%s", ma, maStatus);
+   indicators[4] = StringFormat("MA: %.4f%s", ma, maStatus);
    
    // Positions
-   indicators[4] = StringFormat("Pos: %d/%d", scoreTrader.GetCurrentPositions(), scoreTrader.GetMaxPositions());
+   indicators[5] = StringFormat("Pos: %d/%d", scoreTrader.GetCurrentPositions(), scoreTrader.GetMaxPositions());
    
    // Scores actuels
-   indicators[5] = StringFormat("Score: BUY[%d] SELL[%d]", buyScore, sellScore);
+   indicators[6] = StringFormat("Score: BUY[%d] SELL[%d]", buyScore, sellScore);
+   
+   // Direction dominante
+   string direction = "";
+   if(dPlus > dMinus + 5) direction = " ↗️ Haussier";
+   else if(dMinus > dPlus + 5) direction = " ↘️ Baissier";
+   else direction = " ↔️ Neutre";
+   indicators[7] = StringFormat("Direction: %s", direction);
    
    // Couleur dynamique selon signal
    color indColor = clrWhite;
@@ -346,13 +362,15 @@ void DisplayScoreBreakdown()
    int sellScore = scoreTrader.GetSellScore();
    
    // Format compact avec scores détaillés
-   lines[1] = StringFormat("BUY: ADX:%d RSI:%d MA:%d CF:%d", 
-      scoreTrader.GetBuyADXScore(), scoreTrader.GetBuyRSIScore(), 
-      scoreTrader.GetBuyMAScore(), scoreTrader.GetBuyConfluenceScore());
+   lines[1] = StringFormat("BUY: ADX:%d DIR:%d RSI:%d MA:%d CF:%d", 
+      scoreTrader.GetBuyADXScore(), scoreTrader.GetBuyDirectionalScore(),
+      scoreTrader.GetBuyRSIScore(), scoreTrader.GetBuyMAScore(), 
+      scoreTrader.GetBuyConfluenceScore());
    
-   lines[2] = StringFormat("SELL: ADX:%d RSI:%d MA:%d CF:%d", 
-      scoreTrader.GetSellADXScore(), scoreTrader.GetSellRSIScore(), 
-      scoreTrader.GetSellMAScore(), scoreTrader.GetSellConfluenceScore());
+   lines[2] = StringFormat("SELL: ADX:%d DIR:%d RSI:%d MA:%d CF:%d", 
+      scoreTrader.GetSellADXScore(), scoreTrader.GetSellDirectionalScore(),
+      scoreTrader.GetSellRSIScore(), scoreTrader.GetSellMAScore(), 
+      scoreTrader.GetSellConfluenceScore());
    
    lines[3] = "─────────────────";
    

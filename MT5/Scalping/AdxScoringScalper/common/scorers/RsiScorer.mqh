@@ -98,8 +98,8 @@ public:
          return SCORE_RSI_EXTREME;      // Survente extrême
       else if(m_currentValue < 30)
          return SCORE_RSI_ZONE;         // Zone de survente
-      else if(m_currentValue >= 35)
-         return 0;                      // Pénalité si surachat
+      else if(m_currentValue >= 70)
+         return -2;                      // Pénalité si surachat
       else
          return SCORE_RSI_MODERATE;     // Zone neutre
    }
@@ -116,8 +116,8 @@ public:
          return SCORE_RSI_ZONE;         // Zone de surachat
       else if(m_currentValue > 70)
          return SCORE_RSI_MODERATE;     // Surachat modéré
-      else if(m_currentValue <= 55)
-         return 0;                      // Pénalité si survendu
+      else if(m_currentValue <= 30)
+         return -2;                      // Pénalité si survendu
       else
          return SCORE_RSI_MODERATE;     // Zone neutre
    }
