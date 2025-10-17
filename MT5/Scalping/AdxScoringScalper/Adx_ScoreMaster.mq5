@@ -227,33 +227,30 @@ void OnTick()
       Sleep(50);  // Réduit de 100 à 50ms
    }
    
-   // Toujours mettre à jour les indicateurs et scores (pour l'affichage)
-   if(scoreTrader != NULL && scoreTrader.IsNewBar())
+   // Vérifier si c'est une nouvelle barre (UNE SEULE vérification)
+   bool isNewBar = scoreTrader.IsNewBar();
+
+   // Sur nouvelle barre : mettre à jour les indicateurs et scores
+   if(isNewBar)
    {
       scoreTrader.UpdateScoresOnly();
+      
+      // Mettre à jour l'affichage
+      UpdateChartDisplay();
    }
 
    // Vérifier si le trading est autorisé selon le filtre temps
    bool tradingAllowed = timeManager.IsTradingAllowed();
 
-   if(tradingAllowed)
+   // Si trading autorisé ET nouvelle barre : vérifier les signaux
+   if(tradingAllowed && isNewBar)
    {
-      // Trading autorisé: vérifier les signaux SEULEMENT
-      if(scoreTrader != NULL && scoreTrader.IsNewBar())
-      {
-         scoreTrader.CheckTradingSignals();
-      }
+      scoreTrader.CheckTradingSignals();
    }
-   
+
    // Appliquer le trailing stop (toujours actif)
    if(scoreTrader != NULL)
       scoreTrader.TrailingStop();
-   
-   // Mettre à jour l'affichage PRINCIPAL uniquement à chaque nouvelle barre
-   if(scoreTrader != NULL && scoreTrader.IsNewBar())
-   {
-      UpdateChartDisplay();
-   }
    
    // Mettre à jour le statut global moins souvent
    DisplayGlobalStatus();
@@ -324,7 +321,7 @@ void UpdateChartDisplay()
    else if(sellScore >= SCORE_MIN_ENTRY) indColor = clrOrangeRed;
    
    // Police agrandie de 9 à 11 - Centré en bas
-   chartManager.ShowMultiLineInfo(indicators, CORNER_LEFT_LOWER, 200, 30, 20, indColor, 11, "Indicators");
+   chartManager.ShowMultiLineInfo(indicators, CORNER_LEFT_LOWER, 150, 30, 20, indColor, 11, "Indicators");
    
    // ═══ Affichage du breakdown du score ═══
    DisplayScoreBreakdown();

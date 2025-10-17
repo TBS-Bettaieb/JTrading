@@ -13,20 +13,20 @@
 //+------------------------------------------------------------------+
 //| Constantes de scoring (comme dans l'original)                   |
 //+------------------------------------------------------------------+
-#define SCORE_ADX_WEAK 0
-#define SCORE_ADX_MODERATE 1
-#define SCORE_ADX_STRONG 2
+#define SCORE_ADX_WEAK -2
+#define SCORE_ADX_MODERATE 0
+#define SCORE_ADX_STRONG 1
 #define SCORE_ADX_VERY_STRONG 3
 
 #define SCORE_RSI_EXTREME 4
-#define SCORE_RSI_ZONE 2
+#define SCORE_RSI_ZONE 1
 #define SCORE_RSI_MODERATE 0
 
 #define SCORE_MA_TREND 2
-#define SCORE_MA_DISTANCE_CLOSE 1
-#define SCORE_MA_DISTANCE_FAR -1
+#define SCORE_MA_DISTANCE_CLOSE 0
+#define SCORE_MA_DISTANCE_FAR -2
 
-#define SCORE_CONFLUENCE_BONUS 2
+#define SCORE_CONFLUENCE_BONUS 3
 #define SCORE_PRICE_CROSS_MA 1
 
 //+------------------------------------------------------------------+
@@ -248,9 +248,6 @@ public:
    {
       if(!m_isInitialized) return;
       
-      // Vérifier nouvelle barre
-      if(!IsNewBar()) return;
-      
       // Mettre à jour les valeurs des indicateurs
       UpdateIndicatorValues();
       
@@ -337,12 +334,10 @@ public:
       m_buyRsiScore = 0;
       if(m_currentRSI < 20)
          m_buyRsiScore = SCORE_RSI_EXTREME;
-      else if(m_currentRSI < 25)
-         m_buyRsiScore = SCORE_RSI_ZONE;
       else if(m_currentRSI < 30)
-         m_buyRsiScore = SCORE_RSI_MODERATE;
-      else if(m_currentRSI >= 70) // Pénalité si surachat
-         m_buyRsiScore = -2;
+         m_buyRsiScore = SCORE_RSI_ZONE;
+      else if(m_currentRSI >= 35) // Pénalité si surachat
+         m_buyRsiScore = 0;
       score += m_buyRsiScore;
       
       // Score MA (tendance haussière)
@@ -369,7 +364,7 @@ public:
       
       // Bonus confluence
       m_buyConfluenceScore = 0;
-      if(m_currentADX > 30 && m_currentRSI < 35 && m_currentPrice > m_currentMA)
+      if(m_currentADX > 35 && m_currentRSI < 20 && m_currentPrice > m_currentMA)
       {
          m_buyConfluenceScore = SCORE_CONFLUENCE_BONUS;
       }
@@ -405,8 +400,8 @@ public:
          m_sellRsiScore = SCORE_RSI_ZONE;
       else if(m_currentRSI > 70)
          m_sellRsiScore = SCORE_RSI_MODERATE;
-      else if(m_currentRSI <= 30) // Pénalité si survendu
-         m_sellRsiScore = -2;
+      else if(m_currentRSI <= 55) // Pénalité si survendu
+         m_sellRsiScore = 0;
       score += m_sellRsiScore;
       
       // Score MA (tendance baissière)
@@ -433,7 +428,7 @@ public:
       
       // Bonus confluence
       m_sellConfluenceScore = 0;
-      if(m_currentADX > 30 && m_currentRSI > 65 && m_currentPrice < m_currentMA)
+      if(m_currentADX > 30 && m_currentRSI > 80 && m_currentPrice < m_currentMA)
       {
          m_sellConfluenceScore = SCORE_CONFLUENCE_BONUS;
       }
@@ -635,6 +630,11 @@ public:
       }
       return false;
    }
+
+   //+------------------------------------------------------------------+
+   //| Obtenir le temps de la dernière barre (pour debug)             |
+   //+------------------------------------------------------------------+
+   datetime GetLastBarTime() const { return m_lastBarTime; }
 
    //+------------------------------------------------------------------+
    //| Getters pour l'affichage                                       |
