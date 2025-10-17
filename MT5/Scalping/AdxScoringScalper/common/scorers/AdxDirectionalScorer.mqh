@@ -16,6 +16,8 @@
 #define SCORE_DIRECTIONAL_MODERATE 2  // Écart > 10
 #define SCORE_DIRECTIONAL_WEAK 1      // Écart > 5
 #define SCORE_CROSSOVER_BONUS 2       // Bonus croisement
+#define SCORE_DIRECTIONAL_CROSSOVER 3 // Bonus croisement amélioré
+#define SCORE_DIRECTIONAL_MOMENTUM 2  // Bonus momentum directionnel
 
 //+------------------------------------------------------------------+
 //| Classe AdxDirectionalScorer - Scoring basé sur D+ et D-          |
@@ -117,21 +119,23 @@ public:
       if(!m_isInitialized) return 0;
       
       double spread = m_currentDPlus - m_currentDMinus;
-      
-      // D+ doit être supérieur à D-
       if(spread <= 0) return 0;
+      int score = 0;
       
-      // Scoring basé sur l'écart
-      if(spread > 30)
-         return SCORE_DIRECTIONAL_EXTREME;  // Écart très fort
-      else if(spread > 20)
-         return SCORE_DIRECTIONAL_STRONG;   // Écart fort
-      else if(spread > 10)
-         return SCORE_DIRECTIONAL_MODERATE; // Écart modéré
-      else if(spread > 5)
-         return SCORE_DIRECTIONAL_WEAK;     // Écart faible
+      // Scoring dynamique basé sur l'écart
+      if(spread > 25) score = 4;      // Très fort écart
+      else if(spread > 15) score = 3; // Fort écart  
+      else if(spread > 8) score = 2;  // Écart moyen
+      else if(spread > 3) score = 1;  // Faible écart
       
-      return 0;
+      // Bonus croisement D+ vers le haut
+      if(IsCrossover()) score += SCORE_DIRECTIONAL_CROSSOVER;
+      
+      // Bonus momentum (D+ monte ET D- descend)
+      if(m_currentDPlus > m_prevDPlus && m_currentDMinus < m_prevDMinus)
+         score += SCORE_DIRECTIONAL_MOMENTUM;
+         
+      return score;
    }
 
    //+------------------------------------------------------------------+
@@ -142,21 +146,23 @@ public:
       if(!m_isInitialized) return 0;
       
       double spread = m_currentDMinus - m_currentDPlus;
-      
-      // D- doit être supérieur à D+
       if(spread <= 0) return 0;
+      int score = 0;
       
-      // Scoring basé sur l'écart
-      if(spread > 30)
-         return SCORE_DIRECTIONAL_EXTREME;  // Écart très fort
-      else if(spread > 20)
-         return SCORE_DIRECTIONAL_STRONG;   // Écart fort
-      else if(spread > 10)
-         return SCORE_DIRECTIONAL_MODERATE; // Écart modéré
-      else if(spread > 5)
-         return SCORE_DIRECTIONAL_WEAK;     // Écart faible
+      // Scoring dynamique basé sur l'écart
+      if(spread > 25) score = 4;      // Très fort écart
+      else if(spread > 15) score = 3; // Fort écart  
+      else if(spread > 8) score = 2;  // Écart moyen
+      else if(spread > 3) score = 1;  // Faible écart
       
-      return 0;
+      // Bonus croisement D- vers le haut
+      if(IsCrossunder()) score += SCORE_DIRECTIONAL_CROSSOVER;
+      
+      // Bonus momentum (D- monte ET D+ descend)
+      if(m_currentDMinus > m_prevDMinus && m_currentDPlus < m_prevDPlus)
+         score += SCORE_DIRECTIONAL_MOMENTUM;
+         
+      return score;
    }
 
    //+------------------------------------------------------------------+
