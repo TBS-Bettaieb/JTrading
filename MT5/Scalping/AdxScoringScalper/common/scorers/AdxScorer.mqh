@@ -27,6 +27,8 @@ private:
    int m_period;
    int m_handle;
    double m_currentValue;
+   double m_prevValue;           // Previous ADX (bar n-1)
+   double m_prevValue2;          // Previous-2 ADX (bar n-2)
    bool m_isInitialized;
    
    // Seuils paramétrables
@@ -58,6 +60,8 @@ public:
       m_thresholdVeryStrong = thresholdVeryStrong;
       m_handle = INVALID_HANDLE;
       m_currentValue = 0.0;
+      m_prevValue = 0.0;              // Initialize previous values
+      m_prevValue2 = 0.0;             // Initialize previous-2 values
       m_isInitialized = false;
    }
 
@@ -88,18 +92,22 @@ public:
    }
 
    //+------------------------------------------------------------------+
-   //| Mettre à jour la valeur ADX                                    |
+   //| Mettre à jour la valeur ADX                                      |
    //+------------------------------------------------------------------+
    void Update() override
    {
       if(!m_isInitialized) return;
+      
+      // Shift values (cascade)
+      m_prevValue2 = m_prevValue;        // Save n-2 value
+      m_prevValue = m_currentValue;      // Save n-1 value
       
       double adxValues[1];
       int copied = CopyBuffer(m_handle, 0, 1, 1, adxValues);
       
       if(copied > 0)
       {
-         m_currentValue = adxValues[0];
+         m_currentValue = adxValues[0];  // Update current value
       }
       else
       {
@@ -108,18 +116,48 @@ public:
    }
 
    //+------------------------------------------------------------------+
-   //| Obtenir le score BUY basé sur l'ADX                           |
+   //| Obtenir le score BUY basé sur l'ADX avec momentum                |
    //+------------------------------------------------------------------+
    int GetBuyScore() override
    {
+      int score = 0;
+      
+      // ═══ STEP 1: Base scoring (ADX absolute value) ═══
       if(m_currentValue > m_thresholdVeryStrong)
-         return SCORE_ADX_VERY_STRONG;
+         score = SCORE_ADX_VERY_STRONG;      // +3
       else if(m_currentValue > m_thresholdStrong)
-         return SCORE_ADX_STRONG;
+         score = SCORE_ADX_STRONG;           // +1
       else if(m_currentValue > m_thresholdModerate)
-         return SCORE_ADX_MODERATE;
+         score = SCORE_ADX_MODERATE;         // 0
       else
-         return SCORE_ADX_WEAK;
+         score = SCORE_ADX_WEAK;             // -2
+      
+      // ═══ STEP 2: Apply momentum adjustment ═══
+      int momentum = GetADXMomentum();
+      
+      if(momentum > 0)
+      {
+         // ADX ACCELERATING: current > prev > prev2
+         // Example: ADX 22 → 25 → 28
+         // Bonus: +2 points (strong signal)
+         score += 2;
+         
+         // Optional: Log for monitoring
+         // Print("✅ ADX Momentum Bonus: ", GetMomentumDescription());
+      }
+      else if(momentum < 0)
+      {
+         // ADX DECELERATING: current < prev < prev2
+         // Example: ADX 35 → 30 → 26
+         // Penalty: -2 points (weakening trend)
+         score -= 2;
+         
+         // Optional: Log for monitoring
+         // Print("⚠️ ADX Momentum Penalty: ", GetMomentumDescription());
+      }
+      // else momentum == 0: Plateau or mixed → no adjustment
+      
+      return score;
    }
 
    //+------------------------------------------------------------------+
@@ -162,9 +200,74 @@ public:
    }
 
    //+------------------------------------------------------------------+
+   //| Analyze ADX momentum trend (3-period analysis)                   |
+   //| Returns: +1 (accelerating), 0 (plateau), -1 (decelerating)      |
+   //+------------------------------------------------------------------+
+   int GetADXMomentum() const
+   {
+      // Need at least 2 previous values for comparison
+      if(m_prevValue == 0 || m_prevValue2 == 0)
+         return 0;  // Not enough data yet
+      
+      // Use threshold of 0.5 to avoid noise from small fluctuations
+      const double threshold = 0.5;
+      
+      // Case 1: Accelerating trend (current > prev > prev2)
+      // ADX is rising consistently = STRONG MOMENTUM
+      if(m_currentValue > m_prevValue + threshold && 
+         m_prevValue > m_prevValue2 + threshold)
+      {
+         return +1;  // Bonus: Strong accelerating momentum
+      }
+      
+      // Case 2: Decelerating trend (current < prev < prev2)
+      // ADX is falling consistently = WEAK MOMENTUM
+      else if(m_currentValue < m_prevValue - threshold && 
+              m_prevValue < m_prevValue2 - threshold)
+      {
+         return -1;  // Penalty: Trend is weakening
+      }
+      
+      // Case 3: Mixed signals or plateau
+      // Examples:
+      // - current < prev but prev > prev2 (slowing down after rise)
+      // - current > prev but prev < prev2 (recovering after dip)
+      // - Small fluctuations within threshold
+      else
+      {
+         return 0;   // Neutral: No clear momentum direction
+      }
+   }
+
+   //+------------------------------------------------------------------+
+   //| Get detailed momentum description for logging                    |
+   //+------------------------------------------------------------------+
+   string GetMomentumDescription() const
+   {
+      int momentum = GetADXMomentum();
+      
+      string desc = StringFormat("ADX[%.1f → %.1f → %.1f]", 
+                                 m_prevValue2, m_prevValue, m_currentValue);
+      
+      if(momentum > 0)
+         desc += " 🚀 ACCELERATING";
+      else if(momentum < 0)
+         desc += " 📉 DECELERATING";
+      else
+         desc += " ➡️ PLATEAU";
+      
+      return desc;
+   }
+
+   //+------------------------------------------------------------------+
    //| Getters pour informations de debug                             |
    //+------------------------------------------------------------------+
    int GetHandle() const { return m_handle; }
    int GetPeriod() const { return m_period; }
    bool IsInitialized() const { return m_isInitialized; }
+   
+   // New getters for momentum analysis
+   double GetPrevValue() const { return m_prevValue; }
+   double GetPrevValue2() const { return m_prevValue2; }
+   int GetMomentum() const { return GetADXMomentum(); }
 };
