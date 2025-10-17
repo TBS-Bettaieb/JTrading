@@ -26,6 +26,7 @@ private:
    int m_period;
    int m_handle;
    double m_currentValue;
+   double m_prevValue;
    bool m_isInitialized;
 
 public:
@@ -39,6 +40,7 @@ public:
       m_period = period;
       m_handle = INVALID_HANDLE;
       m_currentValue = 50.0; // Valeur neutre par défaut
+      m_prevValue = 50.0;
       m_isInitialized = false;
    }
 
@@ -75,6 +77,8 @@ public:
    {
       if(!m_isInitialized) return;
       
+      m_prevValue = m_currentValue;
+      
       double rsiValues[1];
       int copied = CopyBuffer(m_handle, 0, 1, 1, rsiValues);
       
@@ -93,15 +97,20 @@ public:
    //+------------------------------------------------------------------+
    int GetBuyScore() override
    {
-      // Score BUY : zones de survente = opportunités d'achat
-      if(m_currentValue < 20)
-         return SCORE_RSI_EXTREME;      // Survente extrême
-      else if(m_currentValue < 30)
-         return SCORE_RSI_ZONE;         // Zone de survente
-      else if(m_currentValue >= 70)
-         return -2;                      // Pénalité si surachat
-      else
-         return SCORE_RSI_MODERATE;     // Zone neutre
+      int score = 0;
+      
+      // Scoring basé sur les zones RSI
+      if(m_currentValue < 25) score = 4;        // Survente extrême
+      else if(m_currentValue < 35) score = 2;   // Zone survente
+      else if(m_currentValue >= 65) score = -2; // Pénalité surachat
+      else if(m_currentValue < 50) score = 1;   // Légèrement survendu
+      
+      // NOUVEAU: Bonus momentum haussier
+      // RSI qui monte depuis une zone basse = signal fort
+      if(m_currentValue > m_prevValue && m_prevValue < 40)
+         score += 2;
+         
+      return score;
    }
 
    //+------------------------------------------------------------------+
@@ -109,17 +118,20 @@ public:
    //+------------------------------------------------------------------+
    int GetSellScore() override
    {
-      // Score SELL : zones de surachat = opportunités de vente
-      if(m_currentValue > 80)
-         return SCORE_RSI_EXTREME;      // Surachat extrême
-      else if(m_currentValue > 75)
-         return SCORE_RSI_ZONE;         // Zone de surachat
-      else if(m_currentValue > 70)
-         return SCORE_RSI_MODERATE;     // Surachat modéré
-      else if(m_currentValue <= 30)
-         return -2;                      // Pénalité si survendu
-      else
-         return SCORE_RSI_MODERATE;     // Zone neutre
+      int score = 0;
+      
+      // Scoring basé sur les zones RSI
+      if(m_currentValue > 75) score = 4;        // Surachat extrême
+      else if(m_currentValue > 65) score = 2;   // Zone surachat
+      else if(m_currentValue <= 35) score = -2; // Pénalité survente
+      else if(m_currentValue > 50) score = 1;   // Légèrement suracheté
+      
+      // NOUVEAU: Bonus momentum baissier
+      // RSI qui descend depuis une zone haute = signal fort
+      if(m_currentValue < m_prevValue && m_prevValue > 60)
+         score += 2;
+         
+      return score;
    }
 
    //+------------------------------------------------------------------+
@@ -166,4 +178,11 @@ public:
    bool IsOverbought() const { return m_currentValue > 70; }
    bool IsExtremeOversold() const { return m_currentValue < 20; }
    bool IsExtremeOverbought() const { return m_currentValue > 80; }
+   
+   //+------------------------------------------------------------------+
+   //| Getters pour le momentum RSI                                   |
+   //+------------------------------------------------------------------+
+   double GetPrevValue() const { return m_prevValue; }
+   bool HasMomentumUp() const { return m_currentValue > m_prevValue; }
+   bool HasMomentumDown() const { return m_currentValue < m_prevValue; }
 };
