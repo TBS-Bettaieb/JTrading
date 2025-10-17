@@ -52,6 +52,11 @@ input int MAX_POSITIONS = 1;                 // Nombre max de positions simultan
 input bool USE_DYNAMIC_LOTS = true;          // Activer calcul lots dynamique
 input bool LOG_LOT_CALCULATION = true;       // Logger les détails de calcul
 
+input group "=== Dynamic Exit System ==="
+input bool USE_DYNAMIC_EXIT = true;         // Activer sortie dynamique par renversement
+input int EXIT_SCORE_THRESHOLD = 3;         // Écart de score pour déclencher sortie
+input int MIN_PROFIT_POINTS_EXIT = 10;      // Profit minimum (points) pour sortie dynamique
+
 input group "=== Indicator Parameters ==="
 input int ADX_PERIOD = 8;                    // Période ADX (optimisé M5/M15)
 input int RSI_PERIOD = 10;                   // Période RSI (optimisé M5/M15)
@@ -251,7 +256,10 @@ int OnInit()
       ADX_THRESHOLD_WEAK,           // NOUVEAU
       ADX_THRESHOLD_MODERATE,       // NOUVEAU
       ADX_THRESHOLD_STRONG,         // NOUVEAU
-      ADX_THRESHOLD_VERY_STRONG     // NOUVEAU
+      ADX_THRESHOLD_VERY_STRONG,    // NOUVEAU
+      USE_DYNAMIC_EXIT,             // NOUVEAU
+      EXIT_SCORE_THRESHOLD,         // NOUVEAU
+      MIN_PROFIT_POINTS_EXIT        // NOUVEAU
    );
    
    if(scoreTrader == NULL)
@@ -278,6 +286,18 @@ int OnInit()
    Print("  SL Points: ", SL_POINTS);
    Print("  TP Multiplier: ", TP_MULTIPLIER);
    Print("  Max Positions: ", MAX_POSITIONS);
+   
+   // AJOUTER ICI :
+   if(USE_DYNAMIC_EXIT)
+   {
+      Print("🔄 Sortie Dynamique: ACTIVÉE");
+      Print("  Seuil renversement: ", EXIT_SCORE_THRESHOLD, " points");
+      Print("  Profit min sortie: ", MIN_PROFIT_POINTS_EXIT, " points");
+   }
+   else
+   {
+      Print("🔄 Sortie Dynamique: DÉSACTIVÉE");
+   }
    
    // Afficher la configuration du Time Manager
    Print("⏰ Time Manager Configuration:");
@@ -400,6 +420,12 @@ void OnTick()
    if(tradingAllowed && isNewBar)
    {
       scoreTrader.CheckTradingSignals();
+   }
+
+   // ✨ NOUVEAU : Vérifier sortie dynamique à CHAQUE tick (même sans nouvelle barre)
+   if(USE_DYNAMIC_EXIT && scoreTrader != NULL)
+   {
+      scoreTrader.CheckDynamicExit();
    }
 
    // Gérer le Trailing TP Avancé ou Standard

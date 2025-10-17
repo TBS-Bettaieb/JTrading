@@ -78,6 +78,11 @@ private:
    int m_adxThresholdStrong;
    int m_adxThresholdVeryStrong;
    
+   // Dynamic Exit System
+   bool m_useDynamicExit;
+   int m_exitScoreThreshold;
+   int m_minProfitPointsExit;
+   
    // Trade
    CTrade m_trade;
    
@@ -145,7 +150,10 @@ public:
       int adxThresholdWeak = 18,           // NOUVEAU
       int adxThresholdModerate = 20,       // NOUVEAU
       int adxThresholdStrong = 25,         // NOUVEAU
-      int adxThresholdVeryStrong = 35      // NOUVEAU
+      int adxThresholdVeryStrong = 35,     // NOUVEAU
+      bool useDynamicExit = true,          // NOUVEAU
+      int exitScoreThreshold = 3,          // NOUVEAU
+      int minProfitPointsExit = 10         // NOUVEAU
    )
    {
       m_symbol = symbol;
@@ -185,6 +193,11 @@ public:
       m_adxThresholdModerate = adxThresholdModerate;
       m_adxThresholdStrong = adxThresholdStrong;
       m_adxThresholdVeryStrong = adxThresholdVeryStrong;
+      
+      // Dynamic Exit System
+      m_useDynamicExit = useDynamicExit;
+      m_exitScoreThreshold = exitScoreThreshold;
+      m_minProfitPointsExit = minProfitPointsExit;
       
       m_adxScorer = NULL;
       m_adxDirectionalScorer = NULL;
@@ -719,6 +732,95 @@ public:
                {
                   m_trade.PositionModify(ticket, newSL, currentTP);
                }
+            }
+         }
+      }
+   }
+
+   //+------------------------------------------------------------------+
+   //| Vérifier et fermer positions selon renversement de score        |
+   //+------------------------------------------------------------------+
+   void CheckDynamicExit()
+   {
+      if(!m_useDynamicExit) return;
+      if(!m_isInitialized) return;
+      
+      // Parcourir toutes les positions à l'envers (sécurité lors de fermeture)
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
+      {
+         ulong ticket = PositionGetTicket(i);
+         if(ticket == 0) continue;
+         if(!PositionSelectByTicket(ticket)) continue;
+         
+         // Vérifier que c'est notre position
+         if(PositionGetInteger(POSITION_MAGIC) != m_magicNumber) continue;
+         if(PositionGetString(POSITION_SYMBOL) != m_symbol) continue;
+         
+         // Récupérer les informations de la position
+         ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+         double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+         double currentPrice = PositionGetDouble(POSITION_PRICE_CURRENT);
+         double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+         
+         // Calculer le profit en points
+         double profitPoints = 0;
+         if(posType == POSITION_TYPE_BUY)
+         {
+            profitPoints = (currentPrice - openPrice) / point;
+         }
+         else if(posType == POSITION_TYPE_SELL)
+         {
+            profitPoints = (openPrice - currentPrice) / point;
+         }
+         
+         // Protection : Ne sortir que si profit minimum atteint
+         if(profitPoints < m_minProfitPointsExit)
+         {
+            continue; // Pas assez de profit, on garde la position
+         }
+         
+         // Vérifier le renversement de score
+         bool shouldExit = false;
+         string exitReason = "";
+         
+         if(posType == POSITION_TYPE_BUY)
+         {
+            // Position BUY : sortir si SELL score domine
+            if(m_currentSellScore > m_currentBuyScore + m_exitScoreThreshold)
+            {
+               shouldExit = true;
+               exitReason = StringFormat(
+                  "Renversement BUY→SELL (SELL:%d > BUY:%d + %d)",
+                  m_currentSellScore, m_currentBuyScore, m_exitScoreThreshold
+               );
+            }
+         }
+         else if(posType == POSITION_TYPE_SELL)
+         {
+            // Position SELL : sortir si BUY score domine
+            if(m_currentBuyScore > m_currentSellScore + m_exitScoreThreshold)
+            {
+               shouldExit = true;
+               exitReason = StringFormat(
+                  "Renversement SELL→BUY (BUY:%d > SELL:%d + %d)",
+                  m_currentBuyScore, m_currentSellScore, m_exitScoreThreshold
+               );
+            }
+         }
+         
+         // Fermer la position si conditions remplies
+         if(shouldExit)
+         {
+            if(m_trade.PositionClose(ticket))
+            {
+               Print("🔄 SORTIE DYNAMIQUE #", ticket, " | Profit: ", 
+                     DoubleToString(profitPoints, 1), " pts | ", exitReason);
+            }
+            else
+            {
+               Print("❌ Échec fermeture dynamique #", ticket, 
+                     " | RetCode: ", m_trade.ResultRetcode(),
+                     " | ", m_trade.ResultRetcodeDescription());
             }
          }
       }
