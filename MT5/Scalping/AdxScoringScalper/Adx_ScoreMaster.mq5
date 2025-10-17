@@ -17,6 +17,9 @@
 #property version   "2.3"
 #property strict
 
+//| Configuration par défaut : OPTIMISÉE POUR M5/M15                |
+//| Pour timeframes plus longs, ajuster ADX_PERIOD, RSI_PERIOD, MA  |
+
 //+------------------------------------------------------------------+
 //| Includes                                                         |
 //+------------------------------------------------------------------+
@@ -36,30 +39,30 @@ input int MAGIC_NUMBER = 12345;              // Magic number
 input ENUM_TIMEFRAMES TIMEFRAME = PERIOD_M5; // Timeframe
 
 input group "=== Scoring System ==="
-input int SCORE_MIN_ENTRY = 6;               // Score minimum pour entrer en position
-input int SCORE_HIGH_CONFIDENCE = 9;         // Score haute confiance (lot plus important)
+input int SCORE_MIN_ENTRY = 7;               // Score minimum pour entrer en position (optimisé M5/M15)
+input int SCORE_HIGH_CONFIDENCE = 11;        // Score haute confiance (lot plus important) (optimisé M5/M15)
 
 input group "=== Risk Management ==="
 input ENUM_RISK_MODE RISK_MODE = RISK_PERCENTAGE;  // Mode de gestion du risque
 input double RISK_PERCENT_NORMAL = 0.8;      // Risque normal
 input double RISK_PERCENT_HIGH = 1.2;        // Risque si haute confiance
-input int SL_POINTS = 200;                   // Stop Loss en points
-input int TP_MULTIPLIER = 2;                 // Multiplicateur TP (SL * TP_MULTIPLIER)
+input int SL_POINTS = 150;                   // Stop Loss en points (optimisé M5/M15)
+input int TP_MULTIPLIER = 3;                 // Multiplicateur TP (SL * TP_MULTIPLIER) (optimisé M5/M15)
 input int MAX_POSITIONS = 1;                 // Nombre max de positions simultanées
 input bool USE_DYNAMIC_LOTS = true;          // Activer calcul lots dynamique
 input bool LOG_LOT_CALCULATION = true;       // Logger les détails de calcul
 
 input group "=== Indicator Parameters ==="
-input int ADX_PERIOD = 14;                   // Période ADX
-input int RSI_PERIOD = 14;                   // Période RSI
-input int MA_PERIOD = 50;                    // Période MA
+input int ADX_PERIOD = 8;                    // Période ADX (optimisé M5/M15)
+input int RSI_PERIOD = 10;                   // Période RSI (optimisé M5/M15)
+input int MA_PERIOD = 34;                    // Période MA (optimisé M5/M15 - Fibonacci)
 input ENUM_MA_METHOD MA_METHOD = MODE_SMA;   // Méthode MA
 
 input group "=== ADX Thresholds ==="
-input int ADX_THRESHOLD_WEAK = 18;           // Seuil ADX faible
-input int ADX_THRESHOLD_MODERATE = 20;       // Seuil ADX modéré  
+input int ADX_THRESHOLD_WEAK = 15;           // Seuil ADX faible (optimisé M5/M15)
+input int ADX_THRESHOLD_MODERATE = 18;       // Seuil ADX modéré (optimisé M5/M15)
 input int ADX_THRESHOLD_STRONG = 25;         // Seuil ADX fort
-input int ADX_THRESHOLD_VERY_STRONG = 35;    // Seuil ADX très fort
+input int ADX_THRESHOLD_VERY_STRONG = 32;    // Seuil ADX très fort (optimisé M5/M15)
 
 input group "=== Volatility Filter ==="
 input bool USE_VOLATILITY_FILTER = true;     // Activer filtre volatilité
