@@ -87,8 +87,8 @@ input string CustomTPLevels = "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:15
 input bool SHOW_TP_STATUS = true;                              // Afficher statut Trailing TP
 
 input group "=== Time Filter ==="
-input int SHInput = 0;                       // Start Hour (0 = disabled)
-input int EHInput = 0;                       // End Hour (0 = disabled)
+input int SHInput = 8;                       // Start Hour (8 = 8am, 0 = disabled)
+input int EHInput = 17;                      // End Hour (17 = 5pm, 0 = disabled)
 
 input group "=== End of Session Management ==="
 input bool CLOSE_ALL_AT_SESSION_END = true;           // Fermer positions en fin de session
@@ -387,6 +387,22 @@ void OnDeinit(const int reason)
 }
 
 //+------------------------------------------------------------------+
+//| Helper function: Get session end hour                           |
+//+------------------------------------------------------------------+
+int GetSessionEndHour(ENUM_TRADING_SESSION session)
+{
+   switch(session)
+   {
+      case SESSION_LONDON:    return 12;  // 8:00-12:00
+      case SESSION_US:        return 17;  // 13:00-17:00  
+      case SESSION_OVERLAP:   return 16;  // 13:00-16:00
+      case SESSION_ASIA:      return 6;   // 22:00-6:00 (retourne 6 pour le lendemain)
+      case SESSION_ALL:       return 0;   // 24/7 - pas de fin
+      default:                return 0;   // Session inconnue
+   }
+}
+
+//+------------------------------------------------------------------+
 //| Expert tick function                                             |
 //+------------------------------------------------------------------+
 void OnTick()
@@ -455,7 +471,7 @@ void OnTick()
       // Vérifier si on approche de la fin de session
       bool isEndingSession = false;
       
-      // Calculer le temps restant avant fin de session
+      // MÉTHODE 1: Time filter classique (SHInput/EHInput)
       if(SHInput != 0 && EHInput != 0) // Time filter actif
       {
          MqlDateTime dt;
@@ -469,15 +485,33 @@ void OnTick()
          if(minutesUntilEnd >= 0 && minutesUntilEnd <= MINUTES_BEFORE_SESSION_END)
          {
             isEndingSession = true;
+            if(LOG_SESSION_CLOSE_DETAILS)
+               Print("🕐 Time Filter: Fermeture dans ", minutesUntilEnd, " minutes (fin à ", EHInput, ":00)");
          }
       }
       
-      // Gérer aussi la fermeture par session filter
-      if(UseSessionFilter && timeManager != NULL)
+      // MÉTHODE 2: Session filter (basé sur les sessions de trading)
+      if(!isEndingSession && UseSessionFilter && timeManager != NULL)
       {
-         // Vérifier si on approche de la fin de la session actuelle
-         // Note: Cette partie nécessite une extension de TradingTimeManager
-         // Pour l'instant, on se base sur le time filter classique
+         MqlDateTime dt;
+         TimeToStruct(TimeCurrent(), dt);
+         int currentMinutes = dt.hour * 60 + dt.min;
+         
+         // Obtenir l'heure de fin de la session actuelle
+         int sessionEndHour = GetSessionEndHour(AllowedSession);
+         if(sessionEndHour > 0)
+         {
+            int sessionEndMinutes = sessionEndHour * 60;
+            int minutesUntilSessionEnd = sessionEndMinutes - currentMinutes;
+            
+            // Si on est dans la période de fermeture de session
+            if(minutesUntilSessionEnd >= 0 && minutesUntilSessionEnd <= MINUTES_BEFORE_SESSION_END)
+            {
+               isEndingSession = true;
+               if(LOG_SESSION_CLOSE_DETAILS)
+                  Print("🕐 Session Filter: Fermeture dans ", minutesUntilSessionEnd, " minutes (fin session à ", sessionEndHour, ":00)");
+            }
+         }
       }
       
       // Déclencher la fermeture si nécessaire
