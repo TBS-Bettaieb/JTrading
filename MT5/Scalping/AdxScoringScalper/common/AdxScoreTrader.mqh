@@ -14,6 +14,7 @@
 #include "scorers/AdxDirectionalScorer.mqh"
 #include "scorers/RsiScorer.mqh"
 #include "scorers/MaScorer.mqh"
+#include "scorers/PriceActionConfirmer.mqh"
 
 //+------------------------------------------------------------------+
 //| Constantes de scoring (comme dans l'original)                   |
@@ -37,6 +38,7 @@ private:
    AdxDirectionalScorer* m_adxDirectionalScorer;
    RsiScorer* m_rsiScorer;
    MaScorer* m_maScorer;
+   PriceActionConfirmer* m_priceActionConfirmer;
    
    // Paramètres indicateurs
    int m_adxPeriod;
@@ -83,6 +85,7 @@ private:
    int m_buyDirectionalScore;
    int m_buyRsiScore;
    int m_buyMaScore;
+   int m_buyPriceActionScore;
    int m_buyConfluenceScore;
    
    // Composantes du score SELL
@@ -90,6 +93,7 @@ private:
    int m_sellDirectionalScore;
    int m_sellRsiScore;
    int m_sellMaScore;
+   int m_sellPriceActionScore;
    int m_sellConfluenceScore;
 
 public:
@@ -142,6 +146,7 @@ public:
       m_adxDirectionalScorer = NULL;
       m_rsiScorer = NULL;
       m_maScorer = NULL;
+      m_priceActionConfirmer = NULL;
       
       m_lastBarTime = 0;
       m_currentBuyScore = 0;
@@ -162,6 +167,7 @@ public:
       m_buyDirectionalScore = 0;
       m_buyRsiScore = 0;
       m_buyMaScore = 0;
+      m_buyPriceActionScore = 0;
       m_buyConfluenceScore = 0;
       
       // Composantes du score SELL
@@ -169,6 +175,7 @@ public:
       m_sellDirectionalScore = 0;
       m_sellRsiScore = 0;
       m_sellMaScore = 0;
+      m_sellPriceActionScore = 0;
       m_sellConfluenceScore = 0;
       
       // Configuration du trade
@@ -187,6 +194,7 @@ public:
       if(m_adxDirectionalScorer != NULL) delete m_adxDirectionalScorer;
       if(m_rsiScorer != NULL) delete m_rsiScorer;
       if(m_maScorer != NULL) delete m_maScorer;
+      if(m_priceActionConfirmer != NULL) delete m_priceActionConfirmer;
    }
 
    //+------------------------------------------------------------------+
@@ -206,9 +214,12 @@ public:
       m_adxDirectionalScorer = new AdxDirectionalScorer(m_symbol, m_timeframe, m_adxPeriod);
       m_rsiScorer = new RsiScorer(m_symbol, m_timeframe, m_rsiPeriod);
       m_maScorer = new MaScorer(m_symbol, m_timeframe, m_maPeriod, m_maMethod);
+      m_priceActionConfirmer = new PriceActionConfirmer(m_symbol, m_timeframe);
       
       // Initialiser les scorers
-      if(!m_adxScorer.Initialize() || !m_adxDirectionalScorer.Initialize() || !m_rsiScorer.Initialize() || !m_maScorer.Initialize())
+      if(!m_adxScorer.Initialize() || !m_adxDirectionalScorer.Initialize() || 
+         !m_rsiScorer.Initialize() || !m_maScorer.Initialize() || 
+         !m_priceActionConfirmer.Initialize())
       {
          Print("❌ Erreur initialisation scorers pour ", m_symbol);
          return false;
@@ -314,6 +325,7 @@ public:
       m_buyDirectionalScore = m_adxDirectionalScorer.GetBuyScore();
       m_buyRsiScore = m_rsiScorer.GetBuyScore();
       m_buyMaScore = m_maScorer.GetBuyScore();
+      m_buyPriceActionScore = m_priceActionConfirmer.GetBuyConfirmation();
       
       // Bonus croisement D+/D-
       if(m_adxDirectionalScorer.IsCrossover())
@@ -329,7 +341,8 @@ public:
          m_buyConfluenceScore = SCORE_CONFLUENCE_BONUS;
       }
       
-      return m_buyAdxScore + m_buyDirectionalScore + m_buyRsiScore + m_buyMaScore + m_buyConfluenceScore;
+      return m_buyAdxScore + m_buyDirectionalScore + m_buyRsiScore + m_buyMaScore + 
+             m_buyPriceActionScore + m_buyConfluenceScore;
    }
 
    //+------------------------------------------------------------------+
@@ -342,6 +355,7 @@ public:
       m_sellDirectionalScore = m_adxDirectionalScorer.GetSellScore();
       m_sellRsiScore = m_rsiScorer.GetSellScore();
       m_sellMaScore = m_maScorer.GetSellScore();
+      m_sellPriceActionScore = m_priceActionConfirmer.GetSellConfirmation();
       
       // Bonus croisement D-/D+
       if(m_adxDirectionalScorer.IsCrossunder())
@@ -357,7 +371,8 @@ public:
          m_sellConfluenceScore = SCORE_CONFLUENCE_BONUS;
       }
       
-      return m_sellAdxScore + m_sellDirectionalScore + m_sellRsiScore + m_sellMaScore + m_sellConfluenceScore;
+      return m_sellAdxScore + m_sellDirectionalScore + m_sellRsiScore + m_sellMaScore + 
+             m_sellPriceActionScore + m_sellConfluenceScore;
    }
 
 
@@ -576,6 +591,7 @@ public:
    int GetBuyDirectionalScore() const { return m_buyDirectionalScore; }
    int GetBuyRSIScore() const { return m_buyRsiScore; }
    int GetBuyMAScore() const { return m_buyMaScore; }
+   int GetBuyPriceActionScore() const { return m_buyPriceActionScore; }
    int GetBuyConfluenceScore() const { return m_buyConfluenceScore; }
    
    // Getters pour les scores SELL
@@ -583,6 +599,7 @@ public:
    int GetSellDirectionalScore() const { return m_sellDirectionalScore; }
    int GetSellRSIScore() const { return m_sellRsiScore; }
    int GetSellMAScore() const { return m_sellMaScore; }
+   int GetSellPriceActionScore() const { return m_sellPriceActionScore; }
    int GetSellConfluenceScore() const { return m_sellConfluenceScore; }
    
    int GetMaxPositions() const { return m_maxPositions; }
