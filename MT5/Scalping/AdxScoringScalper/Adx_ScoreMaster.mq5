@@ -90,6 +90,13 @@ input group "=== Time Filter ==="
 input int SHInput = 0;                       // Start Hour (0 = disabled)
 input int EHInput = 0;                       // End Hour (0 = disabled)
 
+input group "=== End of Session Management ==="
+input bool CLOSE_ALL_AT_SESSION_END = true;           // Fermer positions en fin de session
+input int MINUTES_BEFORE_SESSION_END = 5;             // Minutes avant fin pour fermer (0 = à la fin exacte)
+input bool WAIT_FOR_PROFITABLE_CLOSE = false;         // Attendre profit positif avant fermeture
+input int MAX_WAIT_TIME_SECONDS = 300;                // Temps max d'attente (secondes) si WAIT_FOR_PROFITABLE_CLOSE
+input bool LOG_SESSION_CLOSE_DETAILS = true;          // Logger détails fermetures session
+
 input group "=== Session Filter ==="
 input bool UseSessionFilter = false;                               // Activer filtre par session
 input ENUM_TRADING_SESSION AllowedSession = SESSION_OVERLAP;      // Session autorisée
@@ -299,6 +306,20 @@ int OnInit()
       Print("🔄 Sortie Dynamique: DÉSACTIVÉE");
    }
    
+   // Configuration End of Session Management
+   if(CLOSE_ALL_AT_SESSION_END)
+   {
+      Print("🔚 Fermeture Fin de Session: ACTIVÉE");
+      Print("  Minutes avant fin: ", MINUTES_BEFORE_SESSION_END);
+      Print("  Attendre profit: ", (WAIT_FOR_PROFITABLE_CLOSE ? "OUI" : "NON"));
+      if(WAIT_FOR_PROFITABLE_CLOSE)
+         Print("  Temps max attente: ", MAX_WAIT_TIME_SECONDS, " secondes");
+   }
+   else
+   {
+      Print("🔚 Fermeture Fin de Session: DÉSACTIVÉE");
+   }
+   
    // Afficher la configuration du Time Manager
    Print("⏰ Time Manager Configuration:");
    Print(timeManager.GetDetailedInfo());
@@ -426,6 +447,53 @@ void OnTick()
    if(USE_DYNAMIC_EXIT && scoreTrader != NULL)
    {
       scoreTrader.CheckDynamicExit();
+   }
+
+   // ✨ NOUVEAU : Gestion fermeture fin de session
+   if(CLOSE_ALL_AT_SESSION_END && scoreTrader != NULL && timeManager != NULL)
+   {
+      // Vérifier si on approche de la fin de session
+      bool isEndingSession = false;
+      
+      // Calculer le temps restant avant fin de session
+      if(SHInput != 0 && EHInput != 0) // Time filter actif
+      {
+         MqlDateTime dt;
+         TimeToStruct(TimeCurrent(), dt);
+         
+         int currentMinutes = dt.hour * 60 + dt.min;
+         int endMinutes = EHInput * 60;
+         int minutesUntilEnd = endMinutes - currentMinutes;
+         
+         // Si on est dans la période de fermeture
+         if(minutesUntilEnd >= 0 && minutesUntilEnd <= MINUTES_BEFORE_SESSION_END)
+         {
+            isEndingSession = true;
+         }
+      }
+      
+      // Gérer aussi la fermeture par session filter
+      if(UseSessionFilter && timeManager != NULL)
+      {
+         // Vérifier si on approche de la fin de la session actuelle
+         // Note: Cette partie nécessite une extension de TradingTimeManager
+         // Pour l'instant, on se base sur le time filter classique
+      }
+      
+      // Déclencher la fermeture si nécessaire
+      if(isEndingSession)
+      {
+         int closedPositions = scoreTrader.CloseAllPositions(
+            WAIT_FOR_PROFITABLE_CLOSE,
+            MAX_WAIT_TIME_SECONDS,
+            LOG_SESSION_CLOSE_DETAILS
+         );
+         
+         if(closedPositions > 0)
+         {
+            Print("🔚 Fin de session: ", closedPositions, " position(s) fermée(s)");
+         }
+      }
    }
 
    // Gérer le Trailing TP Avancé ou Standard
@@ -629,7 +697,27 @@ void DisplayGlobalStatus()
    if(chartManager == NULL || scoreTrader == NULL || timeManager == NULL) return;
    
    string statusLines[];
-   ArrayResize(statusLines, 3);  // ← Garder 3 seulement
+   int lineCount = 3;
+   
+   // Vérifier si on approche de la fin de session
+   bool showEndWarning = false;
+   if(CLOSE_ALL_AT_SESSION_END && SHInput != 0 && EHInput != 0)
+   {
+      MqlDateTime dt;
+      TimeToStruct(TimeCurrent(), dt);
+      
+      int currentMinutes = dt.hour * 60 + dt.min;
+      int endMinutes = EHInput * 60;
+      int minutesUntilEnd = endMinutes - currentMinutes;
+      
+      if(minutesUntilEnd >= 0 && minutesUntilEnd <= MINUTES_BEFORE_SESSION_END)
+      {
+         showEndWarning = true;
+         lineCount = 4; // Ajouter une ligne
+      }
+   }
+   
+   ArrayResize(statusLines, lineCount);
    
    // Ligne 1: Statut trading
    string tradingStatus = timeManager.IsTradingAllowed() ? "🟢 ACTIVE" : "🔴 PAUSED";
@@ -651,10 +739,22 @@ void DisplayGlobalStatus()
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
    statusLines[2] = StringFormat("Bal: %.2f", balance);
    
-   // SUPPRIMÉ: Bloc avec trailingTP.GetStatusInfo() qui n'existe plus
+   // Ligne 4 (optionnelle): Warning fin de session
+   if(showEndWarning)
+   {
+      int currentMinutes = dt.hour * 60 + dt.min;
+      int endMinutes = EHInput * 60;
+      int minutesUntilEnd = endMinutes - currentMinutes;
+      
+      statusLines[3] = StringFormat("⚠️ CLOSING IN %d MIN", minutesUntilEnd);
+   }
    
-   // Police agrandie de 9 à 10
-   chartManager.ShowMultiLineInfo(statusLines, CORNER_LEFT_LOWER, 10, 30, 20, clrDeepSkyBlue, 10, "GlobalStatus");
+   // Couleur selon l'état
+   color statusColor = clrDeepSkyBlue;
+   if(showEndWarning)
+      statusColor = clrOrange;
+   
+   chartManager.ShowMultiLineInfo(statusLines, CORNER_LEFT_LOWER, 10, 30, 20, statusColor, 10, "GlobalStatus");
 }
 
 //+------------------------------------------------------------------+

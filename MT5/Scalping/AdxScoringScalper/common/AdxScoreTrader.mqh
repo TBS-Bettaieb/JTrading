@@ -83,6 +83,10 @@ private:
    int m_exitScoreThreshold;
    int m_minProfitPointsExit;
    
+   // End of session management
+   bool m_sessionCloseTriggered;
+   datetime m_sessionCloseStartTime;
+   
    // Trade
    CTrade m_trade;
    
@@ -198,6 +202,10 @@ public:
       m_useDynamicExit = useDynamicExit;
       m_exitScoreThreshold = exitScoreThreshold;
       m_minProfitPointsExit = minProfitPointsExit;
+      
+      // End of session management
+      m_sessionCloseTriggered = false;
+      m_sessionCloseStartTime = 0;
       
       m_adxScorer = NULL;
       m_adxDirectionalScorer = NULL;
@@ -774,16 +782,22 @@ public:
          }
          
          // Protection : Ne sortir que si profit minimum atteint
-         // ET éviter de sortir en perte même si score inverse
+         // Note: Cette condition bloque aussi les pertes (profitPoints < 0)
+         // car MIN_PROFIT_POINTS_EXIT devrait toujours être positif (ex: 10 points)
          if(profitPoints < m_minProfitPointsExit)
          {
-            continue; // Pas assez de profit, on garde la position
+            // Si en perte, laisser le SL gérer
+            // Si profit insuffisant, attendre plus de profit avant sortie dynamique
+            continue;
          }
 
-         // Protection supplémentaire : ne JAMAIS sortir dynamiquement en perte
-         if(profitPoints < 0)
+         // Protection supplémentaire : vérification explicite contre les pertes
+         // Cette ligne ne devrait JAMAIS être atteinte si MIN_PROFIT_POINTS_EXIT > 0
+         // mais on la garde par sécurité au cas où MIN_PROFIT_POINTS_EXIT serait mal configuré
+         if(profitPoints <= 0)
          {
-            continue; // Ne pas fermer en perte, laisser le SL/TP gérer
+            Print("⚠️ WARNING: Profit check bypass detected! Check MIN_PROFIT_POINTS_EXIT configuration.");
+            continue; // Ne JAMAIS fermer en perte dynamiquement
          }
          
          // Vérifier le renversement de score
@@ -908,6 +922,194 @@ public:
    int GetMaxPositions() const { return m_maxPositions; }
    int GetCurrentPositions() { return CountPositions(); }
    bool IsUsingDynamicLots() const { return m_useDynamicLots; }
+
+   //+------------------------------------------------------------------+
+   //| Fermer toutes les positions (fin de session)                    |
+   //+------------------------------------------------------------------+
+   int CloseAllPositions(bool waitForProfit = false, int maxWaitSeconds = 300, bool logDetails = true)
+   {
+      if(!m_isInitialized) return 0;
+      
+      int closedCount = 0;
+      int totalPositions = 0;
+      int profitableCount = 0;
+      int losingCount = 0;
+      double totalProfit = 0;
+      
+      // Compter d'abord toutes nos positions
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
+      {
+         ulong ticket = PositionGetTicket(i);
+         if(ticket == 0) continue;
+         if(!PositionSelectByTicket(ticket)) continue;
+         
+         if(PositionGetInteger(POSITION_MAGIC) == m_magicNumber && 
+            PositionGetString(POSITION_SYMBOL) == m_symbol)
+         {
+            totalPositions++;
+            double profit = PositionGetDouble(POSITION_PROFIT);
+            totalProfit += profit;
+            
+            if(profit > 0) profitableCount++;
+            else if(profit < 0) losingCount++;
+         }
+      }
+      
+      if(totalPositions == 0)
+      {
+         if(logDetails)
+            Print("ℹ️ Aucune position à fermer pour fin de session");
+         return 0;
+      }
+      
+      if(logDetails)
+      {
+         Print("═══════════════════════════════════════");
+         Print("🔚 FERMETURE FIN DE SESSION");
+         Print("═══════════════════════════════════════");
+         Print("  Positions totales: ", totalPositions);
+         Print("  En profit: ", profitableCount);
+         Print("  En perte: ", losingCount);
+         Print("  P&L total: $", DoubleToString(totalProfit, 2));
+         if(waitForProfit)
+            Print("  Mode: Attente profit (max ", maxWaitSeconds, "s)");
+         else
+            Print("  Mode: Fermeture immédiate");
+         Print("═══════════════════════════════════════");
+      }
+      
+      // Gérer le mode "attente de profit"
+      if(waitForProfit && losingCount > 0)
+      {
+         // Initialiser le timer si pas déjà fait
+         if(m_sessionCloseStartTime == 0)
+         {
+            m_sessionCloseTriggered = true;
+            m_sessionCloseStartTime = TimeCurrent();
+            if(logDetails)
+               Print("⏳ Attente profit activée - Timer démarré");
+            return 0; // Ne pas fermer encore, attendre
+         }
+         
+         // Vérifier si le temps d'attente est écoulé
+         datetime elapsed = TimeCurrent() - m_sessionCloseStartTime;
+         if(elapsed < maxWaitSeconds)
+         {
+            // Vérifier si toutes les positions sont maintenant profitables
+            bool allProfitable = true;
+            for(int i = PositionsTotal() - 1; i >= 0; i--)
+            {
+               ulong ticket = PositionGetTicket(i);
+               if(ticket == 0) continue;
+               if(!PositionSelectByTicket(ticket)) continue;
+               
+               if(PositionGetInteger(POSITION_MAGIC) == m_magicNumber && 
+                  PositionGetString(POSITION_SYMBOL) == m_symbol)
+               {
+                  if(PositionGetDouble(POSITION_PROFIT) <= 0)
+                  {
+                     allProfitable = false;
+                     break;
+                  }
+               }
+            }
+            
+            if(!allProfitable)
+            {
+               // Pas encore toutes profitables, continuer d'attendre
+               if(logDetails && ((int)elapsed % 10 == 0)) // Log toutes les 10 secondes
+               {
+                  Print("⏳ Attente profit: ", (int)elapsed, "s / ", maxWaitSeconds, "s");
+               }
+               return 0;
+            }
+         }
+         else
+         {
+            if(logDetails)
+               Print("⏰ Temps d'attente écoulé - Fermeture forcée");
+         }
+      }
+      
+      // Fermer toutes les positions
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
+      {
+         ulong ticket = PositionGetTicket(i);
+         if(ticket == 0) continue;
+         if(!PositionSelectByTicket(ticket)) continue;
+         
+         if(PositionGetInteger(POSITION_MAGIC) != m_magicNumber) continue;
+         if(PositionGetString(POSITION_SYMBOL) != m_symbol) continue;
+         
+         // Informations sur la position
+         ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+         double posProfit = PositionGetDouble(POSITION_PROFIT);
+         double posLots = PositionGetDouble(POSITION_VOLUME);
+         
+         // Fermer la position
+         if(m_trade.PositionClose(ticket))
+         {
+            closedCount++;
+            
+            if(logDetails)
+            {
+               Print(StringFormat(
+                  "✅ Position fermée #%I64u | %s | %.2f lots | P&L: $%.2f",
+                  ticket,
+                  (posType == POSITION_TYPE_BUY ? "BUY" : "SELL"),
+                  posLots,
+                  posProfit
+               ));
+            }
+         }
+         else
+         {
+            if(logDetails)
+            {
+               Print(StringFormat(
+                  "❌ Échec fermeture #%I64u | Code: %d | %s",
+                  ticket,
+                  m_trade.ResultRetcode(),
+                  m_trade.ResultRetcodeDescription()
+               ));
+            }
+         }
+      }
+      
+      if(logDetails)
+      {
+         Print("═══════════════════════════════════════");
+         Print("📊 RÉSUMÉ FERMETURE SESSION");
+         Print("  Positions fermées: ", closedCount, " / ", totalPositions);
+         Print("  P&L total: $", DoubleToString(totalProfit, 2));
+         Print("═══════════════════════════════════════");
+      }
+      
+      // Réinitialiser le timer
+      m_sessionCloseTriggered = false;
+      m_sessionCloseStartTime = 0;
+      
+      return closedCount;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Vérifier si fermeture de session nécessaire                    |
+   //+------------------------------------------------------------------+
+   bool ShouldTriggerSessionClose(int minutesBeforeEnd)
+   {
+      // Cette méthode sera appelée depuis OnTick() avec les paramètres de configuration
+      // Elle retourne true si on approche de la fin de session
+      return false; // Implémentation basique, sera gérée par TradingTimeManager
+   }
+
+   //+------------------------------------------------------------------+
+   //| Reset du flag de fermeture de session                          |
+   //+------------------------------------------------------------------+
+   void ResetSessionCloseFlag()
+   {
+      m_sessionCloseTriggered = false;
+      m_sessionCloseStartTime = 0;
+   }
 
    //+------------------------------------------------------------------+
    //| Obtenir les informations de statut                             |
