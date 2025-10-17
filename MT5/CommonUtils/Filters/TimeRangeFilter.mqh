@@ -53,10 +53,54 @@ int CurrentHour()
 }
 
 //+------------------------------------------------------------------+
+//| Fonction globale pour vérifier si une heure est dans les plages |
+//+------------------------------------------------------------------+
+bool IsHourAllowedCustom(string ranges, int hour)
+{
+   if(ranges == "" || ranges == " ") return true; // rien => tout autorisé
+
+   string tokens[]; int n = StringSplit(ranges, ';', tokens);
+   for(int i = 0; i < n; i++)
+   {
+      string token = tokens[i];
+      StringTrimLeft(token);
+      StringTrimRight(token);
+      if(token == "") continue;
+
+      int dash = StringFind(token, "-");
+      if(dash >= 0)
+      {
+         // Plage d'heures (ex: "8-10")
+         int startH = (int)StringToInteger(StringSubstr(token, 0, dash));
+         int endH = (int)StringToInteger(StringSubstr(token, dash + 1));
+         
+         if(startH <= endH)
+         {
+            // Plage normale (ex: 8-10)
+            if(hour >= startH && hour <= endH) return true;
+         }
+         else
+         {
+            // Plage chevauchant minuit (ex: 22-6)
+            if(hour >= startH || hour <= endH) return true;
+         }
+      }
+      else
+      {
+         // Heure exacte (ex: "16")
+         int h = (int)StringToInteger(token);
+         if(hour == h) return true;
+      }
+   }
+   return false;
+}
+
+//+------------------------------------------------------------------+
 //| Fonction principale de vérification par plages horaires         |
 //| IMPORTANT: Cette fonction utilise les variables UseTimeFilter    |
 //| et HourRanges qui doivent être définies dans le fichier .mq5    |
 //+------------------------------------------------------------------+
+/*
 bool IsTimeRangeAllowed()
 {
    // Si le filtre est désactivé, autoriser le trading
@@ -65,6 +109,7 @@ bool IsTimeRangeAllowed()
    int currentHour = CurrentHour();
    return IsHourAllowedCustom(HourRanges, currentHour);
 }
+*/
 
 //+------------------------------------------------------------------+
 //| Fonction alternative avec paramètres explicites                 |

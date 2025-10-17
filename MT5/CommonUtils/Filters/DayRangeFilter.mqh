@@ -54,10 +54,54 @@ int CurrentWeekDay()
 }
 
 //+------------------------------------------------------------------+
+//| Fonction globale pour vérifier si un jour est dans les plages   |
+//+------------------------------------------------------------------+
+bool IsDayAllowedCustom(string ranges, int weekday)
+{
+   if(ranges == "" || ranges == " ") return true; // rien => tout autorisé
+
+   string tokens[]; int n = StringSplit(ranges, ';', tokens);
+   for(int i = 0; i < n; i++)
+   {
+      string token = tokens[i];
+      StringTrimLeft(token);
+      StringTrimRight(token);
+      if(token == "") continue;
+
+      int dash = StringFind(token, "-");
+      if(dash >= 0)
+      {
+         // Plage de jours (ex: "1-5")
+         int startD = (int)StringToInteger(StringSubstr(token, 0, dash));
+         int endD = (int)StringToInteger(StringSubstr(token, dash + 1));
+         
+         if(startD <= endD)
+         {
+            // Plage normale (ex: 1-5 = Lundi à Vendredi)
+            if(weekday >= startD && weekday <= endD) return true;
+         }
+         else
+         {
+            // Plage chevauchant fin de semaine (ex: 5-1 = Vendredi à Lundi)
+            if(weekday >= startD || weekday <= endD) return true;
+         }
+      }
+      else
+      {
+         // Jour exact (ex: "1" = Lundi)
+         int d = (int)StringToInteger(token);
+         if(weekday == d) return true;
+      }
+   }
+   return false;
+}
+
+//+------------------------------------------------------------------+
 //| Fonction principale de vérification par jours de la semaine      |
 //| IMPORTANT: Cette fonction utilise les variables UseDayFilter     |
 //| et DayRanges qui doivent être définies dans le fichier .mq5     |
 //+------------------------------------------------------------------+
+/*
 bool IsDayRangeAllowed()
 {
    // Si le filtre est désactivé, autoriser le trading
@@ -66,6 +110,7 @@ bool IsDayRangeAllowed()
    int currentDay = CurrentWeekDay();
    return IsDayAllowedCustom(DayRanges, currentDay);
 }
+*/
 
 //+------------------------------------------------------------------+
 //| Fonction alternative avec paramètres explicites                 |

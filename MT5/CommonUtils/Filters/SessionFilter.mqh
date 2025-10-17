@@ -160,6 +160,7 @@ bool IsAvoidingOpeningGlobal(int hour, int minute, ENUM_TRADING_SESSION session,
 //| AllowedSession et AvoidOpeningMinutes qui doivent être définies |
 //| dans le fichier .mq5                                            |
 //+------------------------------------------------------------------+
+/*
 bool IsSessionAllowed()
 {
    // Si le filtre est désactivé, autoriser le trading
@@ -167,6 +168,7 @@ bool IsSessionAllowed()
    
    return IsSessionAllowedCustom((ENUM_TRADING_SESSION)AllowedSession, AvoidOpeningMinutes);
 }
+*/
 
 //+------------------------------------------------------------------+
 //| Fonction alternative avec paramètres explicites                 |

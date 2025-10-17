@@ -138,6 +138,7 @@ bool CheckUpcomingNews(
 //| DaysNewsLookup et NewsSeparator qui doivent être définies       |
 //| dans le fichier .mq5                                            |
 //+------------------------------------------------------------------+
+/*
 bool IsNewsAllowed()
 {
    // Si le filtre est désactivé, autoriser le trading
@@ -146,6 +147,7 @@ bool IsNewsAllowed()
    return !CheckUpcomingNews(NewsCurrencies, KeyNews, StopBeforeMin, 
                             StartTradingMin, DaysNewsLookup, NewsSeparator);
 }
+*/
 
 //+------------------------------------------------------------------+
 //| Fonction alternative avec paramètres explicites                 |

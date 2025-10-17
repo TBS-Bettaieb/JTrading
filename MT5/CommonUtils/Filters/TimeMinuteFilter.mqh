@@ -129,6 +129,7 @@ int ParseTimeMinuteGlobal(string time)
 //| IMPORTANT: Cette fonction utilise les variables UseTimeMinuteFilter |
 //| et TimeMinuteRanges qui doivent être définies dans le fichier .mq5 |
 //+------------------------------------------------------------------+
+/*
 bool IsTimeMinuteAllowed()
 {
    // Si le filtre est désactivé, autoriser le trading
@@ -137,6 +138,7 @@ bool IsTimeMinuteAllowed()
    int currentTimeMinute = CurrentHourMinute();
    return IsTimeMinuteInRangesGlobal(TimeMinuteRanges, currentTimeMinute);
 }
+*/
 
 //+------------------------------------------------------------------+
 //| Fonction alternative avec paramètres explicites                 |
