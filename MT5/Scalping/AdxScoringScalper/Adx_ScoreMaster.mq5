@@ -42,6 +42,12 @@ input int RSI_PERIOD = 14;                   // Période RSI
 input int MA_PERIOD = 50;                    // Période MA
 input ENUM_MA_METHOD MA_METHOD = MODE_SMA;   // Méthode MA
 
+input group "=== Volatility Filter ==="
+input bool USE_VOLATILITY_FILTER = true;     // Activer filtre volatilité
+input int ATR_PERIOD = 14;                   // Période ATR
+input double MIN_VOLATILITY_RATIO = 0.0003;  // Volatilité minimale (0.03%)
+input double MAX_VOLATILITY_RATIO = 0.0015;  // Volatilité maximale (0.15%)
+
 input group "=== Trailing Stop ==="
 input bool USE_TRAILING = false;             // Activer Trailing Stop
 input int TRAILING_START = 50;               // Points de profit pour démarrer
@@ -127,7 +133,11 @@ int OnInit()
       MA_METHOD,
       USE_TRAILING,
       TRAILING_START,
-      TRAILING_STEP
+      TRAILING_STEP,
+      USE_VOLATILITY_FILTER,
+      ATR_PERIOD,
+      MIN_VOLATILITY_RATIO,
+      MAX_VOLATILITY_RATIO
    );
    
    if(scoreTrader == NULL)
@@ -282,7 +292,7 @@ void UpdateChartDisplay()
    
    // ═══ Affichage des indicateurs avec couleurs dynamiques ═══
    string indicators[];
-   ArrayResize(indicators, 8);
+   ArrayResize(indicators, 9);
    
    // Titre en Bold
    indicators[0] = "━━━ INDICATORS ━━━";
@@ -330,6 +340,11 @@ void UpdateChartDisplay()
    else if(dMinus > dPlus + 5) direction = " ↘️ Baissier";
    else direction = " ↔️ Neutre";
    indicators[7] = StringFormat("Direction: %s", direction);
+   
+   // Volatilité
+   double volRatio = scoreTrader.GetVolatilityRatio() * 100;
+   string volStatus = scoreTrader.IsVolatilityOptimal() ? " ✓" : " ✗";
+   indicators[8] = StringFormat("Volatilité: %.4f%%%s", volRatio, volStatus);
    
    // Couleur dynamique selon signal
    color indColor = clrWhite;

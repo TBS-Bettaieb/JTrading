@@ -15,6 +15,7 @@
 #include "scorers/RsiScorer.mqh"
 #include "scorers/MaScorer.mqh"
 #include "scorers/PriceActionConfirmer.mqh"
+#include "scorers/VolatilityFilter.mqh"
 
 //+------------------------------------------------------------------+
 //| Constantes de scoring (comme dans l'original)                   |
@@ -39,6 +40,7 @@ private:
    RsiScorer* m_rsiScorer;
    MaScorer* m_maScorer;
    PriceActionConfirmer* m_priceActionConfirmer;
+   VolatilityFilter* m_volatilityFilter;
    
    // Paramètres indicateurs
    int m_adxPeriod;
@@ -59,6 +61,12 @@ private:
    bool m_useTrailing;
    int m_trailingStart;
    int m_trailingStep;
+   
+   // Volatility Filter
+   bool m_useVolatilityFilter;
+   int m_atrPeriod;
+   double m_minVolatilityRatio;
+   double m_maxVolatilityRatio;
    
    // Trade
    CTrade m_trade;
@@ -117,7 +125,11 @@ public:
       ENUM_MA_METHOD maMethod = MODE_SMA,
       bool useTrailing = false,
       int trailingStart = 50,
-      int trailingStep = 20
+      int trailingStep = 20,
+      bool useVolatilityFilter = true,
+      int atrPeriod = 14,
+      double minVolatilityRatio = 0.0003,
+      double maxVolatilityRatio = 0.0015
    )
    {
       m_symbol = symbol;
@@ -142,11 +154,18 @@ public:
       m_trailingStart = trailingStart;
       m_trailingStep = trailingStep;
       
+      // Volatility Filter
+      m_useVolatilityFilter = useVolatilityFilter;
+      m_atrPeriod = atrPeriod;
+      m_minVolatilityRatio = minVolatilityRatio;
+      m_maxVolatilityRatio = maxVolatilityRatio;
+      
       m_adxScorer = NULL;
       m_adxDirectionalScorer = NULL;
       m_rsiScorer = NULL;
       m_maScorer = NULL;
       m_priceActionConfirmer = NULL;
+      m_volatilityFilter = NULL;
       
       m_lastBarTime = 0;
       m_currentBuyScore = 0;
@@ -195,6 +214,7 @@ public:
       if(m_rsiScorer != NULL) delete m_rsiScorer;
       if(m_maScorer != NULL) delete m_maScorer;
       if(m_priceActionConfirmer != NULL) delete m_priceActionConfirmer;
+      if(m_volatilityFilter != NULL) delete m_volatilityFilter;
    }
 
    //+------------------------------------------------------------------+
@@ -215,11 +235,13 @@ public:
       m_rsiScorer = new RsiScorer(m_symbol, m_timeframe, m_rsiPeriod);
       m_maScorer = new MaScorer(m_symbol, m_timeframe, m_maPeriod, m_maMethod);
       m_priceActionConfirmer = new PriceActionConfirmer(m_symbol, m_timeframe);
+      m_volatilityFilter = new VolatilityFilter(m_symbol, m_timeframe, m_atrPeriod, 
+                                                m_minVolatilityRatio, m_maxVolatilityRatio);
       
       // Initialiser les scorers
       if(!m_adxScorer.Initialize() || !m_adxDirectionalScorer.Initialize() || 
          !m_rsiScorer.Initialize() || !m_maScorer.Initialize() || 
-         !m_priceActionConfirmer.Initialize())
+         !m_priceActionConfirmer.Initialize() || !m_volatilityFilter.Initialize())
       {
          Print("❌ Erreur initialisation scorers pour ", m_symbol);
          return false;
@@ -277,6 +299,17 @@ public:
       // Vérifier le nombre de positions
       if(CountPositions() >= m_maxPositions) return;
       
+      // Vérifier le filtre de volatilité si activé
+      if(m_useVolatilityFilter)
+      {
+         if(!m_volatilityFilter.IsVolatilityOptimal())
+         {
+            Print("⚠️ Trading bloqué - Volatilité non optimale: ", 
+                  DoubleToString(m_volatilityFilter.GetVolatilityRatio() * 100, 4), "%");
+            return;
+         }
+      }
+      
       // Vérifier les signaux BUY
       if(m_currentBuyScore >= m_scoreMinEntry)
       {
@@ -307,6 +340,7 @@ public:
       m_adxDirectionalScorer.Update();
       m_rsiScorer.Update();
       m_maScorer.Update();
+      m_volatilityFilter.Update();
       
       // Récupérer les valeurs actuelles
       m_currentADX = m_adxScorer.GetCurrentValue();
@@ -585,6 +619,9 @@ public:
    double GetRSI() const { return m_rsiScorer != NULL ? m_rsiScorer.GetCurrentValue() : 0; }
    double GetMA() const { return m_maScorer != NULL ? m_maScorer.GetCurrentValue() : 0; }
    double GetPrice() const { return m_maScorer != NULL ? m_maScorer.GetCurrentPrice() : 0; }
+   double GetATR() const { return m_volatilityFilter != NULL ? m_volatilityFilter.GetATR() : 0; }
+   double GetVolatilityRatio() const { return m_volatilityFilter != NULL ? m_volatilityFilter.GetVolatilityRatio() : 0; }
+   bool IsVolatilityOptimal() const { return m_volatilityFilter != NULL ? m_volatilityFilter.IsVolatilityOptimal() : false; }
    
    // Getters pour les scores BUY
    int GetBuyADXScore() const { return m_buyAdxScore; }
