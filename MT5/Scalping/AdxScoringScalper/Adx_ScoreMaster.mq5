@@ -1,17 +1,20 @@
 //+------------------------------------------------------------------+
 //|                                        Adx_ScoreMaster.mq5       |
-//|                   ADX Score Master v2.2 - Multi-Positions Fix    |
+//|                   ADX Score Master v2.3 - Patch Final            |
 //|                   Utilise ChartManager et TradingTimeManager     |
 //|                                                                  |
-//| AMÉLIORATIONS v2.2:                                              |
+//| AMÉLIORATIONS v2.3:                                              |
 //| ✅ Bug CTrailingTP unique corrigé (objet par position)           |
 //| ✅ Performance OnTick() optimisée (throttling intelligent)       |
 //| ✅ Gestion d'erreurs robuste avec retry logic                    |
 //| ✅ Architecture sécurisée pour plusieurs positions simultanées   |
 //| ✅ Nettoyage automatique des objets Trailing TP                  |
+//| ✅ Code simplifié (suppression objet global inutilisé)           |
+//| ✅ Affichage multi-positions amélioré avec résumé global         |
+//| ✅ Patch final: logique trailing corrigée, DisplayGlobalStatus() nettoyée |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025"
-#property version   "2.2"
+#property version   "2.3"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -88,7 +91,6 @@ input string BothBlockMsg = "🚫 TRADING PAUSED - Outside Trading Schedule";
 //+------------------------------------------------------------------+
 ChartManager* chartManager = NULL;
 TradingTimeManager* timeManager = NULL;
-CTrailingTP* trailingTP = NULL;
 AdxScoreTrader* scoreTrader = NULL;
 
 //+------------------------------------------------------------------+
@@ -116,6 +118,7 @@ datetime g_lastCleanup = 0;             // Dernier nettoyage des labels
 const int VISUAL_UPDATE_INTERVAL = 500; // 500ms entre les updates visuels
 const int STATUS_UPDATE_INTERVAL = 2000; // 2s entre les updates de statut
 const int CLEANUP_INTERVAL = 30000;     // 30s entre les nettoyages
+const int TRAILING_CLEANUP_INTERVAL = 10; // 10s entre nettoyages Trailing TP (en secondes)
 
 //+------------------------------------------------------------------+
 //| Constantes pour la gestion des erreurs                          |
@@ -181,12 +184,11 @@ int OnInit()
       Print("ℹ️ Session Filter désactivé");
    }
    
-   // ═══ Step 2.5: Valider et Créer Trailing TP System ═══
+   // ═══ Step 2.5: Valider la configuration Trailing TP ═══
    if(USE_ADVANCED_TRAILING_TP)
    {
       Print("🔍 Validation configuration Trailing TP...");
       
-      // VALIDATION PRÉALABLE avec le Validateur
       string errorMsg;
       bool isValid = CTrailingTPValidator::ValidateCustomLevelsString(
          CustomTPLevels, 
@@ -204,20 +206,8 @@ int OnInit()
       }
       
       Print("✅ Configuration Trailing TP validée!");
-      
-      // Afficher les niveaux parsés
       CTrailingTPValidator::PrintParsedLevels(CustomTPLevels);
-      
-      // Créer l'objet Trailing TP
-      trailingTP = new CTrailingTP(TRAILING_TP_MODE, CustomTPLevels);
-      
-      if(trailingTP == NULL)
-      {
-         Print("❌ Erreur création CTrailingTP");
-         return INIT_FAILED;
-      }
-      
-      Print("✅ Trailing TP System initialisé en mode: ", EnumToString(TRAILING_TP_MODE));
+      Print("✅ Système Trailing TP prêt (objets créés dynamiquement par position)");
    }
    else
    {
@@ -315,13 +305,6 @@ void OnDeinit(const int reason)
    ArrayResize(g_trailingManagers, 0);
    Print("✅ Tous les objets Trailing TP nettoyés");
    
-   // Supprimer l'objet global (qui ne sert plus)
-   if(trailingTP != NULL)
-   {
-      delete trailingTP;
-      trailingTP = NULL;
-      Print("✅ Trailing TP System global cleaned up");
-   }
    
    if(scoreTrader != NULL)
    {
@@ -407,13 +390,13 @@ void OnTick()
    }
 
    // Gérer le Trailing TP Avancé ou Standard
-   if(USE_ADVANCED_TRAILING_TP && trailingTP != NULL)
+   if(USE_ADVANCED_TRAILING_TP)
    {
       ManageAdvancedTrailingTP();
    }
-   else if(scoreTrader != NULL)
+   else if(USE_TRAILING && scoreTrader != NULL)
    {
-      // Trailing standard si Trailing TP avancé désactivé
+      // Trailing standard uniquement si Trailing TP avancé désactivé
       scoreTrader.TrailingStop();
    }
 }
@@ -607,7 +590,7 @@ void DisplayGlobalStatus()
    if(chartManager == NULL || scoreTrader == NULL || timeManager == NULL) return;
    
    string statusLines[];
-   ArrayResize(statusLines, 3);
+   ArrayResize(statusLines, 3);  // ← Garder 3 seulement
    
    // Ligne 1: Statut trading
    string tradingStatus = timeManager.IsTradingAllowed() ? "🟢 ACTIVE" : "🔴 PAUSED";
@@ -629,12 +612,7 @@ void DisplayGlobalStatus()
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
    statusLines[2] = StringFormat("Bal: %.2f", balance);
    
-   // Ligne 4: Statut Trailing TP (si actif)
-   if(USE_ADVANCED_TRAILING_TP && trailingTP != NULL)
-   {
-      ArrayResize(statusLines, 4);
-      statusLines[3] = trailingTP.GetStatusInfo();
-   }
+   // SUPPRIMÉ: Bloc avec trailingTP.GetStatusInfo() qui n'existe plus
    
    // Police agrandie de 9 à 10
    chartManager.ShowMultiLineInfo(statusLines, CORNER_LEFT_LOWER, 10, 30, 20, clrDeepSkyBlue, 10, "GlobalStatus");
@@ -845,7 +823,7 @@ void ManageAdvancedTrailingTP()
    // Nettoyage périodique des managers (toutes les 10 secondes)
    datetime currentTime = TimeCurrent();
    static datetime lastClean = 0;
-   if(currentTime - lastClean >= 10)
+   if(currentTime - lastClean >= TRAILING_CLEANUP_INTERVAL)
    {
       CleanTrailingManagers();
       lastClean = currentTime;
@@ -933,20 +911,26 @@ void ManageAdvancedTrailingTP()
             
             // Mettre à jour l'état avec les nouvelles valeurs
             UpdateTrailingManager(ticket, true, newSL, newTP);
-            
-            // Afficher sur le graphique si activé
-            if(SHOW_TP_STATUS && chartManager != NULL)
-            {
-               string statusInfo = positionTrailingTP.GetStatusInfo();
-               chartManager.ShowTopRightLabel(
-                  "🎯 " + statusInfo, 
-                  clrGold, 
-                  12, 
-                  30  // Y offset ajusté pour ne pas chevaucher le statut principal
-               );
-            }
          }
       }
+   }
+   
+   // NOUVEAU: Afficher un résumé global APRÈS la boucle
+   if(SHOW_TP_STATUS && chartManager != NULL && ArraySize(g_trailingManagers) > 0)
+   {
+      string statusSummary = StringFormat(
+         "🎯 Trailing: %d pos",
+         ArraySize(g_trailingManagers)
+      );
+      
+      // Ajouter le statut de la première position active
+      if(g_trailingManagers[0].trailingTPObject != NULL && 
+         g_trailingManagers[0].isInitialized)
+      {
+         statusSummary += " | " + g_trailingManagers[0].trailingTPObject.GetStatusInfo();
+      }
+      
+      chartManager.ShowTopRightLabel(statusSummary, clrGold, 12, 30);
    }
 }
 
