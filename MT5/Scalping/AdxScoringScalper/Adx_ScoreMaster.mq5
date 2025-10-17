@@ -36,6 +36,8 @@ input double RISK_PERCENT_HIGH = 1.2;        // Risque si haute confiance
 input int SL_POINTS = 200;                   // Stop Loss en points
 input int TP_MULTIPLIER = 2;                 // Multiplicateur TP (SL * TP_MULTIPLIER)
 input int MAX_POSITIONS = 1;                 // Nombre max de positions simultanées
+input bool USE_DYNAMIC_LOTS = true;          // Activer calcul lots dynamique
+input bool LOG_LOT_CALCULATION = true;       // Logger les détails de calcul
 
 input group "=== Indicator Parameters ==="
 input int ADX_PERIOD = 14;                   // Période ADX
@@ -188,7 +190,9 @@ int OnInit()
       USE_VOLATILITY_FILTER,
       ATR_PERIOD,
       MIN_VOLATILITY_RATIO,
-      MAX_VOLATILITY_RATIO
+      MAX_VOLATILITY_RATIO,
+      USE_DYNAMIC_LOTS,          // NOUVEAU
+      LOG_LOT_CALCULATION        // NOUVEAU
    );
    
    if(scoreTrader == NULL)

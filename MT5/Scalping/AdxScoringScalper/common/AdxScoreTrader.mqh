@@ -68,6 +68,10 @@ private:
    double m_minVolatilityRatio;
    double m_maxVolatilityRatio;
    
+   // Money Management Dynamique
+   bool m_useDynamicLots;
+   bool m_logLotCalculation;
+   
    // Trade
    CTrade m_trade;
    
@@ -129,7 +133,9 @@ public:
       bool useVolatilityFilter = true,
       int atrPeriod = 14,
       double minVolatilityRatio = 0.0003,
-      double maxVolatilityRatio = 0.0015
+      double maxVolatilityRatio = 0.0015,
+      bool useDynamicLots = true,           // NOUVEAU
+      bool logLotCalculation = true         // NOUVEAU
    )
    {
       m_symbol = symbol;
@@ -159,6 +165,10 @@ public:
       m_atrPeriod = atrPeriod;
       m_minVolatilityRatio = minVolatilityRatio;
       m_maxVolatilityRatio = maxVolatilityRatio;
+      
+      // Money Management Dynamique
+      m_useDynamicLots = useDynamicLots;
+      m_logLotCalculation = logLotCalculation;
       
       m_adxScorer = NULL;
       m_adxDirectionalScorer = NULL;
@@ -422,8 +432,17 @@ public:
       double sl = NormalizeDouble(ask - m_slPoints * point, digits);
       double tp = NormalizeDouble(ask + (m_slPoints * m_tpMultiplier) * point, digits);
       
-      double risk = highConfidence ? m_riskHigh : m_riskNormal;
-      double lots = CalculateLots(risk, ask - sl);
+      double baseRisk = highConfidence ? m_riskHigh : m_riskNormal;
+      double lots;
+      
+      if(m_useDynamicLots)
+      {
+         lots = CalculateDynamicLots(baseRisk, score, ask - sl);
+      }
+      else
+      {
+         lots = CalculateLots(baseRisk, ask - sl);
+      }
       
       // Vérifier que les lots sont valides
       if(lots < SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MIN))
@@ -459,8 +478,17 @@ public:
       double sl = NormalizeDouble(bid + m_slPoints * point, digits);
       double tp = NormalizeDouble(bid - (m_slPoints * m_tpMultiplier) * point, digits);
       
-      double risk = highConfidence ? m_riskHigh : m_riskNormal;
-      double lots = CalculateLots(risk, sl - bid);
+      double baseRisk = highConfidence ? m_riskHigh : m_riskNormal;
+      double lots;
+      
+      if(m_useDynamicLots)
+      {
+         lots = CalculateDynamicLots(baseRisk, score, sl - bid);
+      }
+      else
+      {
+         lots = CalculateLots(baseRisk, sl - bid);
+      }
       
       // Vérifier que les lots sont valides
       if(lots < SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MIN))
@@ -506,6 +534,111 @@ public:
       lots = MathMax(lots, minLot);
       lots = MathMin(lots, maxLot);
       lots = MathRound(lots / lotStep) * lotStep;
+      
+      return lots;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Calculer la taille de lot de manière dynamique                 |
+   //| Ajuste selon le score et la volatilité                         |
+   //+------------------------------------------------------------------+
+   double CalculateDynamicLots(double baseRisk, int score, double slDistance)
+   {
+      double accountBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+      
+      // ═══ ÉTAPE 1: Multiplicateur de confiance basé sur le score ═══
+      double confidenceMultiplier = 1.0;
+      
+      if(score >= m_scoreHighConfidence)
+      {
+         // Signal haute confiance: +30% de lots
+         confidenceMultiplier = 1.3;
+      }
+      else if(score >= m_scoreMinEntry + 2)
+      {
+         // Signal bon mais pas exceptionnel: +15%
+         confidenceMultiplier = 1.15;
+      }
+      else if(score >= m_scoreMinEntry)
+      {
+         // Signal minimum acceptable: risque normal
+         confidenceMultiplier = 1.0;
+      }
+      else
+      {
+         // Signal faible (ne devrait pas arriver): -30%
+         confidenceMultiplier = 0.7;
+      }
+      
+      // ═══ ÉTAPE 2: Multiplicateur de volatilité ═══
+      double currentVolatility = m_volatilityFilter.GetVolatilityRatio();
+      double volatilityMultiplier = 1.0;
+      
+      // Haute volatilité (>0.10%) = risque élevé, réduire lots
+      if(currentVolatility > 0.0010)
+      {
+         volatilityMultiplier = 0.7;  // -30%
+      }
+      // Volatilité moyenne optimale (0.04-0.10%)
+      else if(currentVolatility >= 0.0004 && currentVolatility <= 0.0010)
+      {
+         volatilityMultiplier = 1.0;  // Normal
+      }
+      // Basse volatilité (<0.04%) = moins de risque, augmenter lots
+      else if(currentVolatility < 0.0004)
+      {
+         volatilityMultiplier = 1.2;  // +20%
+      }
+      
+      // ═══ ÉTAPE 3: Calcul du risque ajusté ═══
+      double adjustedRisk = baseRisk * confidenceMultiplier * volatilityMultiplier;
+      
+      // Limiter le risque maximum à 3% pour sécurité
+      adjustedRisk = MathMin(adjustedRisk, 3.0);
+      
+      // ═══ ÉTAPE 4: Calculer les lots selon la méthode standard ═══
+      double riskAmount = accountBalance * (adjustedRisk / 100.0);
+      double tickValue = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_VALUE);
+      double tickSize = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_SIZE);
+      
+      if(tickValue == 0 || tickSize == 0 || slDistance == 0) 
+      {
+         if(m_logLotCalculation)
+            Print("⚠️ Paramètres invalides pour calcul lots");
+         return SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MIN);
+      }
+      
+      double lots = riskAmount / (slDistance / tickSize * tickValue);
+      
+      // ═══ ÉTAPE 5: Normaliser selon contraintes broker ═══
+      double minLot = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MIN);
+      double maxLot = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MAX);
+      double lotStep = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_STEP);
+      
+      lots = MathMax(lots, minLot);
+      lots = MathMin(lots, maxLot);
+      lots = MathRound(lots / lotStep) * lotStep;
+      
+      // ═══ ÉTAPE 6: Logger les détails (si activé) ═══
+      if(m_logLotCalculation)
+      {
+         Print("═══════════════════════════════════════");
+         Print("📊 CALCUL LOTS DYNAMIQUE");
+         Print("═══════════════════════════════════════");
+         Print("  Score: ", score, " (Min: ", m_scoreMinEntry, " | High: ", m_scoreHighConfidence, ")");
+         Print("  Volatilité: ", DoubleToString(currentVolatility * 100, 4), "%");
+         Print("  ───────────────────────────────────");
+         Print("  Risque Base: ", DoubleToString(baseRisk, 2), "%");
+         Print("  Mult. Confiance: x", DoubleToString(confidenceMultiplier, 2));
+         Print("  Mult. Volatilité: x", DoubleToString(volatilityMultiplier, 2));
+         Print("  ───────────────────────────────────");
+         Print("  Risque Ajusté: ", DoubleToString(adjustedRisk, 2), "%");
+         Print("  Montant Risqué: $", DoubleToString(riskAmount, 2));
+         Print("  Distance SL: ", DoubleToString(slDistance, 5));
+         Print("  ───────────────────────────────────");
+         Print("  ✅ LOTS FINAUX: ", DoubleToString(lots, 2));
+         Print("═══════════════════════════════════════");
+      }
       
       return lots;
    }
@@ -641,6 +774,7 @@ public:
    
    int GetMaxPositions() const { return m_maxPositions; }
    int GetCurrentPositions() { return CountPositions(); }
+   bool IsUsingDynamicLots() const { return m_useDynamicLots; }
 
    //+------------------------------------------------------------------+
    //| Obtenir les informations de statut                             |
