@@ -14,6 +14,7 @@
 #include "../../CommonUtils/TradingTimeManager.mqh"
 #include "../../CommonUtils/TradingUtils.mqh"
 #include "../../CommonUtils/TradingEnums.mqh"
+#include "../../CommonUtils/TrailingTP_System.mqh"
 #include "common/AdxScoreTrader.mqh"
 
 //+------------------------------------------------------------------+
@@ -53,6 +54,12 @@ input bool USE_TRAILING = false;             // Activer Trailing Stop
 input int TRAILING_START = 50;               // Points de profit pour démarrer
 input int TRAILING_STEP = 20;                // Points de trailing
 
+input group "=== Advanced Trailing TP System ==="
+input bool USE_ADVANCED_TRAILING_TP = true;                    // Activer Trailing TP Avancé
+input ENUM_TRAILING_TP_MODE TRAILING_TP_MODE = TRAILING_TP_CUSTOM; // Mode Trailing TP
+input string CustomTPLevels = "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150"; // Niveaux Custom (profit:slMove:tpExtend)
+input bool SHOW_TP_STATUS = true;                              // Afficher statut Trailing TP
+
 input group "=== Time Filter ==="
 input int SHInput = 0;                       // Start Hour (0 = disabled)
 input int EHInput = 0;                       // End Hour (0 = disabled)
@@ -67,6 +74,7 @@ input string BothBlockMsg = "🚫 TRADING PAUSED - Outside Trading Schedule";
 //+------------------------------------------------------------------+
 ChartManager* chartManager = NULL;
 TradingTimeManager* timeManager = NULL;
+CTrailingTP* trailingTP = NULL;
 AdxScoreTrader* scoreTrader = NULL;
 
 //+------------------------------------------------------------------+
@@ -114,6 +122,49 @@ int OnInit()
    
    timeManager.SetVerboseLogging(true);
    timeManager.SetAlertMessages(HourBlockMsg, DayBlockMsg, BothBlockMsg);
+   
+   // ═══ Step 2.5: Valider et Créer Trailing TP System ═══
+   if(USE_ADVANCED_TRAILING_TP)
+   {
+      Print("🔍 Validation configuration Trailing TP...");
+      
+      // VALIDATION PRÉALABLE avec le Validateur
+      string errorMsg;
+      bool isValid = CTrailingTPValidator::ValidateCustomLevelsString(
+         CustomTPLevels, 
+         errorMsg
+      );
+      
+      if(!isValid)
+      {
+         Print("═══════════════════════════════════════");
+         Print("❌ ERREUR CONFIGURATION TRAILING TP:");
+         Print(errorMsg);
+         Print("═══════════════════════════════════════");
+         Alert("❌ Configuration Trailing TP invalide!\n\n" + errorMsg);
+         return INIT_PARAMETERS_INCORRECT;
+      }
+      
+      Print("✅ Configuration Trailing TP validée!");
+      
+      // Afficher les niveaux parsés
+      CTrailingTPValidator::PrintParsedLevels(CustomTPLevels);
+      
+      // Créer l'objet Trailing TP
+      trailingTP = new CTrailingTP(TRAILING_TP_MODE, CustomTPLevels);
+      
+      if(trailingTP == NULL)
+      {
+         Print("❌ Erreur création CTrailingTP");
+         return INIT_FAILED;
+      }
+      
+      Print("✅ Trailing TP System initialisé en mode: ", EnumToString(TRAILING_TP_MODE));
+   }
+   else
+   {
+      Print("ℹ️ Trailing TP Avancé désactivé");
+   }
    
    // ═══ Step 3: Créer AdxScoreTrader ═══
    scoreTrader = new AdxScoreTrader(
@@ -192,6 +243,13 @@ void OnDeinit(const int reason)
 {
    Print("🔄 Deinitializing ADX Score Master...");
    
+   if(trailingTP != NULL)
+   {
+      delete trailingTP;
+      trailingTP = NULL;
+      Print("✅ Trailing TP System cleaned up");
+   }
+   
    if(scoreTrader != NULL)
    {
       delete scoreTrader;
@@ -258,9 +316,16 @@ void OnTick()
       scoreTrader.CheckTradingSignals();
    }
 
-   // Appliquer le trailing stop (toujours actif)
-   if(scoreTrader != NULL)
+   // Gérer le Trailing TP Avancé ou Standard
+   if(USE_ADVANCED_TRAILING_TP && trailingTP != NULL)
+   {
+      ManageAdvancedTrailingTP();
+   }
+   else if(scoreTrader != NULL)
+   {
+      // Trailing standard si Trailing TP avancé désactivé
       scoreTrader.TrailingStop();
+   }
    
    // Mettre à jour le statut global moins souvent
    DisplayGlobalStatus();
@@ -445,8 +510,107 @@ void DisplayGlobalStatus()
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
    statusLines[2] = StringFormat("Bal: %.2f", balance);
    
+   // Ligne 4: Statut Trailing TP (si actif)
+   if(USE_ADVANCED_TRAILING_TP && trailingTP != NULL)
+   {
+      ArrayResize(statusLines, 4);
+      statusLines[3] = trailingTP.GetStatusInfo();
+   }
+   
    // Police agrandie de 9 à 10
    chartManager.ShowMultiLineInfo(statusLines, CORNER_LEFT_LOWER, 10, 30, 20, clrDeepSkyBlue, 10, "GlobalStatus");
+}
+
+//+------------------------------------------------------------------+
+//| Gérer le Trailing TP Avancé sur toutes les positions           |
+//+------------------------------------------------------------------+
+void ManageAdvancedTrailingTP()
+{
+   if(trailingTP == NULL) return;
+   
+   // Parcourir toutes les positions de notre Magic Number
+   int total = PositionsTotal();
+   
+   for(int i = total - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket <= 0) continue;
+      
+      // Vérifier si c'est notre position
+      if(PositionGetInteger(POSITION_MAGIC) != MAGIC_NUMBER) continue;
+      if(PositionGetString(POSITION_SYMBOL) != SYMBOL) continue;
+      
+      // Récupérer les données de position
+      double entryPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      double currentSL = PositionGetDouble(POSITION_SL);
+      double currentTP = PositionGetDouble(POSITION_TP);
+      double currentPrice = PositionGetDouble(POSITION_PRICE_CURRENT);
+      bool isBuy = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
+      
+      // Vérifier si le Trailing TP est déjà initialisé pour cette position
+      static ulong lastTicket = 0;
+      static bool isInitialized = false;
+      
+      if(ticket != lastTicket)
+      {
+         // Nouvelle position - initialiser le Trailing TP
+         if(trailingTP.Initialize(entryPrice, currentSL, currentTP, isBuy))
+         {
+            Print(StringFormat(
+               "🎯 Trailing TP initialisé pour ticket #%I64u | Entry: %.5f | SL: %.5f | TP: %.5f",
+               ticket, entryPrice, currentSL, currentTP
+            ));
+            isInitialized = true;
+         }
+         else
+         {
+            Print("❌ Échec initialisation Trailing TP pour ticket #", ticket);
+            isInitialized = false;
+         }
+         lastTicket = ticket;
+      }
+      
+      if(!isInitialized) continue;
+      
+      // Mettre à jour le Trailing TP
+      double newSL = 0, newTP = 0;
+      if(trailingTP.Update(currentPrice, newSL, newTP))
+      {
+         // Modifier la position
+         MqlTradeRequest request = {};
+         MqlTradeResult result = {};
+         
+         request.action = TRADE_ACTION_SLTP;
+         request.symbol = SYMBOL;
+         request.position = ticket;
+         request.sl = NormalizeDouble(newSL, _Digits);
+         request.tp = NormalizeDouble(newTP, _Digits);
+         
+         if(OrderSend(request, result))
+         {
+            Print(StringFormat(
+               "✅ Trailing TP appliqué #%I64u | Nouveau SL: %.5f | Nouveau TP: %.5f",
+               ticket, newSL, newTP
+            ));
+            
+            // Afficher sur le graphique si activé
+            if(SHOW_TP_STATUS && chartManager != NULL)
+            {
+               string statusInfo = trailingTP.GetStatusInfo();
+               chartManager.ShowTopRightLabel(
+                  "🎯 " + statusInfo, 
+                  clrGold, 
+                  12, 
+                  30  // Y offset ajusté pour ne pas chevaucher le statut principal
+               );
+            }
+         }
+         else
+         {
+            Print("❌ Erreur modification position #", ticket, " - Code: ", result.retcode);
+         }
+      }
+   }
 }
 
 //+------------------------------------------------------------------+
