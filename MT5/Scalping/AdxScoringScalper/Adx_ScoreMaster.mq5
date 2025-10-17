@@ -107,6 +107,16 @@ input string HourBlockMsg = "⏰ TRADING PAUSED - Outside Trading Hours";
 input string DayBlockMsg = "📅 TRADING PAUSED - Outside Trading Days";
 input string BothBlockMsg = "🚫 TRADING PAUSED - Outside Trading Schedule";
 
+input group "=== Time Confirmation System ==="
+input bool USE_TIME_CONFIRMATION = true;           // Activer confirmation temporelle
+input int CONFIRMATION_BARS = 2;                   // Nombre de bougies de confirmation (2-5 recommandé)
+input int MIN_SCORE_PERSISTENCE = 7; // Score minimum à maintenir
+input bool REQUIRE_INCREASING_SCORE = false;       // Exiger score croissant
+input bool USE_HIGHER_TF_CONFIRMATION = false;     // Confirmer sur timeframe supérieur
+input ENUM_TIMEFRAMES HIGHER_TIMEFRAME = PERIOD_M15; // Timeframe de confirmation
+input int HIGHER_TF_MIN_SCORE = 6;                 // Score min sur TF supérieur
+input bool LOG_CONFIRMATION_DETAILS = true;        // Logger détails confirmation
+
 //+------------------------------------------------------------------+
 //| Global Variables                                                 |
 //+------------------------------------------------------------------+
@@ -131,15 +141,33 @@ struct PositionTrailingManager
 PositionTrailingManager g_trailingManagers[];
 
 //+------------------------------------------------------------------+
+//| Structure pour l'historique des scores                          |
+//+------------------------------------------------------------------+
+struct ScoreHistory
+{
+   datetime barTime;      // Heure de la bougie
+   int buyScore;          // Score BUY
+   int sellScore;         // Score SELL
+   bool buySignal;        // Signal BUY actif
+   bool sellSignal;       // Signal SELL actif
+};
+
+// Historique global des scores
+ScoreHistory g_scoreHistory[];
+int g_historySize = 10; // Garder les 10 dernières bougies
+
+//+------------------------------------------------------------------+
 //| Variables pour l'optimisation des performances                  |
 //+------------------------------------------------------------------+
 datetime g_lastVisualUpdate = 0;        // Dernière mise à jour visuelle
 datetime g_lastStatusUpdate = 0;        // Dernière mise à jour du statut
 datetime g_lastCleanup = 0;             // Dernier nettoyage des labels
-const int VISUAL_UPDATE_INTERVAL = 1;   // 1 second between visual updates (was 500ms, adjusted for real-time feel)
-const int STATUS_UPDATE_INTERVAL = 2;   // 2 seconds between status updates
-const int CLEANUP_INTERVAL = 30;        // 30 seconds between cleanups
-const int TRAILING_CLEANUP_INTERVAL = 10; // 10 seconds between Trailing TP cleanups
+datetime g_lastTrailingUpdate = 0;        // NOUVEAU: Pour throttler Trailing TP
+const int VISUAL_UPDATE_INTERVAL = 3;   // 3 secondes au lieu de 1
+const int STATUS_UPDATE_INTERVAL = 5;   // 5 secondes au lieu de 2
+const int CLEANUP_INTERVAL = 60;        // 60 secondes au lieu de 30
+const int TRAILING_CLEANUP_INTERVAL = 15; // 15 secondes au lieu de 10
+const int TRAILING_UPDATE_INTERVAL = 1;   // NOUVEAU: Throttling pour Trailing TP
 
 //+------------------------------------------------------------------+
 //| Constantes pour la gestion des erreurs                          |
@@ -359,6 +387,10 @@ void OnDeinit(const int reason)
    ArrayResize(g_trailingManagers, 0);
    Print("✅ Tous les objets Trailing TP nettoyés");
    
+   // Nettoyer l'historique des scores
+   ArrayResize(g_scoreHistory, 0);
+   Print("✅ Historique des scores nettoyé");
+   
    
    if(scoreTrader != NULL)
    {
@@ -403,6 +435,269 @@ int GetSessionEndHour(ENUM_TRADING_SESSION session)
 }
 
 //+------------------------------------------------------------------+
+//| Ajouter un score à l'historique                                 |
+//+------------------------------------------------------------------+
+void AddScoreToHistory(int buyScore, int sellScore)
+{
+   datetime currentBarTime = iTime(SYMBOL, TIMEFRAME, 0);
+   
+   // Vérifier si c'est une nouvelle barre
+   if(ArraySize(g_scoreHistory) > 0 && g_scoreHistory[ArraySize(g_scoreHistory)-1].barTime == currentBarTime)
+   {
+      // Mettre à jour la dernière entrée (même bougie)
+      g_scoreHistory[ArraySize(g_scoreHistory)-1].buyScore = buyScore;
+      g_scoreHistory[ArraySize(g_scoreHistory)-1].sellScore = sellScore;
+      g_scoreHistory[ArraySize(g_scoreHistory)-1].buySignal = (buyScore >= MIN_SCORE_PERSISTENCE);
+      g_scoreHistory[ArraySize(g_scoreHistory)-1].sellSignal = (sellScore >= MIN_SCORE_PERSISTENCE);
+      return;
+   }
+   
+   // Ajouter nouvelle entrée (nouvelle bougie)
+   int newSize = ArraySize(g_scoreHistory) + 1;
+   ArrayResize(g_scoreHistory, newSize);
+   
+   g_scoreHistory[newSize-1].barTime = currentBarTime;
+   g_scoreHistory[newSize-1].buyScore = buyScore;
+   g_scoreHistory[newSize-1].sellScore = sellScore;
+   g_scoreHistory[newSize-1].buySignal = (buyScore >= MIN_SCORE_PERSISTENCE);
+   g_scoreHistory[newSize-1].sellSignal = (sellScore >= MIN_SCORE_PERSISTENCE);
+   
+   // Limiter la taille de l'historique
+   if(ArraySize(g_scoreHistory) > g_historySize)
+   {
+      ArrayRemove(g_scoreHistory, 0, 1);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Vérifier la confirmation temporelle BUY                         |
+//+------------------------------------------------------------------+
+bool CheckBuyTimeConfirmation(int currentBuyScore)
+{
+   if(!USE_TIME_CONFIRMATION) return true;
+   
+   int historySize = ArraySize(g_scoreHistory);
+   if(historySize < CONFIRMATION_BARS)
+   {
+      if(LOG_CONFIRMATION_DETAILS)
+         Print("⏳ Confirmation BUY: Historique insuffisant (", historySize, "/", CONFIRMATION_BARS, ")");
+      return false;
+   }
+   
+   int consecutiveBars = 0;
+   int lastScore = currentBuyScore;
+   
+   // Parcourir l'historique du plus récent au plus ancien
+   for(int i = historySize - 1; i >= 0 && consecutiveBars < CONFIRMATION_BARS; i--)
+   {
+      if(g_scoreHistory[i].buySignal && g_scoreHistory[i].buyScore >= MIN_SCORE_PERSISTENCE)
+      {
+         // Si on exige un score croissant
+         if(REQUIRE_INCREASING_SCORE && i < historySize - 1)
+         {
+            if(g_scoreHistory[i].buyScore >= lastScore)
+            {
+               consecutiveBars++;
+               lastScore = g_scoreHistory[i].buyScore;
+            }
+            else
+            {
+               break; // Score décroissant, arrêter
+            }
+         }
+         else
+         {
+            consecutiveBars++;
+            lastScore = g_scoreHistory[i].buyScore;
+         }
+      }
+      else
+      {
+         break; // Signal interrompu
+      }
+   }
+   
+   bool confirmed = (consecutiveBars >= CONFIRMATION_BARS);
+   
+   if(LOG_CONFIRMATION_DETAILS)
+   {
+      Print(StringFormat(
+         "🔍 Confirmation BUY: %d/%d bougies | Score actuel: %d | %s",
+         consecutiveBars, CONFIRMATION_BARS, currentBuyScore,
+         confirmed ? "✅ CONFIRMÉ" : "❌ EN ATTENTE"
+      ));
+   }
+   
+   return confirmed;
+}
+
+//+------------------------------------------------------------------+
+//| Vérifier la confirmation temporelle SELL                        |
+//+------------------------------------------------------------------+
+bool CheckSellTimeConfirmation(int currentSellScore)
+{
+   if(!USE_TIME_CONFIRMATION) return true;
+   
+   int historySize = ArraySize(g_scoreHistory);
+   if(historySize < CONFIRMATION_BARS)
+   {
+      if(LOG_CONFIRMATION_DETAILS)
+         Print("⏳ Confirmation SELL: Historique insuffisant (", historySize, "/", CONFIRMATION_BARS, ")");
+      return false;
+   }
+   
+   int consecutiveBars = 0;
+   int lastScore = currentSellScore;
+   
+   for(int i = historySize - 1; i >= 0 && consecutiveBars < CONFIRMATION_BARS; i--)
+   {
+      if(g_scoreHistory[i].sellSignal && g_scoreHistory[i].sellScore >= MIN_SCORE_PERSISTENCE)
+      {
+         if(REQUIRE_INCREASING_SCORE && i < historySize - 1)
+         {
+            if(g_scoreHistory[i].sellScore >= lastScore)
+            {
+               consecutiveBars++;
+               lastScore = g_scoreHistory[i].sellScore;
+            }
+            else
+            {
+               break;
+            }
+         }
+         else
+         {
+            consecutiveBars++;
+            lastScore = g_scoreHistory[i].sellScore;
+         }
+      }
+      else
+      {
+         break;
+      }
+   }
+   
+   bool confirmed = (consecutiveBars >= CONFIRMATION_BARS);
+   
+   if(LOG_CONFIRMATION_DETAILS)
+   {
+      Print(StringFormat(
+         "🔍 Confirmation SELL: %d/%d bougies | Score actuel: %d | %s",
+         consecutiveBars, CONFIRMATION_BARS, currentSellScore,
+         confirmed ? "✅ CONFIRMÉ" : "❌ EN ATTENTE"
+      ));
+   }
+   
+   return confirmed;
+}
+
+//+------------------------------------------------------------------+
+//| Confirmer sur timeframe supérieur                               |
+//+------------------------------------------------------------------+
+bool CheckHigherTimeframeConfirmation(bool isBuySignal)
+{
+   if(!USE_HIGHER_TF_CONFIRMATION) return true;
+   
+   // Créer un trader temporaire sur le TF supérieur
+   AdxScoreTrader* higherTFTrader = new AdxScoreTrader(
+      SYMBOL,
+      MAGIC_NUMBER,
+      HIGHER_TIMEFRAME,
+      HIGHER_TF_MIN_SCORE,
+      SCORE_HIGH_CONFIDENCE,
+      RISK_PERCENT_NORMAL,
+      RISK_PERCENT_HIGH,
+      SL_POINTS,
+      TP_MULTIPLIER,
+      MAX_POSITIONS,
+      ADX_PERIOD,
+      RSI_PERIOD,
+      MA_PERIOD,
+      MA_METHOD,
+      false, // USE_TRAILING
+      0,     // TRAILING_START
+      0,     // TRAILING_STEP
+      USE_VOLATILITY_FILTER,
+      ATR_PERIOD,
+      MIN_VOLATILITY_RATIO,
+      MAX_VOLATILITY_RATIO,
+      false, // USE_DYNAMIC_LOTS
+      false, // LOG_LOT_CALCULATION
+      ADX_THRESHOLD_WEAK,
+      ADX_THRESHOLD_MODERATE,
+      ADX_THRESHOLD_STRONG,
+      ADX_THRESHOLD_VERY_STRONG,
+      false, // USE_DYNAMIC_EXIT
+      0,     // EXIT_SCORE_THRESHOLD
+      0      // MIN_PROFIT_POINTS_EXIT
+   );
+   
+   if(!higherTFTrader.Initialize())
+   {
+      Print("❌ Erreur initialisation trader TF supérieur");
+      delete higherTFTrader;
+      return false;
+   }
+   
+   higherTFTrader.UpdateScoresOnly();
+   
+   bool confirmed = false;
+   if(isBuySignal)
+      confirmed = (higherTFTrader.GetBuyScore() >= HIGHER_TF_MIN_SCORE);
+   else
+      confirmed = (higherTFTrader.GetSellScore() >= HIGHER_TF_MIN_SCORE);
+   
+   if(LOG_CONFIRMATION_DETAILS)
+   {
+      Print(StringFormat(
+         "📊 TF Supérieur (%s): %s Score=%d | %s",
+         EnumToString(HIGHER_TIMEFRAME),
+         isBuySignal ? "BUY" : "SELL",
+         isBuySignal ? higherTFTrader.GetBuyScore() : higherTFTrader.GetSellScore(),
+         confirmed ? "✅ CONFIRMÉ" : "❌ REJETÉ"
+      ));
+   }
+   
+   delete higherTFTrader;
+   return confirmed;
+}
+
+//+------------------------------------------------------------------+
+//| Obtenir le statut de confirmation pour l'affichage              |
+//+------------------------------------------------------------------+
+string GetConfirmationStatus()
+{
+   if(!USE_TIME_CONFIRMATION) return "";
+   
+   int historySize = ArraySize(g_scoreHistory);
+   if(historySize == 0) return "⏳ En attente...";
+   
+   // Compter les bougies de confirmation actuelles
+   int buyBars = 0, sellBars = 0;
+   
+   for(int i = historySize - 1; i >= 0 && (buyBars < CONFIRMATION_BARS || sellBars < CONFIRMATION_BARS); i--)
+   {
+      if(g_scoreHistory[i].buySignal && buyBars < CONFIRMATION_BARS)
+         buyBars++;
+      else if(buyBars > 0)
+         break;
+         
+      if(g_scoreHistory[i].sellSignal && sellBars < CONFIRMATION_BARS)
+         sellBars++;
+      else if(sellBars > 0)
+         break;
+   }
+   
+   string status = "";
+   if(buyBars > 0)
+      status += StringFormat("🟢 %d/%d ", buyBars, CONFIRMATION_BARS);
+   if(sellBars > 0)
+      status += StringFormat("🔴 %d/%d", sellBars, CONFIRMATION_BARS);
+   
+   return status != "" ? status : "⚪ Aucun";
+}
+
+//+------------------------------------------------------------------+
 //| Expert tick function                                             |
 //+------------------------------------------------------------------+
 void OnTick()
@@ -430,6 +725,12 @@ void OnTick()
    if(isNewBar)
    {
       scoreTrader.UpdateScoresOnly();
+      
+      // ✨ NOUVEAU: Ajouter les scores à l'historique pour confirmation temporelle
+      if(USE_TIME_CONFIRMATION)
+      {
+         AddScoreToHistory(scoreTrader.GetBuyScore(), scoreTrader.GetSellScore());
+      }
    }
    
    // SÉPARÉ: Update visuels selon throttling (indépendant des nouvelles barres)
@@ -453,10 +754,47 @@ void OnTick()
       }
    }
 
-   // Si trading autorisé ET nouvelle barre : vérifier les signaux
+   // Si trading autorisé ET nouvelle barre : vérifier les signaux AVEC confirmation
    if(tradingAllowed && isNewBar)
    {
-      scoreTrader.CheckTradingSignals();
+      if(USE_TIME_CONFIRMATION)
+      {
+         // ✨ Vérifier avec confirmation temporelle
+         int buyScore = scoreTrader.GetBuyScore();
+         int sellScore = scoreTrader.GetSellScore();
+         
+         bool buyConfirmed = false;
+         bool sellConfirmed = false;
+         
+         // Étape 1 : Vérifier confirmation sur plusieurs bougies
+         if(buyScore >= SCORE_MIN_ENTRY)
+            buyConfirmed = CheckBuyTimeConfirmation(buyScore);
+         
+         if(sellScore >= SCORE_MIN_ENTRY)
+            sellConfirmed = CheckSellTimeConfirmation(sellScore);
+         
+         // Étape 2 : Vérifier timeframe supérieur si activé
+         if(buyConfirmed && USE_HIGHER_TF_CONFIRMATION)
+            buyConfirmed = CheckHigherTimeframeConfirmation(true);
+         
+         if(sellConfirmed && USE_HIGHER_TF_CONFIRMATION)
+            sellConfirmed = CheckHigherTimeframeConfirmation(false);
+         
+         // Étape 3 : Exécuter uniquement si confirmé
+         if(buyConfirmed || sellConfirmed)
+         {
+            scoreTrader.CheckTradingSignals();
+         }
+         else if(LOG_CONFIRMATION_DETAILS)
+         {
+            Print("⏸️ Signal en attente de confirmation temporelle");
+         }
+      }
+      else
+      {
+         // Sans confirmation : exécution directe (comportement original)
+         scoreTrader.CheckTradingSignals();
+      }
    }
 
    // ✨ NOUVEAU : Vérifier sortie dynamique à CHAQUE tick (même sans nouvelle barre)
@@ -530,15 +868,16 @@ void OnTick()
       }
    }
 
-   // Gérer le Trailing TP Avancé ou Standard
-   if(USE_ADVANCED_TRAILING_TP)
+   // Gérer le Trailing TP Avancé ou Standard avec throttling
+   if(USE_ADVANCED_TRAILING_TP && (currentTime - g_lastTrailingUpdate >= TRAILING_UPDATE_INTERVAL))
    {
       ManageAdvancedTrailingTP();
+      g_lastTrailingUpdate = currentTime;
    }
-   else if(USE_TRAILING && scoreTrader != NULL)
+   else if(USE_TRAILING && scoreTrader != NULL && (currentTime - g_lastTrailingUpdate >= TRAILING_UPDATE_INTERVAL))
    {
-      // Trailing standard uniquement si Trailing TP avancé désactivé
       scoreTrader.TrailingStop();
+      g_lastTrailingUpdate = currentTime;
    }
 }
 
@@ -555,13 +894,7 @@ void UpdateAllVisuals()
    // Mettre à jour le breakdown du score
    DisplayScoreBreakdown();
    
-   // Mettre à jour le statut global (avec throttling)
-   datetime currentTime = TimeCurrent();
-   if(currentTime - g_lastStatusUpdate >= STATUS_UPDATE_INTERVAL)
-   {
-      DisplayGlobalStatus();
-      g_lastStatusUpdate = currentTime;
-   }
+   // DisplayGlobalStatus() SUPPRIMÉ pour performance
 }
 
 //+------------------------------------------------------------------+
@@ -656,6 +989,18 @@ void UpdateChartDisplay()
       indicators[9] = sessionStatus;
    }
    
+   // ✨ NOUVEAU: Afficher statut de confirmation temporelle
+   if(USE_TIME_CONFIRMATION)
+   {
+      string confirmStatus = GetConfirmationStatus();
+      if(confirmStatus != "")
+      {
+         int currentSize = ArraySize(indicators);
+         ArrayResize(indicators, currentSize + 1);
+         indicators[currentSize] = "Confirm: " + confirmStatus;
+      }
+   }
+   
    // Couleur dynamique selon signal
    color indColor = clrWhite;
    if(buyScore >= SCORE_MIN_ENTRY) indColor = clrLimeGreen;
@@ -724,71 +1069,14 @@ void DisplayScoreBreakdown()
 }
 
 //+------------------------------------------------------------------+
-//| Afficher le statut global                                       |
+//| Afficher le statut global - DÉSACTIVÉ POUR PERFORMANCE         |
 //+------------------------------------------------------------------+
+// FONCTION SUPPRIMÉE: Affichage temps/balance inutile et coûteux
+// Si nécessaire, réactiver avec throttling plus important (10+ secondes)
 void DisplayGlobalStatus()
 {
-   if(chartManager == NULL || scoreTrader == NULL || timeManager == NULL) return;
-   
-   string statusLines[];
-   int lineCount = 3;
-   
-   // Vérifier si on approche de la fin de session
-   bool showEndWarning = false;
-   if(CLOSE_ALL_AT_SESSION_END && SHInput != 0 && EHInput != 0)
-   {
-      MqlDateTime dt;
-      TimeToStruct(TimeCurrent(), dt);
-      
-      int currentMinutes = dt.hour * 60 + dt.min;
-      int endMinutes = EHInput * 60;
-      int minutesUntilEnd = endMinutes - currentMinutes;
-      
-      if(minutesUntilEnd >= 0 && minutesUntilEnd <= MINUTES_BEFORE_SESSION_END)
-      {
-         showEndWarning = true;
-         lineCount = 4; // Ajouter une ligne
-      }
-   }
-   
-   ArrayResize(statusLines, lineCount);
-   
-   // Ligne 1: Statut trading
-   string tradingStatus = timeManager.IsTradingAllowed() ? "🟢 ACTIVE" : "🔴 PAUSED";
-   statusLines[0] = "Status: " + tradingStatus;
-   
-   // Ligne 2: Heure actuelle
-   MqlDateTime dt;
-   TimeToStruct(TimeCurrent(), dt);
-   string sessionInfo = "";
-   if(UseSessionFilter)
-   {
-      sessionInfo = " | Session: " + IntegerToString(AllowedSession);
-      if(!timeManager.IsTradingAllowed())
-         sessionInfo += " 🔒";
-   }
-   statusLines[1] = StringFormat("Time: %02d:%02d%s", dt.hour, dt.min, sessionInfo);
-   
-   // Ligne 3: Balance
-   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
-   statusLines[2] = StringFormat("Bal: %.2f", balance);
-   
-   // Ligne 4 (optionnelle): Warning fin de session
-   if(showEndWarning)
-   {
-      int currentMinutes = dt.hour * 60 + dt.min;
-      int endMinutes = EHInput * 60;
-      int minutesUntilEnd = endMinutes - currentMinutes;
-      
-      statusLines[3] = StringFormat("⚠️ CLOSING IN %d MIN", minutesUntilEnd);
-   }
-   
-   // Couleur selon l'état
-   color statusColor = clrDeepSkyBlue;
-   if(showEndWarning)
-      statusColor = clrOrange;
-   
-   chartManager.ShowMultiLineInfo(statusLines, CORNER_LEFT_LOWER, 10, 30, 20, statusColor, 10, "GlobalStatus");
+   // FONCTION DÉSACTIVÉE POUR OPTIMISATION PERFORMANCE
+   return;
 }
 
 //+------------------------------------------------------------------+

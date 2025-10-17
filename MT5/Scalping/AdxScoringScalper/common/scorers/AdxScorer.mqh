@@ -134,18 +134,7 @@ public:
       
       // ═══ STEP 2: Apply momentum adjustment ═══
       int momentum = GetADXMomentum();
-      
-      if(momentum > 0)
-      {
-         // ADX ACCELERATING: current > prev > prev2
-         // Example: ADX 22 → 25 → 28
-         // Bonus: +2 points (strong signal)
-         score += 2;
-         
-         // Optional: Log for monitoring
-         // Print("✅ ADX Momentum Bonus: ", GetMomentumDescription());
-      }
-      else if(momentum < 0)
+      if(momentum < 0)
       {
          // ADX DECELERATING: current < prev < prev2
          // Example: ADX 35 → 30 → 26
