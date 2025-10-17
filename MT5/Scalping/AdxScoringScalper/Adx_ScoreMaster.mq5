@@ -1,10 +1,16 @@
 //+------------------------------------------------------------------+
 //|                                        Adx_ScoreMaster.mq5       |
-//|                   ADX Score Master v2.0 - Refactorisé            |
+//|                   ADX Score Master v2.1 - Optimisé & Sécurisé    |
 //|                   Utilise ChartManager et TradingTimeManager     |
+//|                                                                  |
+//| AMÉLIORATIONS v2.1:                                              |
+//| ✅ Bug Trailing TP multi-positions corrigé                       |
+//| ✅ Performance OnTick() optimisée (throttling intelligent)       |
+//| ✅ Gestion d'erreurs robuste avec retry logic                    |
+//| ✅ Architecture sécurisée pour plusieurs positions simultanées   |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025"
-#property version   "2.0"
+#property version   "2.1"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -83,6 +89,37 @@ ChartManager* chartManager = NULL;
 TradingTimeManager* timeManager = NULL;
 CTrailingTP* trailingTP = NULL;
 AdxScoreTrader* scoreTrader = NULL;
+
+//+------------------------------------------------------------------+
+//| Structure pour gérer l'état du Trailing TP par position         |
+//+------------------------------------------------------------------+
+struct PositionTrailingState
+{
+   ulong ticket;
+   bool isInitialized;
+   datetime lastUpdate;
+   double lastSL;
+   double lastTP;
+};
+
+// Array pour stocker l'état de toutes les positions
+PositionTrailingState g_trailingStates[];
+
+//+------------------------------------------------------------------+
+//| Variables pour l'optimisation des performances                  |
+//+------------------------------------------------------------------+
+datetime g_lastVisualUpdate = 0;        // Dernière mise à jour visuelle
+datetime g_lastStatusUpdate = 0;        // Dernière mise à jour du statut
+datetime g_lastCleanup = 0;             // Dernier nettoyage des labels
+const int VISUAL_UPDATE_INTERVAL = 500; // 500ms entre les updates visuels
+const int STATUS_UPDATE_INTERVAL = 2000; // 2s entre les updates de statut
+const int CLEANUP_INTERVAL = 30000;     // 30s entre les nettoyages
+
+//+------------------------------------------------------------------+
+//| Constantes pour la gestion des erreurs                          |
+//+------------------------------------------------------------------+
+const int MAX_RETRY_ATTEMPTS = 3;       // Nombre max de tentatives
+const int RETRY_DELAY_MS = 100;         // Délai entre les tentatives
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -308,14 +345,14 @@ void OnTick()
         return;
    }
    
-   // MODIFIÉ: Nettoyage moins fréquent pour éviter les saccades
-   static int cleanupTick = 0;
-   cleanupTick++;
-   if(cleanupTick % 50000 == 0)  // De 10000 à 50000
+   datetime currentTime = TimeCurrent();
+   
+   // OPTIMISÉ: Nettoyage basé sur le temps réel au lieu d'un compteur de ticks
+   if(currentTime - g_lastCleanup >= CLEANUP_INTERVAL)
    {
       Print("🧹 Nettoyage périodique des labels...");
       chartManager.ClearLabels();
-      Sleep(50);  // Réduit de 100 à 50ms
+      g_lastCleanup = currentTime;
    }
    
    // Vérifier si c'est une nouvelle barre (UNE SEULE vérification)
@@ -326,8 +363,12 @@ void OnTick()
    {
       scoreTrader.UpdateScoresOnly();
       
-      // Mettre à jour l'affichage
-      UpdateChartDisplay();
+      // OPTIMISÉ: Mettre à jour l'affichage avec throttling
+      if(currentTime - g_lastVisualUpdate >= VISUAL_UPDATE_INTERVAL)
+      {
+         UpdateAllVisuals();
+         g_lastVisualUpdate = currentTime;
+      }
    }
 
    // Vérifier si le trading est autorisé (tous les filtres via TradingTimeManager)
@@ -337,10 +378,10 @@ void OnTick()
    if(!tradingAllowed)
    {
       static datetime lastLog = 0;
-      if(TimeCurrent() - lastLog > 60)  // Log toutes les 60 secondes max
+      if(currentTime - lastLog > 60)  // Log toutes les 60 secondes max
       {
          Print("⏸️ Trading bloqué par filtres: ", timeManager.GetStatusDescription());
-         lastLog = TimeCurrent();
+         lastLog = currentTime;
       }
    }
 
@@ -360,9 +401,28 @@ void OnTick()
       // Trailing standard si Trailing TP avancé désactivé
       scoreTrader.TrailingStop();
    }
+}
+
+//+------------------------------------------------------------------+
+//| Fonction centralisée pour gérer tous les updates visuels        |
+//+------------------------------------------------------------------+
+void UpdateAllVisuals()
+{
+   if(chartManager == NULL || scoreTrader == NULL) return;
    
-   // Mettre à jour le statut global moins souvent
-   DisplayGlobalStatus();
+   // Mettre à jour l'affichage principal
+   UpdateChartDisplay();
+   
+   // Mettre à jour le breakdown du score
+   DisplayScoreBreakdown();
+   
+   // Mettre à jour le statut global (avec throttling)
+   datetime currentTime = TimeCurrent();
+   if(currentTime - g_lastStatusUpdate >= STATUS_UPDATE_INTERVAL)
+   {
+      DisplayGlobalStatus();
+      g_lastStatusUpdate = currentTime;
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -534,12 +594,6 @@ void DisplayGlobalStatus()
 {
    if(chartManager == NULL || scoreTrader == NULL || timeManager == NULL) return;
    
-   static int statusTick = 0;
-   statusTick++;
-   
-   // Garder une fréquence réduite pour balance/time (toutes les 100 ticks au lieu de 300)
-   if(statusTick % 100 != 0) return;
-   
    string statusLines[];
    ArrayResize(statusLines, 3);
    
@@ -575,36 +629,229 @@ void DisplayGlobalStatus()
 }
 
 //+------------------------------------------------------------------+
-//| Gérer le Trailing TP Avancé sur toutes les positions           |
+//| Fonctions de gestion d'erreurs robustes                         |
 //+------------------------------------------------------------------+
-void ManageAdvancedTrailingTP()
+
+//+------------------------------------------------------------------+
+//| Wrapper sécurisé pour PositionGetTicket avec validation         |
+//+------------------------------------------------------------------+
+ulong SafeGetPositionTicket(int index)
 {
-   if(trailingTP == NULL) return;
-   
-   // Parcourir toutes les positions de notre Magic Number
-   int total = PositionsTotal();
-   
-   for(int i = total - 1; i >= 0; i--)
+   if(index < 0 || index >= PositionsTotal())
    {
-      ulong ticket = PositionGetTicket(i);
+      Print("❌ Index de position invalide: ", index);
+      return 0;
+   }
+   
+   ulong ticket = PositionGetTicket(index);
+   if(ticket <= 0)
+   {
+      Print("❌ Ticket de position invalide à l'index: ", index);
+      return 0;
+   }
+   
+   return ticket;
+}
+
+//+------------------------------------------------------------------+
+//| Wrapper sécurisé pour OrderSend avec retry logic                |
+//+------------------------------------------------------------------+
+bool SafeOrderSend(MqlTradeRequest& request, MqlTradeResult& result, string operation = "OrderSend")
+{
+   for(int attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++)
+   {
+      if(OrderSend(request, result))
+      {
+         if(attempt > 1)
+         {
+            Print("✅ ", operation, " réussi après ", attempt, " tentatives");
+         }
+         return true;
+      }
+      
+      // Log de l'erreur
+      Print("❌ ", operation, " échoué (tentative ", attempt, "/", MAX_RETRY_ATTEMPTS, ") - Code: ", result.retcode, " - Comment: ", result.comment);
+      
+      // Délai avant retry (sauf pour la dernière tentative)
+      if(attempt < MAX_RETRY_ATTEMPTS)
+      {
+         Sleep(RETRY_DELAY_MS);
+      }
+   }
+   
+   Print("❌ ", operation, " définitivement échoué après ", MAX_RETRY_ATTEMPTS, " tentatives");
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Validation des données de position                              |
+//+------------------------------------------------------------------+
+bool ValidatePositionData(ulong ticket, double& entryPrice, double& currentSL, double& currentTP, double& currentPrice, bool& isBuy)
+{
+   // Vérifier le ticket
+   if(ticket <= 0)
+   {
+      Print("❌ Ticket invalide: ", ticket);
+      return false;
+   }
+   
+   // Récupérer les données avec validation
+   entryPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+   if(entryPrice <= 0)
+   {
+      Print("❌ Prix d'entrée invalide pour ticket #", ticket, ": ", entryPrice);
+      return false;
+   }
+   
+   currentSL = PositionGetDouble(POSITION_SL);
+   currentTP = PositionGetDouble(POSITION_TP);
+   currentPrice = PositionGetDouble(POSITION_PRICE_CURRENT);
+   
+   if(currentPrice <= 0)
+   {
+      Print("❌ Prix actuel invalide pour ticket #", ticket, ": ", currentPrice);
+      return false;
+   }
+   
+   ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+   isBuy = (posType == POSITION_TYPE_BUY);
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Fonctions utilitaires pour gérer l'état du Trailing TP          |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Trouver l'index d'une position dans l'array des états           |
+//+------------------------------------------------------------------+
+int FindPositionStateIndex(ulong ticket)
+{
+   for(int i = 0; i < ArraySize(g_trailingStates); i++)
+   {
+      if(g_trailingStates[i].ticket == ticket)
+         return i;
+   }
+   return -1; // Non trouvé
+}
+
+//+------------------------------------------------------------------+
+//| Ajouter ou mettre à jour l'état d'une position                  |
+//+------------------------------------------------------------------+
+void UpdatePositionState(ulong ticket, bool isInitialized, double lastSL = 0, double lastTP = 0)
+{
+   int index = FindPositionStateIndex(ticket);
+   
+   if(index >= 0)
+   {
+      // Mettre à jour l'état existant
+      g_trailingStates[index].isInitialized = isInitialized;
+      g_trailingStates[index].lastUpdate = TimeCurrent();
+      g_trailingStates[index].lastSL = lastSL;
+      g_trailingStates[index].lastTP = lastTP;
+   }
+   else
+   {
+      // Ajouter un nouvel état
+      int newSize = ArraySize(g_trailingStates) + 1;
+      ArrayResize(g_trailingStates, newSize);
+      
+      g_trailingStates[newSize-1].ticket = ticket;
+      g_trailingStates[newSize-1].isInitialized = isInitialized;
+      g_trailingStates[newSize-1].lastUpdate = TimeCurrent();
+      g_trailingStates[newSize-1].lastSL = lastSL;
+      g_trailingStates[newSize-1].lastTP = lastTP;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Nettoyer les états des positions fermées                        |
+//+------------------------------------------------------------------+
+void CleanClosedPositions()
+{
+   // Créer un array temporaire pour les positions actives
+   PositionTrailingState activeStates[];
+   ArrayResize(activeStates, 0);
+   
+   // Parcourir toutes les positions actives
+   int total = PositionsTotal();
+   for(int i = 0; i < total; i++)
+   {
+      // AMÉLIORÉ: Utiliser la fonction sécurisée
+      ulong ticket = SafeGetPositionTicket(i);
       if(ticket <= 0) continue;
       
       // Vérifier si c'est notre position
       if(PositionGetInteger(POSITION_MAGIC) != MAGIC_NUMBER) continue;
       if(PositionGetString(POSITION_SYMBOL) != SYMBOL) continue;
       
-      // Récupérer les données de position
-      double entryPrice = PositionGetDouble(POSITION_PRICE_OPEN);
-      double currentSL = PositionGetDouble(POSITION_SL);
-      double currentTP = PositionGetDouble(POSITION_TP);
-      double currentPrice = PositionGetDouble(POSITION_PRICE_CURRENT);
-      bool isBuy = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
+      // Chercher l'état de cette position
+      int stateIndex = FindPositionStateIndex(ticket);
+      if(stateIndex >= 0)
+      {
+         // Ajouter à l'array des positions actives
+         int newSize = ArraySize(activeStates) + 1;
+         ArrayResize(activeStates, newSize);
+         activeStates[newSize-1] = g_trailingStates[stateIndex];
+      }
+   }
+   
+   // Remplacer l'array global par les positions actives
+   ArrayResize(g_trailingStates, ArraySize(activeStates));
+   for(int i = 0; i < ArraySize(activeStates); i++)
+   {
+      g_trailingStates[i] = activeStates[i];
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Gérer le Trailing TP Avancé sur toutes les positions           |
+//+------------------------------------------------------------------+
+void ManageAdvancedTrailingTP()
+{
+   if(trailingTP == NULL) return;
+   
+   // Nettoyer périodiquement les positions fermées (toutes les 100 ticks)
+   static int cleanupCounter = 0;
+   cleanupCounter++;
+   if(cleanupCounter % 100 == 0)
+   {
+      CleanClosedPositions();
+   }
+   
+   // Parcourir toutes les positions de notre Magic Number
+   int total = PositionsTotal();
+   
+   for(int i = total - 1; i >= 0; i--)
+   {
+      // AMÉLIORÉ: Utiliser la fonction sécurisée
+      ulong ticket = SafeGetPositionTicket(i);
+      if(ticket <= 0) continue;
       
-      // Vérifier si le Trailing TP est déjà initialisé pour cette position
-      static ulong lastTicket = 0;
-      static bool isInitialized = false;
+      // Vérifier si c'est notre position
+      if(PositionGetInteger(POSITION_MAGIC) != MAGIC_NUMBER) continue;
+      if(PositionGetString(POSITION_SYMBOL) != SYMBOL) continue;
       
-      if(ticket != lastTicket)
+      // AMÉLIORÉ: Validation des données de position
+      double entryPrice, currentSL, currentTP, currentPrice;
+      bool isBuy;
+      if(!ValidatePositionData(ticket, entryPrice, currentSL, currentTP, currentPrice, isBuy))
+      {
+         Print("❌ Données de position invalides pour ticket #", ticket);
+         continue;
+      }
+      
+      // Vérifier l'état d'initialisation pour cette position spécifique
+      int stateIndex = FindPositionStateIndex(ticket);
+      bool isInitialized = false;
+      
+      if(stateIndex >= 0)
+      {
+         // Position déjà connue - récupérer son état
+         isInitialized = g_trailingStates[stateIndex].isInitialized;
+      }
+      else
       {
          // Nouvelle position - initialiser le Trailing TP
          if(trailingTP.Initialize(entryPrice, currentSL, currentTP, isBuy))
@@ -620,7 +867,9 @@ void ManageAdvancedTrailingTP()
             Print("❌ Échec initialisation Trailing TP pour ticket #", ticket);
             isInitialized = false;
          }
-         lastTicket = ticket;
+         
+         // Enregistrer l'état de cette nouvelle position
+         UpdatePositionState(ticket, isInitialized, currentSL, currentTP);
       }
       
       if(!isInitialized) continue;
@@ -629,7 +878,17 @@ void ManageAdvancedTrailingTP()
       double newSL = 0, newTP = 0;
       if(trailingTP.Update(currentPrice, newSL, newTP))
       {
-         // Modifier la position
+         // Vérifier si les valeurs ont vraiment changé pour éviter les modifications inutiles
+         if(stateIndex >= 0)
+         {
+            if(MathAbs(newSL - g_trailingStates[stateIndex].lastSL) < _Point * 0.1 &&
+               MathAbs(newTP - g_trailingStates[stateIndex].lastTP) < _Point * 0.1)
+            {
+               continue; // Pas de changement significatif
+            }
+         }
+         
+         // AMÉLIORÉ: Modifier la position avec retry logic
          MqlTradeRequest request = {};
          MqlTradeResult result = {};
          
@@ -639,12 +898,16 @@ void ManageAdvancedTrailingTP()
          request.sl = NormalizeDouble(newSL, _Digits);
          request.tp = NormalizeDouble(newTP, _Digits);
          
-         if(OrderSend(request, result))
+         string operation = StringFormat("Trailing TP #%I64u", ticket);
+         if(SafeOrderSend(request, result, operation))
          {
             Print(StringFormat(
                "✅ Trailing TP appliqué #%I64u | Nouveau SL: %.5f | Nouveau TP: %.5f",
                ticket, newSL, newTP
             ));
+            
+            // Mettre à jour l'état avec les nouvelles valeurs
+            UpdatePositionState(ticket, true, newSL, newTP);
             
             // Afficher sur le graphique si activé
             if(SHOW_TP_STATUS && chartManager != NULL)
@@ -657,10 +920,6 @@ void ManageAdvancedTrailingTP()
                   30  // Y offset ajusté pour ne pas chevaucher le statut principal
                );
             }
-         }
-         else
-         {
-            Print("❌ Erreur modification position #", ticket, " - Code: ", result.retcode);
          }
       }
    }
