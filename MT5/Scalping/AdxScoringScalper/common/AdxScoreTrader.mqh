@@ -242,6 +242,49 @@ public:
    }
 
    //+------------------------------------------------------------------+
+   //| Mettre à jour les scores SANS trader (affichage seulement)      |
+   //+------------------------------------------------------------------+
+   void UpdateScoresOnly()
+   {
+      if(!m_isInitialized) return;
+      
+      // Vérifier nouvelle barre
+      if(!IsNewBar()) return;
+      
+      // Mettre à jour les valeurs des indicateurs
+      UpdateIndicatorValues();
+      
+      // Calculer les scores
+      m_currentBuyScore = CalculateBuyScore();
+      m_currentSellScore = CalculateSellScore();
+      
+      // NE PAS vérifier les signaux de trading ici
+   }
+
+   //+------------------------------------------------------------------+
+   //| Vérifier les signaux de trading                                |
+   //+------------------------------------------------------------------+
+   void CheckTradingSignals()
+   {
+      // Vérifier le nombre de positions
+      if(CountPositions() >= m_maxPositions) return;
+      
+      // Vérifier les signaux BUY
+      if(m_currentBuyScore >= m_scoreMinEntry)
+      {
+         bool highConfidence = (m_currentBuyScore >= m_scoreHighConfidence);
+         OpenBuy(m_currentBuyScore, highConfidence);
+      }
+      
+      // Vérifier les signaux SELL
+      if(m_currentSellScore >= m_scoreMinEntry)
+      {
+         bool highConfidence = (m_currentSellScore >= m_scoreHighConfidence);
+         OpenSell(m_currentSellScore, highConfidence);
+      }
+   }
+
+   //+------------------------------------------------------------------+
    //| Mettre à jour les valeurs des indicateurs                      |
    //+------------------------------------------------------------------+
    void UpdateIndicatorValues()
@@ -399,28 +442,6 @@ public:
       return score;
    }
 
-   //+------------------------------------------------------------------+
-   //| Vérifier les signaux de trading                                |
-   //+------------------------------------------------------------------+
-   void CheckTradingSignals()
-   {
-      // Vérifier le nombre de positions
-      if(CountPositions() >= m_maxPositions) return;
-      
-      // Vérifier les signaux BUY
-      if(m_currentBuyScore >= m_scoreMinEntry)
-      {
-         bool highConfidence = (m_currentBuyScore >= m_scoreHighConfidence);
-         OpenBuy(m_currentBuyScore, highConfidence);
-      }
-      
-      // Vérifier les signaux SELL
-      if(m_currentSellScore >= m_scoreMinEntry)
-      {
-         bool highConfidence = (m_currentSellScore >= m_scoreHighConfidence);
-         OpenSell(m_currentSellScore, highConfidence);
-      }
-   }
 
    //+------------------------------------------------------------------+
    //| Ouvrir position BUY                                            |

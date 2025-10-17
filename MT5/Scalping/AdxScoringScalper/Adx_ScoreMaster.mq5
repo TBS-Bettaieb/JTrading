@@ -227,13 +227,22 @@ void OnTick()
       Sleep(50);  // Réduit de 100 à 50ms
    }
    
+   // Toujours mettre à jour les indicateurs et scores (pour l'affichage)
+   if(scoreTrader != NULL && scoreTrader.IsNewBar())
+   {
+      scoreTrader.UpdateScoresOnly();
+   }
+
    // Vérifier si le trading est autorisé selon le filtre temps
    bool tradingAllowed = timeManager.IsTradingAllowed();
-   
+
    if(tradingAllowed)
    {
-      // Trading autorisé: traiter les signaux
-      scoreTrader.OnTick();
+      // Trading autorisé: vérifier les signaux SEULEMENT
+      if(scoreTrader != NULL && scoreTrader.IsNewBar())
+      {
+         scoreTrader.CheckTradingSignals();
+      }
    }
    
    // Appliquer le trailing stop (toujours actif)
@@ -315,7 +324,7 @@ void UpdateChartDisplay()
    else if(sellScore >= SCORE_MIN_ENTRY) indColor = clrOrangeRed;
    
    // Police agrandie de 9 à 11 - Centré en bas
-   chartManager.ShowMultiLineInfo(indicators, CORNER_LEFT_LOWER, 10, 300, 20, indColor, 11, "Indicators");
+   chartManager.ShowMultiLineInfo(indicators, CORNER_LEFT_LOWER, 200, 30, 20, indColor, 11, "Indicators");
    
    // ═══ Affichage du breakdown du score ═══
    DisplayScoreBreakdown();
