@@ -240,8 +240,11 @@ void OnTick()
    if(scoreTrader != NULL)
       scoreTrader.TrailingStop();
    
-   // Mettre à jour l'affichage PRINCIPAL à chaque tick (temps réel)
-   UpdateChartDisplay();
+   // Mettre à jour l'affichage PRINCIPAL uniquement à chaque nouvelle barre
+   if(scoreTrader != NULL && scoreTrader.IsNewBar())
+   {
+      UpdateChartDisplay();
+   }
    
    // Mettre à jour le statut global moins souvent
    DisplayGlobalStatus();
@@ -273,7 +276,7 @@ void UpdateChartDisplay()
    
    // ═══ Affichage des indicateurs avec couleurs dynamiques ═══
    string indicators[];
-   ArrayResize(indicators, 5);
+   ArrayResize(indicators, 6);
    
    // Titre en Bold
    indicators[0] = "━━━ INDICATORS ━━━";
@@ -303,13 +306,16 @@ void UpdateChartDisplay()
    // Positions
    indicators[4] = StringFormat("Pos: %d/%d", scoreTrader.GetCurrentPositions(), scoreTrader.GetMaxPositions());
    
+   // Scores actuels
+   indicators[5] = StringFormat("Score: BUY[%d] SELL[%d]", buyScore, sellScore);
+   
    // Couleur dynamique selon signal
    color indColor = clrWhite;
    if(buyScore >= SCORE_MIN_ENTRY) indColor = clrLimeGreen;
    else if(sellScore >= SCORE_MIN_ENTRY) indColor = clrOrangeRed;
    
-   // Police agrandie de 9 à 11
-   chartManager.ShowMultiLineInfo(indicators, CORNER_LEFT_UPPER, 10, 100, 20, indColor, 11, "Indicators");
+   // Police agrandie de 9 à 11 - Centré en bas
+   chartManager.ShowMultiLineInfo(indicators, CORNER_LEFT_LOWER, 10, 300, 20, indColor, 11, "Indicators");
    
    // ═══ Affichage du breakdown du score ═══
    DisplayScoreBreakdown();
