@@ -129,10 +129,10 @@ PositionTrailingManager g_trailingManagers[];
 datetime g_lastVisualUpdate = 0;        // Dernière mise à jour visuelle
 datetime g_lastStatusUpdate = 0;        // Dernière mise à jour du statut
 datetime g_lastCleanup = 0;             // Dernier nettoyage des labels
-const int VISUAL_UPDATE_INTERVAL = 500; // 500ms entre les updates visuels
-const int STATUS_UPDATE_INTERVAL = 2000; // 2s entre les updates de statut
-const int CLEANUP_INTERVAL = 30000;     // 30s entre les nettoyages
-const int TRAILING_CLEANUP_INTERVAL = 10; // 10s entre nettoyages Trailing TP (en secondes)
+const int VISUAL_UPDATE_INTERVAL = 1;   // 1 second between visual updates (was 500ms, adjusted for real-time feel)
+const int STATUS_UPDATE_INTERVAL = 2;   // 2 seconds between status updates
+const int CLEANUP_INTERVAL = 30;        // 30 seconds between cleanups
+const int TRAILING_CLEANUP_INTERVAL = 10; // 10 seconds between Trailing TP cleanups
 
 //+------------------------------------------------------------------+
 //| Constantes pour la gestion des erreurs                          |
@@ -469,8 +469,8 @@ void UpdateChartDisplay()
 {
    if(chartManager == NULL || scoreTrader == NULL) return;
    
-   // SUPPRIMÉ: Les compteurs de ticks qui ralentissent
-   // On met à jour à CHAQUE tick pour avoir du temps réel
+   // Note: Cette fonction est appelée selon le throttling défini par VISUAL_UPDATE_INTERVAL
+   // pour optimiser les performances tout en gardant un affichage fluide
    
    // ═══ Affichage du statut principal (haut droite) ═══
    int buyScore = scoreTrader.GetBuyScore();
@@ -955,6 +955,7 @@ void ManageAdvancedTrailingTP()
    }
    
    // NOUVEAU: Afficher un résumé global APRÈS la boucle
+   // Display Trailing TP status BELOW the main status (different Y offset)
    if(SHOW_TP_STATUS && chartManager != NULL && ArraySize(g_trailingManagers) > 0)
    {
       string statusSummary = StringFormat(
@@ -969,7 +970,8 @@ void ManageAdvancedTrailingTP()
          statusSummary += " | " + g_trailingManagers[0].trailingTPObject.GetStatusInfo();
       }
       
-      chartManager.ShowTopRightLabel(statusSummary, clrGold, 12, 30);
+      // Use Y offset of 50 instead of 10/30 to avoid conflict with main status
+      chartManager.ShowTopRightLabel(statusSummary, clrGold, 11, 50);
    }
 }
 

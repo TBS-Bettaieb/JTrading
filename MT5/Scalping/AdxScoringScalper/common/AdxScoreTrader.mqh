@@ -774,9 +774,16 @@ public:
          }
          
          // Protection : Ne sortir que si profit minimum atteint
+         // ET éviter de sortir en perte même si score inverse
          if(profitPoints < m_minProfitPointsExit)
          {
             continue; // Pas assez de profit, on garde la position
+         }
+
+         // Protection supplémentaire : ne JAMAIS sortir dynamiquement en perte
+         if(profitPoints < 0)
+         {
+            continue; // Ne pas fermer en perte, laisser le SL/TP gérer
          }
          
          // Vérifier le renversement de score
