@@ -60,17 +60,6 @@ int CurrentWeekDay()
 //+------------------------------------------------------------------+
 bool IsDayRangeAllowed()
 {
-   // Vérifier si les inputs sont définis (sinon retourner true par défaut)
-   #ifndef UseDayFilter
-      Print("⚠️ WARNING: UseDayFilter not defined in main EA file. Day range filter disabled.");
-      return true;
-   #endif
-   
-   #ifndef DayRanges
-      Print("⚠️ WARNING: DayRanges not defined in main EA file. Day range filter disabled.");
-      return true;
-   #endif
-   
    // Si le filtre est désactivé, autoriser le trading
    if(!UseDayFilter) return true;
    

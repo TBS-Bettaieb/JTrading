@@ -59,17 +59,6 @@ int CurrentHour()
 //+------------------------------------------------------------------+
 bool IsTimeRangeAllowed()
 {
-   // Vérifier si les inputs sont définis (sinon retourner true par défaut)
-   #ifndef UseTimeFilter
-      Print("⚠️ WARNING: UseTimeFilter not defined in main EA file. Time range filter disabled.");
-      return true;
-   #endif
-   
-   #ifndef HourRanges
-      Print("⚠️ WARNING: HourRanges not defined in main EA file. Time range filter disabled.");
-      return true;
-   #endif
-   
    // Si le filtre est désactivé, autoriser le trading
    if(!UseTimeFilter) return true;
    
