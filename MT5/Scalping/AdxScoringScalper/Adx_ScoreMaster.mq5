@@ -12,6 +12,7 @@
 //+------------------------------------------------------------------+
 #include "../../CommonUtils/ChartManager.mqh"
 #include "../../CommonUtils/TradingTimeManager.mqh"
+#include "../../CommonUtils/SessionFilter.mqh"
 #include "../../CommonUtils/TradingUtils.mqh"
 #include "../../CommonUtils/TradingEnums.mqh"
 #include "../../CommonUtils/TrailingTP_System.mqh"
@@ -66,6 +67,11 @@ input group "=== Time Filter ==="
 input int SHInput = 0;                       // Start Hour (0 = disabled)
 input int EHInput = 0;                       // End Hour (0 = disabled)
 
+input group "=== Session Filter ==="
+input bool UseSessionFilter = false;                               // Activer filtre par session
+input ENUM_TRADING_SESSION AllowedSession = SESSION_OVERLAP;      // Session autorisée
+input int AvoidOpeningMinutes = 30;                               // Minutes à éviter à l'ouverture
+
 input group "=== Alert Messages ==="
 input string HourBlockMsg = "⏰ TRADING PAUSED - Outside Trading Hours";
 input string DayBlockMsg = "📅 TRADING PAUSED - Outside Trading Days";
@@ -76,6 +82,7 @@ input string BothBlockMsg = "🚫 TRADING PAUSED - Outside Trading Schedule";
 //+------------------------------------------------------------------+
 ChartManager* chartManager = NULL;
 TradingTimeManager* timeManager = NULL;
+SessionFilter* sessionFilter = NULL;
 CTrailingTP* trailingTP = NULL;
 AdxScoreTrader* scoreTrader = NULL;
 
@@ -124,6 +131,27 @@ int OnInit()
    
    timeManager.SetVerboseLogging(true);
    timeManager.SetAlertMessages(HourBlockMsg, DayBlockMsg, BothBlockMsg);
+   
+   // ═══ Step 2b: Créer SessionFilter ═══
+   sessionFilter = new SessionFilter();
+   if(sessionFilter == NULL)
+   {
+      Print("❌ Erreur création SessionFilter");
+      return INIT_FAILED;
+   }
+   
+   sessionFilter.InitFromInputs(UseSessionFilter, AllowedSession, AvoidOpeningMinutes);
+   sessionFilter.SetLogPrefix("[AdxScoreMaster] ");
+   
+   if(UseSessionFilter)
+   {
+      Print("🌍 Session Filter activé: ", sessionFilter.Describe());
+      Print("   Session actuelle: ", sessionFilter.GetCurrentSessionName());
+   }
+   else
+   {
+      Print("ℹ️ Session Filter désactivé");
+   }
    
    // ═══ Step 2.5: Valider et Créer Trailing TP System ═══
    if(USE_ADVANCED_TRAILING_TP)
@@ -268,6 +296,13 @@ void OnDeinit(const int reason)
       Print("✅ Time Manager cleaned up");
    }
    
+   if(sessionFilter != NULL)
+   {
+      delete sessionFilter;
+      sessionFilter = NULL;
+      Print("✅ Session Filter cleaned up");
+   }
+   
    if(chartManager != NULL)
    {
       delete chartManager;
@@ -311,8 +346,26 @@ void OnTick()
       UpdateChartDisplay();
    }
 
-   // Vérifier si le trading est autorisé selon le filtre temps
-   bool tradingAllowed = timeManager.IsTradingAllowed();
+   // Vérifier si le trading est autorisé (filtre temps ET filtre session)
+   bool timeAllowed = timeManager.IsTradingAllowed();
+   bool sessionAllowed = (sessionFilter != NULL) ? sessionFilter.IsTradingAllowed() : true;
+   bool tradingAllowed = timeAllowed && sessionAllowed;
+   
+   // Logger les blocages si nécessaire
+   if(!tradingAllowed && (timeAllowed || sessionAllowed))
+   {
+      static datetime lastLog = 0;
+      if(TimeCurrent() - lastLog > 60)  // Log toutes les 60 secondes max
+      {
+         if(!timeAllowed && !sessionAllowed)
+            Print("⏸️ Trading bloqué par Time Filter ET Session Filter");
+         else if(!timeAllowed)
+            Print("⏸️ Trading bloqué par Time Filter");
+         else if(!sessionAllowed)
+            Print("⏸️ Trading bloqué par Session Filter");
+         lastLog = TimeCurrent();
+      }
+   }
 
    // Si trading autorisé ET nouvelle barre : vérifier les signaux
    if(tradingAllowed && isNewBar)
@@ -415,6 +468,18 @@ void UpdateChartDisplay()
    string volStatus = scoreTrader.IsVolatilityOptimal() ? " ✓" : " ✗";
    indicators[8] = StringFormat("Volatilité: %.4f%%%s", volRatio, volStatus);
    
+   // Informations de session si activé
+   if(UseSessionFilter && sessionFilter != NULL)
+   {
+      ArrayResize(indicators, 10);
+      string sessionStatus = "Session: " + sessionFilter.GetCurrentSessionName();
+      if(!sessionFilter.IsTradingAllowed())
+         sessionStatus += " 🔒 BLOCKED";
+      else
+         sessionStatus += " ✓";
+      indicators[9] = sessionStatus;
+   }
+   
    // Couleur dynamique selon signal
    color indColor = clrWhite;
    if(buyScore >= SCORE_MIN_ENTRY) indColor = clrLimeGreen;
@@ -508,7 +573,14 @@ void DisplayGlobalStatus()
    // Ligne 2: Heure actuelle
    MqlDateTime dt;
    TimeToStruct(TimeCurrent(), dt);
-   statusLines[1] = StringFormat("Time: %02d:%02d", dt.hour, dt.min);
+   string sessionInfo = "";
+   if(UseSessionFilter && sessionFilter != NULL)
+   {
+      sessionInfo = " | " + sessionFilter.GetCurrentSessionName();
+      if(!sessionFilter.IsTradingAllowed())
+         sessionInfo += " 🔒";
+   }
+   statusLines[1] = StringFormat("Time: %02d:%02d%s", dt.hour, dt.min, sessionInfo);
    
    // Ligne 3: Balance
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
