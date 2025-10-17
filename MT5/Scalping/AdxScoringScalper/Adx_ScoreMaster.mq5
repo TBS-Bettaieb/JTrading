@@ -1,16 +1,17 @@
 //+------------------------------------------------------------------+
 //|                                        Adx_ScoreMaster.mq5       |
-//|                   ADX Score Master v2.1 - Optimisé & Sécurisé    |
+//|                   ADX Score Master v2.2 - Multi-Positions Fix    |
 //|                   Utilise ChartManager et TradingTimeManager     |
 //|                                                                  |
-//| AMÉLIORATIONS v2.1:                                              |
-//| ✅ Bug Trailing TP multi-positions corrigé                       |
+//| AMÉLIORATIONS v2.2:                                              |
+//| ✅ Bug CTrailingTP unique corrigé (objet par position)           |
 //| ✅ Performance OnTick() optimisée (throttling intelligent)       |
 //| ✅ Gestion d'erreurs robuste avec retry logic                    |
 //| ✅ Architecture sécurisée pour plusieurs positions simultanées   |
+//| ✅ Nettoyage automatique des objets Trailing TP                  |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025"
-#property version   "2.1"
+#property version   "2.2"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -91,19 +92,20 @@ CTrailingTP* trailingTP = NULL;
 AdxScoreTrader* scoreTrader = NULL;
 
 //+------------------------------------------------------------------+
-//| Structure pour gérer l'état du Trailing TP par position         |
+//| Structure pour gérer un objet Trailing TP par position          |
 //+------------------------------------------------------------------+
-struct PositionTrailingState
+struct PositionTrailingManager
 {
    ulong ticket;
+   CTrailingTP* trailingTPObject;
    bool isInitialized;
    datetime lastUpdate;
    double lastSL;
    double lastTP;
 };
 
-// Array pour stocker l'état de toutes les positions
-PositionTrailingState g_trailingStates[];
+// Array pour stocker les managers de toutes les positions
+PositionTrailingManager g_trailingManagers[];
 
 //+------------------------------------------------------------------+
 //| Variables pour l'optimisation des performances                  |
@@ -301,11 +303,24 @@ void OnDeinit(const int reason)
 {
    Print("🔄 Deinitializing ADX Score Master...");
    
+   // CRITIQUE: Nettoyer tous les objets Trailing TP individuels
+   for(int i = 0; i < ArraySize(g_trailingManagers); i++)
+   {
+      if(g_trailingManagers[i].trailingTPObject != NULL)
+      {
+         delete g_trailingManagers[i].trailingTPObject;
+         Print("🧹 Trailing TP supprimé pour ticket #", g_trailingManagers[i].ticket);
+      }
+   }
+   ArrayResize(g_trailingManagers, 0);
+   Print("✅ Tous les objets Trailing TP nettoyés");
+   
+   // Supprimer l'objet global (qui ne sert plus)
    if(trailingTP != NULL)
    {
       delete trailingTP;
       trailingTP = NULL;
-      Print("✅ Trailing TP System cleaned up");
+      Print("✅ Trailing TP System global cleaned up");
    }
    
    if(scoreTrader != NULL)
@@ -362,13 +377,13 @@ void OnTick()
    if(isNewBar)
    {
       scoreTrader.UpdateScoresOnly();
-      
-      // OPTIMISÉ: Mettre à jour l'affichage avec throttling
-      if(currentTime - g_lastVisualUpdate >= VISUAL_UPDATE_INTERVAL)
-      {
-         UpdateAllVisuals();
-         g_lastVisualUpdate = currentTime;
-      }
+   }
+   
+   // SÉPARÉ: Update visuels selon throttling (indépendant des nouvelles barres)
+   if(currentTime - g_lastVisualUpdate >= VISUAL_UPDATE_INTERVAL)
+   {
+      UpdateAllVisuals();
+      g_lastVisualUpdate = currentTime;
    }
 
    // Vérifier si le trading est autorisé (tous les filtres via TradingTimeManager)
@@ -524,9 +539,6 @@ void UpdateChartDisplay()
    
    // Police agrandie de 9 à 11 - Centré en bas
    chartManager.ShowMultiLineInfo(indicators, CORNER_LEFT_LOWER, 150, 30, 20, indColor, 11, "Indicators");
-   
-   // ═══ Affichage du breakdown du score ═══
-   DisplayScoreBreakdown();
 }
 
 //+------------------------------------------------------------------+
@@ -720,88 +732,108 @@ bool ValidatePositionData(ulong ticket, double& entryPrice, double& currentSL, d
 }
 
 //+------------------------------------------------------------------+
-//| Fonctions utilitaires pour gérer l'état du Trailing TP          |
+//| Fonctions utilitaires pour gérer les managers Trailing TP       |
 //+------------------------------------------------------------------+
 
 //+------------------------------------------------------------------+
-//| Trouver l'index d'une position dans l'array des états           |
+//| Trouver l'index d'un manager dans l'array                       |
 //+------------------------------------------------------------------+
-int FindPositionStateIndex(ulong ticket)
+int FindTrailingManagerIndex(ulong ticket)
 {
-   for(int i = 0; i < ArraySize(g_trailingStates); i++)
+   for(int i = 0; i < ArraySize(g_trailingManagers); i++)
    {
-      if(g_trailingStates[i].ticket == ticket)
+      if(g_trailingManagers[i].ticket == ticket)
          return i;
    }
    return -1; // Non trouvé
 }
 
 //+------------------------------------------------------------------+
-//| Ajouter ou mettre à jour l'état d'une position                  |
+//| Trouver ou créer un objet Trailing TP pour un ticket            |
 //+------------------------------------------------------------------+
-void UpdatePositionState(ulong ticket, bool isInitialized, double lastSL = 0, double lastTP = 0)
+CTrailingTP* GetOrCreateTrailingTP(ulong ticket)
 {
-   int index = FindPositionStateIndex(ticket);
+   int index = FindTrailingManagerIndex(ticket);
+   if(index >= 0) 
+   {
+      return g_trailingManagers[index].trailingTPObject;
+   }
    
+   // Créer un nouvel objet Trailing TP
+   CTrailingTP* newTrailing = new CTrailingTP(TRAILING_TP_MODE, CustomTPLevels);
+   if(newTrailing == NULL)
+   {
+      Print("❌ Erreur création CTrailingTP pour ticket #", ticket);
+      return NULL;
+   }
+   
+   // Ajouter au manager
+   int newSize = ArraySize(g_trailingManagers) + 1;
+   ArrayResize(g_trailingManagers, newSize);
+   
+   g_trailingManagers[newSize-1].ticket = ticket;
+   g_trailingManagers[newSize-1].trailingTPObject = newTrailing;
+   g_trailingManagers[newSize-1].isInitialized = false;
+   g_trailingManagers[newSize-1].lastUpdate = 0;
+   g_trailingManagers[newSize-1].lastSL = 0;
+   g_trailingManagers[newSize-1].lastTP = 0;
+   
+   Print("✅ Nouveau Trailing TP créé pour ticket #", ticket);
+   return newTrailing;
+}
+
+//+------------------------------------------------------------------+
+//| Mettre à jour l'état d'un manager                               |
+//+------------------------------------------------------------------+
+void UpdateTrailingManager(ulong ticket, bool isInitialized, double lastSL = 0, double lastTP = 0)
+{
+   int index = FindTrailingManagerIndex(ticket);
    if(index >= 0)
    {
-      // Mettre à jour l'état existant
-      g_trailingStates[index].isInitialized = isInitialized;
-      g_trailingStates[index].lastUpdate = TimeCurrent();
-      g_trailingStates[index].lastSL = lastSL;
-      g_trailingStates[index].lastTP = lastTP;
-   }
-   else
-   {
-      // Ajouter un nouvel état
-      int newSize = ArraySize(g_trailingStates) + 1;
-      ArrayResize(g_trailingStates, newSize);
-      
-      g_trailingStates[newSize-1].ticket = ticket;
-      g_trailingStates[newSize-1].isInitialized = isInitialized;
-      g_trailingStates[newSize-1].lastUpdate = TimeCurrent();
-      g_trailingStates[newSize-1].lastSL = lastSL;
-      g_trailingStates[newSize-1].lastTP = lastTP;
+      g_trailingManagers[index].isInitialized = isInitialized;
+      g_trailingManagers[index].lastUpdate = TimeCurrent();
+      g_trailingManagers[index].lastSL = lastSL;
+      g_trailingManagers[index].lastTP = lastTP;
    }
 }
 
 //+------------------------------------------------------------------+
-//| Nettoyer les états des positions fermées                        |
+//| Nettoyer les managers des positions fermées                     |
 //+------------------------------------------------------------------+
-void CleanClosedPositions()
+void CleanTrailingManagers()
 {
-   // Créer un array temporaire pour les positions actives
-   PositionTrailingState activeStates[];
-   ArrayResize(activeStates, 0);
-   
-   // Parcourir toutes les positions actives
-   int total = PositionsTotal();
-   for(int i = 0; i < total; i++)
+   for(int i = ArraySize(g_trailingManagers) - 1; i >= 0; i--)
    {
-      // AMÉLIORÉ: Utiliser la fonction sécurisée
-      ulong ticket = SafeGetPositionTicket(i);
-      if(ticket <= 0) continue;
+      bool positionExists = false;
       
-      // Vérifier si c'est notre position
-      if(PositionGetInteger(POSITION_MAGIC) != MAGIC_NUMBER) continue;
-      if(PositionGetString(POSITION_SYMBOL) != SYMBOL) continue;
-      
-      // Chercher l'état de cette position
-      int stateIndex = FindPositionStateIndex(ticket);
-      if(stateIndex >= 0)
+      // Vérifier si la position existe encore
+      for(int j = 0; j < PositionsTotal(); j++)
       {
-         // Ajouter à l'array des positions actives
-         int newSize = ArraySize(activeStates) + 1;
-         ArrayResize(activeStates, newSize);
-         activeStates[newSize-1] = g_trailingStates[stateIndex];
+         ulong ticket = SafeGetPositionTicket(j);
+         if(ticket == g_trailingManagers[i].ticket)
+         {
+            // Vérifier si c'est notre position
+            if(PositionGetInteger(POSITION_MAGIC) == MAGIC_NUMBER && 
+               PositionGetString(POSITION_SYMBOL) == SYMBOL)
+            {
+               positionExists = true;
+               break;
+            }
+         }
       }
-   }
-   
-   // Remplacer l'array global par les positions actives
-   ArrayResize(g_trailingStates, ArraySize(activeStates));
-   for(int i = 0; i < ArraySize(activeStates); i++)
-   {
-      g_trailingStates[i] = activeStates[i];
+      
+      if(!positionExists)
+      {
+         // Supprimer l'objet Trailing TP
+         if(g_trailingManagers[i].trailingTPObject != NULL)
+         {
+            delete g_trailingManagers[i].trailingTPObject;
+            Print("🧹 Trailing TP supprimé pour ticket #", g_trailingManagers[i].ticket);
+         }
+         
+         // Supprimer l'élément de l'array
+         ArrayRemove(g_trailingManagers, i, 1);
+      }
    }
 }
 
@@ -810,14 +842,13 @@ void CleanClosedPositions()
 //+------------------------------------------------------------------+
 void ManageAdvancedTrailingTP()
 {
-   if(trailingTP == NULL) return;
-   
-   // Nettoyer périodiquement les positions fermées (toutes les 100 ticks)
-   static int cleanupCounter = 0;
-   cleanupCounter++;
-   if(cleanupCounter % 100 == 0)
+   // Nettoyage périodique des managers (toutes les 10 secondes)
+   datetime currentTime = TimeCurrent();
+   static datetime lastClean = 0;
+   if(currentTime - lastClean >= 10)
    {
-      CleanClosedPositions();
+      CleanTrailingManagers();
+      lastClean = currentTime;
    }
    
    // Parcourir toutes les positions de notre Magic Number
@@ -842,50 +873,44 @@ void ManageAdvancedTrailingTP()
          continue;
       }
       
-      // Vérifier l'état d'initialisation pour cette position spécifique
-      int stateIndex = FindPositionStateIndex(ticket);
-      bool isInitialized = false;
-      
-      if(stateIndex >= 0)
+      // CRITIQUE: Obtenir l'objet Trailing TP SPÉCIFIQUE à cette position
+      CTrailingTP* positionTrailingTP = GetOrCreateTrailingTP(ticket);
+      if(positionTrailingTP == NULL)
       {
-         // Position déjà connue - récupérer son état
-         isInitialized = g_trailingStates[stateIndex].isInitialized;
+         Print("❌ Impossible de créer Trailing TP pour ticket #", ticket);
+         continue;
       }
-      else
+      
+      int managerIndex = FindTrailingManagerIndex(ticket);
+      if(managerIndex < 0) continue;
+      
+      // Initialiser si nécessaire
+      if(!g_trailingManagers[managerIndex].isInitialized)
       {
-         // Nouvelle position - initialiser le Trailing TP
-         if(trailingTP.Initialize(entryPrice, currentSL, currentTP, isBuy))
+         if(positionTrailingTP.Initialize(entryPrice, currentSL, currentTP, isBuy))
          {
+            g_trailingManagers[managerIndex].isInitialized = true;
             Print(StringFormat(
                "🎯 Trailing TP initialisé pour ticket #%I64u | Entry: %.5f | SL: %.5f | TP: %.5f",
                ticket, entryPrice, currentSL, currentTP
             ));
-            isInitialized = true;
          }
          else
          {
             Print("❌ Échec initialisation Trailing TP pour ticket #", ticket);
-            isInitialized = false;
+            continue;
          }
-         
-         // Enregistrer l'état de cette nouvelle position
-         UpdatePositionState(ticket, isInitialized, currentSL, currentTP);
       }
       
-      if(!isInitialized) continue;
-      
-      // Mettre à jour le Trailing TP
+      // Mettre à jour le Trailing TP avec l'objet spécifique à cette position
       double newSL = 0, newTP = 0;
-      if(trailingTP.Update(currentPrice, newSL, newTP))
+      if(positionTrailingTP.Update(currentPrice, newSL, newTP))
       {
          // Vérifier si les valeurs ont vraiment changé pour éviter les modifications inutiles
-         if(stateIndex >= 0)
+         if(MathAbs(newSL - g_trailingManagers[managerIndex].lastSL) < _Point * 0.1 &&
+            MathAbs(newTP - g_trailingManagers[managerIndex].lastTP) < _Point * 0.1)
          {
-            if(MathAbs(newSL - g_trailingStates[stateIndex].lastSL) < _Point * 0.1 &&
-               MathAbs(newTP - g_trailingStates[stateIndex].lastTP) < _Point * 0.1)
-            {
-               continue; // Pas de changement significatif
-            }
+            continue; // Pas de changement significatif
          }
          
          // AMÉLIORÉ: Modifier la position avec retry logic
@@ -907,12 +932,12 @@ void ManageAdvancedTrailingTP()
             ));
             
             // Mettre à jour l'état avec les nouvelles valeurs
-            UpdatePositionState(ticket, true, newSL, newTP);
+            UpdateTrailingManager(ticket, true, newSL, newTP);
             
             // Afficher sur le graphique si activé
             if(SHOW_TP_STATUS && chartManager != NULL)
             {
-               string statusInfo = trailingTP.GetStatusInfo();
+               string statusInfo = positionTrailingTP.GetStatusInfo();
                chartManager.ShowTopRightLabel(
                   "🎯 " + statusInfo, 
                   clrGold, 
