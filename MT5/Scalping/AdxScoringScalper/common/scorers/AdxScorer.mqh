@@ -28,16 +28,34 @@ private:
    int m_handle;
    double m_currentValue;
    bool m_isInitialized;
+   
+   // Seuils paramétrables
+   int m_thresholdWeak;
+   int m_thresholdModerate;
+   int m_thresholdStrong;
+   int m_thresholdVeryStrong;
 
 public:
    //+------------------------------------------------------------------+
    //| Constructeur                                                    |
    //+------------------------------------------------------------------+
-   AdxScorer(string symbol, ENUM_TIMEFRAMES timeframe, int period = 14)
+   AdxScorer(
+      string symbol, 
+      ENUM_TIMEFRAMES timeframe, 
+      int period = 14,
+      int thresholdWeak = 18,
+      int thresholdModerate = 20,
+      int thresholdStrong = 25,
+      int thresholdVeryStrong = 35
+   )
    {
       m_symbol = symbol;
       m_timeframe = timeframe;
       m_period = period;
+      m_thresholdWeak = thresholdWeak;
+      m_thresholdModerate = thresholdModerate;
+      m_thresholdStrong = thresholdStrong;
+      m_thresholdVeryStrong = thresholdVeryStrong;
       m_handle = INVALID_HANDLE;
       m_currentValue = 0.0;
       m_isInitialized = false;
@@ -94,11 +112,11 @@ public:
    //+------------------------------------------------------------------+
    int GetBuyScore() override
    {
-      if(m_currentValue > 35)
+      if(m_currentValue > m_thresholdVeryStrong)
          return SCORE_ADX_VERY_STRONG;
-      else if(m_currentValue > 25)
+      else if(m_currentValue > m_thresholdStrong)
          return SCORE_ADX_STRONG;
-      else if(m_currentValue > 20)
+      else if(m_currentValue > m_thresholdModerate)
          return SCORE_ADX_MODERATE;
       else
          return SCORE_ADX_WEAK;
@@ -119,8 +137,7 @@ public:
    //+------------------------------------------------------------------+
    bool IsHighTrend() override
    {
-      // Tendance forte si ADX > 35
-      return (m_currentValue > 35);
+      return (m_currentValue > m_thresholdVeryStrong);
    }
 
    //+------------------------------------------------------------------+

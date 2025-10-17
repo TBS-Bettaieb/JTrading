@@ -55,6 +55,12 @@ input int RSI_PERIOD = 14;                   // Période RSI
 input int MA_PERIOD = 50;                    // Période MA
 input ENUM_MA_METHOD MA_METHOD = MODE_SMA;   // Méthode MA
 
+input group "=== ADX Thresholds ==="
+input int ADX_THRESHOLD_WEAK = 18;           // Seuil ADX faible
+input int ADX_THRESHOLD_MODERATE = 20;       // Seuil ADX modéré  
+input int ADX_THRESHOLD_STRONG = 25;         // Seuil ADX fort
+input int ADX_THRESHOLD_VERY_STRONG = 35;    // Seuil ADX très fort
+
 input group "=== Volatility Filter ==="
 input bool USE_VOLATILITY_FILTER = true;     // Activer filtre volatilité
 input int ATR_PERIOD = 14;                   // Période ATR
@@ -237,8 +243,12 @@ int OnInit()
       ATR_PERIOD,
       MIN_VOLATILITY_RATIO,
       MAX_VOLATILITY_RATIO,
-      USE_DYNAMIC_LOTS,          // NOUVEAU
-      LOG_LOT_CALCULATION        // NOUVEAU
+      USE_DYNAMIC_LOTS,
+      LOG_LOT_CALCULATION,
+      ADX_THRESHOLD_WEAK,           // NOUVEAU
+      ADX_THRESHOLD_MODERATE,       // NOUVEAU
+      ADX_THRESHOLD_STRONG,         // NOUVEAU
+      ADX_THRESHOLD_VERY_STRONG     // NOUVEAU
    );
    
    if(scoreTrader == NULL)

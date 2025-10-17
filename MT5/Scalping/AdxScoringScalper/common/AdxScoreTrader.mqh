@@ -72,6 +72,12 @@ private:
    bool m_useDynamicLots;
    bool m_logLotCalculation;
    
+   // Seuils ADX paramétrables
+   int m_adxThresholdWeak;
+   int m_adxThresholdModerate;
+   int m_adxThresholdStrong;
+   int m_adxThresholdVeryStrong;
+   
    // Trade
    CTrade m_trade;
    
@@ -134,8 +140,12 @@ public:
       int atrPeriod = 14,
       double minVolatilityRatio = 0.0003,
       double maxVolatilityRatio = 0.0015,
-      bool useDynamicLots = true,           // NOUVEAU
-      bool logLotCalculation = true         // NOUVEAU
+      bool useDynamicLots = true,
+      bool logLotCalculation = true,
+      int adxThresholdWeak = 18,           // NOUVEAU
+      int adxThresholdModerate = 20,       // NOUVEAU
+      int adxThresholdStrong = 25,         // NOUVEAU
+      int adxThresholdVeryStrong = 35      // NOUVEAU
    )
    {
       m_symbol = symbol;
@@ -169,6 +179,12 @@ public:
       // Money Management Dynamique
       m_useDynamicLots = useDynamicLots;
       m_logLotCalculation = logLotCalculation;
+      
+      // Seuils ADX
+      m_adxThresholdWeak = adxThresholdWeak;
+      m_adxThresholdModerate = adxThresholdModerate;
+      m_adxThresholdStrong = adxThresholdStrong;
+      m_adxThresholdVeryStrong = adxThresholdVeryStrong;
       
       m_adxScorer = NULL;
       m_adxDirectionalScorer = NULL;
@@ -240,7 +256,15 @@ public:
       }
       
       // Créer les scorers
-      m_adxScorer = new AdxScorer(m_symbol, m_timeframe, m_adxPeriod);
+      m_adxScorer = new AdxScorer(
+         m_symbol, 
+         m_timeframe, 
+         m_adxPeriod,
+         m_adxThresholdWeak,
+         m_adxThresholdModerate,
+         m_adxThresholdStrong,
+         m_adxThresholdVeryStrong
+      );
       m_adxDirectionalScorer = new AdxDirectionalScorer(m_symbol, m_timeframe, m_adxPeriod);
       m_rsiScorer = new RsiScorer(m_symbol, m_timeframe, m_rsiPeriod);
       m_maScorer = new MaScorer(m_symbol, m_timeframe, m_maPeriod, m_maMethod);
