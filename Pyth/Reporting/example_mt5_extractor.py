@@ -49,8 +49,8 @@ def example_basic_usage():
 
 
 def example_full_report():
-    """Exemple de génération de rapport complet."""
-    print("\n📊 Exemple de génération de rapport complet")
+    """Exemple de génération de rapport complet avec toutes les nouvelles fonctionnalités."""
+    print("\n📊 Exemple de génération de rapport complet v2.0")
     print("=" * 50)
     
     file_path = "ReportTester-1511739399.xlsx"
@@ -60,19 +60,23 @@ def example_full_report():
         return
     
     try:
-        # Initialiser l'extracteur
-        extractor = MT5DataExtractor(file_path)
+        # Initialiser l'extracteur avec les nouvelles options
+        extractor = MT5DataExtractor(file_path, show_progress=True)
         
-        # Générer le rapport complet
+        # Générer le rapport complet avec toutes les analyses
         extractor.generate_full_report(output_dir='rapport_mt5_demo')
+        
+        print("\n🎯 Rapport complet généré avec succès !")
+        print("   📂 Tous les fichiers sont dans le dossier 'rapport_mt5_demo/'")
+        print("   🌐 Ouvrez 'rapport_complet.html' dans votre navigateur pour voir le rapport")
         
     except Exception as e:
         print(f"❌ Erreur lors de la génération du rapport : {str(e)}")
 
 
 def example_custom_analysis():
-    """Exemple d'analyse personnalisée."""
-    print("\n🔬 Exemple d'analyse personnalisée")
+    """Exemple d'analyse personnalisée avec les nouvelles fonctionnalités."""
+    print("\n🔬 Exemple d'analyse personnalisée avancée")
     print("=" * 50)
     
     file_path = "ReportTester-1511739399.xlsx"
@@ -82,9 +86,11 @@ def example_custom_analysis():
         return
     
     try:
-        extractor = MT5DataExtractor(file_path)
+        # Initialiser avec les nouvelles options
+        extractor = MT5DataExtractor(file_path, show_progress=True)
         extractor.load_file()
         extractor.extract_transactions()
+        extractor.calculate_statistics()
         
         # Analyse personnalisée des trades
         trades = extractor.df_transactions[
@@ -112,14 +118,21 @@ def example_custom_analysis():
             
             print(f"\n📅 Meilleur jour : {daily_profit.idxmax()} (Profit: {daily_profit.max():.2f})")
             print(f"📅 Pire jour : {daily_profit.idxmin()} (Perte: {daily_profit.min():.2f})")
+            
+            # Nouvelles analyses avancées
+            print("\n🔄 Analyse du drawdown...")
+            drawdown_analysis = extractor.calculate_drawdown_analysis()
+            
+            print("\n🔄 Analyse des sessions de trading...")
+            session_analysis = extractor.analyze_trading_sessions()
         
     except Exception as e:
         print(f"❌ Erreur lors de l'analyse personnalisée : {str(e)}")
 
 
 def example_export_data():
-    """Exemple d'export de données."""
-    print("\n💾 Exemple d'export de données")
+    """Exemple d'export de données avec les nouvelles fonctionnalités."""
+    print("\n💾 Exemple d'export de données avancé")
     print("=" * 50)
     
     file_path = "ReportTester-1511739399.xlsx"
@@ -129,9 +142,10 @@ def example_export_data():
         return
     
     try:
-        extractor = MT5DataExtractor(file_path)
+        extractor = MT5DataExtractor(file_path, show_progress=True)
         extractor.load_file()
         extractor.extract_transactions()
+        extractor.calculate_statistics()
         
         # Export CSV
         extractor.export_to_csv('mes_transactions.csv')
@@ -139,11 +153,33 @@ def example_export_data():
         # Export JSON
         extractor.export_stats_to_json('mes_statistiques.json')
         
-        # Graphiques
+        # Graphiques classiques
         extractor.plot_balance_curve('evolution_balance.png')
         extractor.plot_profit_distribution('distribution_profits.png')
         
+        # Nouveaux graphiques
+        extractor.plot_drawdown_curve('evolution_drawdown.png')
+        
+        # Analyses avancées
+        drawdown_analysis = extractor.calculate_drawdown_analysis()
+        session_analysis = extractor.analyze_trading_sessions()
+        
+        # Export des analyses avancées
+        import json
+        with open('analyse_drawdown.json', 'w', encoding='utf-8') as f:
+            json.dump(drawdown_analysis, f, indent=2, ensure_ascii=False, default=str)
+        
+        with open('analyse_sessions.json', 'w', encoding='utf-8') as f:
+            json.dump(session_analysis, f, indent=2, ensure_ascii=False, default=str)
+        
         print("\n✅ Exports terminés !")
+        print("   📊 mes_transactions.csv")
+        print("   📈 mes_statistiques.json")
+        print("   📊 evolution_balance.png")
+        print("   📊 distribution_profits.png")
+        print("   📉 evolution_drawdown.png")
+        print("   📉 analyse_drawdown.json")
+        print("   ⏰ analyse_sessions.json")
         
     except Exception as e:
         print(f"❌ Erreur lors de l'export : {str(e)}")
@@ -172,11 +208,15 @@ def main():
     
     print("\n🎉 Tous les exemples ont été exécutés !")
     print("\n📁 Fichiers générés :")
-    print("   - rapport_mt5_demo/ (rapport complet)")
-    print("   - mes_transactions.csv")
-    print("   - mes_statistiques.json")
-    print("   - evolution_balance.png")
-    print("   - distribution_profits.png")
+    print("   📂 rapport_mt5_demo/ (rapport complet avec HTML)")
+    print("   📊 mes_transactions.csv")
+    print("   📈 mes_statistiques.json")
+    print("   📊 evolution_balance.png")
+    print("   📊 distribution_profits.png")
+    print("   📉 evolution_drawdown.png")
+    print("   📉 analyse_drawdown.json")
+    print("   ⏰ analyse_sessions.json")
+    print("   🌐 rapport_complet.html")
 
 
 if __name__ == "__main__":
