@@ -1,0 +1,10 @@
+; Trendline Breakouts EA - Default Configuration
+; Generated: 2025-01-18
+
+InpPeriod=10
+InpTrendType=true
+InpExtension=25
+InpShowTargets=true
+InpLineColor=16777215
+InpLotSize=0.01
+InpSlippage=10
