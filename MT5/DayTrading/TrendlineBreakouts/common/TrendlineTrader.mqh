@@ -405,6 +405,8 @@ public:
          double pivotHigh = m_pivotDetector.GetPivotHigh();
          int pivotBar = m_pivotDetector.GetPivotHighBar();
          
+         Logger::Info("🟢 Processing NEW PIVOT HIGH: " + DoubleToString(pivotHigh) + " at bar " + IntegerToString(pivotBar));
+         
          m_trendlineDetector.UpdateUpperTrendline(pivotHigh, pivotBar);
          
          // ✅ ADD EVENT:
@@ -418,6 +420,13 @@ public:
             
             // ✅ ADD EVENT:
             m_eventManager.DispatchTrendlineUpdated(true, td.slope, td.isValid);
+            
+            Logger::Info("📈 Upper trendline drawn | Slope: " + DoubleToString(td.slope) + " | Valid: " + (td.isValid ? "YES" : "NO"));
+         }
+         else
+         {
+            Logger::Info("Upper trendline NOT drawn | TradeOpen: " + (m_tradeIsOn ? "YES" : "NO") + 
+                        " | SlopeValid: " + (m_trendlineDetector.IsUpperSlopeValid() ? "YES" : "NO"));
          }
       }
       
@@ -426,6 +435,8 @@ public:
       {
          double pivotLow = m_pivotDetector.GetPivotLow();
          int pivotBar = m_pivotDetector.GetPivotLowBar();
+         
+         Logger::Info("🔴 Processing NEW PIVOT LOW: " + DoubleToString(pivotLow) + " at bar " + IntegerToString(pivotBar));
          
          m_trendlineDetector.UpdateLowerTrendline(pivotLow, pivotBar);
          
@@ -440,8 +451,35 @@ public:
             
             // ✅ ADD EVENT:
             m_eventManager.DispatchTrendlineUpdated(false, td.slope, td.isValid);
+            
+            Logger::Info("📉 Lower trendline drawn | Slope: " + DoubleToString(td.slope) + " | Valid: " + (td.isValid ? "YES" : "NO"));
+         }
+         else
+         {
+            Logger::Info("Lower trendline NOT drawn | TradeOpen: " + (m_tradeIsOn ? "YES" : "NO") + 
+                        " | SlopeValid: " + (m_trendlineDetector.IsLowerSlopeValid() ? "YES" : "NO"));
          }
       }
+      
+      // Add summary logging if no pivots detected
+      static int noPivotCount = 0;
+      if(!m_pivotDetector.IsNewPivotHigh() && !m_pivotDetector.IsNewPivotLow())
+      {
+         noPivotCount++;
+         if(noPivotCount % 50 == 0) // Log every 50 new bars without pivots
+         {
+            Logger::Info("⏳ No pivots detected for " + IntegerToString(noPivotCount) + " new bars | " +
+                        "UpperTrend Valid: " + (m_trendlineDetector.IsUpperSlopeValid() ? "YES" : "NO") +
+                        " | LowerTrend Valid: " + (m_trendlineDetector.IsLowerSlopeValid() ? "YES" : "NO"));
+         }
+      }
+      else
+      {
+         noPivotCount = 0; // Reset counter when pivots are detected
+      }
+      
+      // Clear pivot flags after processing
+      m_pivotDetector.ClearNewPivotFlags();
    }
 
    //+------------------------------------------------------------------+
@@ -449,9 +487,44 @@ public:
    //+------------------------------------------------------------------+
    void CheckSignals()
    {
+      // Add diagnostic logging for signal detection
+      static datetime lastSignalCheck = 0;
+      datetime currentTime = TimeCurrent();
+      
+      // Log signal check status every 30 seconds max
+      if(currentTime - lastSignalCheck > 30)
+      {
+         // Get more detailed diagnostic information
+         bool hasUpperTrend = m_trendlineDetector.IsUpperSlopeValid();
+         bool hasLowerTrend = m_trendlineDetector.IsLowerSlopeValid();
+         
+         if(hasUpperTrend)
+         {
+            TrendlineData upperData = m_trendlineDetector.GetUpperTrendline();
+            Logger::Info("📈 Upper trendline active | Slope: " + DoubleToString(upperData.slope, 6) + 
+                        " | StartPrice: " + DoubleToString(upperData.startPrice, 5) +
+                        " | CurrentPrice: " + DoubleToString(m_trendlineDetector.GetUpperLinePrice(), 5));
+         }
+         
+         if(hasLowerTrend)
+         {
+            TrendlineData lowerData = m_trendlineDetector.GetLowerTrendline();
+            Logger::Info("📉 Lower trendline active | Slope: " + DoubleToString(lowerData.slope, 6) + 
+                        " | StartPrice: " + DoubleToString(lowerData.startPrice, 5) +
+                        " | CurrentPrice: " + DoubleToString(m_trendlineDetector.GetLowerLinePrice(), 5));
+         }
+         
+         Logger::Info("🔍 Signal Status | BreakoutDetector: " + (m_breakoutDetector.IsInitialized() ? "OK" : "FAILED") +
+                     " | UpperTrend: " + (hasUpperTrend ? "VALID" : "NONE") +
+                     " | LowerTrend: " + (hasLowerTrend ? "VALID" : "NONE") +
+                     " | TradeOpen: " + (m_tradeIsOn ? "YES" : "NO"));
+         lastSignalCheck = currentTime;
+      }
+      
       // Check for buy signal (breakout above resistance)
       if(m_breakoutDetector.HasBuySignal())
       {
+         Logger::Info("🟢 BUY SIGNAL DETECTED - Executing...");
          // ✅ ADD EVENT:
          m_eventManager.DispatchSignalDetected(true, 1.0, TimeCurrent());
          ExecuteBuySignal();
@@ -460,6 +533,7 @@ public:
       // Check for sell signal (breakout below support)
       if(m_breakoutDetector.HasSellSignal())
       {
+         Logger::Info("🔴 SELL SIGNAL DETECTED - Executing...");
          // ✅ ADD EVENT:
          m_eventManager.DispatchSignalDetected(false, 1.0, TimeCurrent());
          ExecuteSellSignal();

@@ -27,6 +27,9 @@ private:
    double m_prevPivotHigh;    // Track previous to detect new pivots
    double m_prevPivotLow;
    
+   bool m_hasNewPivotHigh;    // Flag to indicate new pivot high detected
+   bool m_hasNewPivotLow;     // Flag to indicate new pivot low detected
+   
    bool m_isInitialized;
 
 public:
@@ -46,6 +49,8 @@ public:
       m_pivotLowBar = 0;
       m_prevPivotHigh = 0;
       m_prevPivotLow = 0;
+      m_hasNewPivotHigh = false;
+      m_hasNewPivotLow = false;
       m_isInitialized = false;
    }
 
@@ -89,22 +94,48 @@ public:
       int leftBars = m_period;
       int rightBars = m_period / 2;
       
+      // Add diagnostic logging every 10 bars to avoid spam
+      static int updateCount = 0;
+      updateCount++;
+      
+      if(updateCount % 10 == 0)
+      {
+         int totalBars = Bars(m_symbol, m_timeframe);
+         Print("🔍 PivotDetector Update #", updateCount, " | Period:", m_period, 
+               " | Left:", leftBars, " | Right:", rightBars, " | TotalBars:", totalBars,
+               " | UseWicks:", m_useWicks ? "YES" : "NO");
+      }
+      
       // Calculate new pivot high
       double ph = CalculatePivotHigh(m_useWicks, leftBars, rightBars);
-      if(ph != 0.0 && ph != m_prevPivotHigh)
+      if(ph != 0.0 && ph != m_lastPivotHigh)
       {
+         m_prevPivotHigh = m_lastPivotHigh;  // Save previous value before updating
          m_lastPivotHigh = ph;
          m_pivotHighBar = rightBars;
-         m_prevPivotHigh = ph;
+         m_hasNewPivotHigh = true;
+         Print("🔺 New PIVOT HIGH detected: ", ph, " at bar ", rightBars);
+      }
+      else if(updateCount % 50 == 0) // Log when no pivot found (every 50 updates)
+      {
+         Print("📊 PivotCheck | LastHigh:", DoubleToString(m_lastPivotHigh, 5),
+               " | Calculated:", DoubleToString(ph, 5), " | Match:", (ph == m_lastPivotHigh ? "YES" : "NO"));
       }
       
       // Calculate new pivot low
       double pl = CalculatePivotLow(m_useWicks, leftBars, rightBars);
-      if(pl != 0.0 && pl != m_prevPivotLow)
+      if(pl != 0.0 && pl != m_lastPivotLow)
       {
+         m_prevPivotLow = m_lastPivotLow;    // Save previous value before updating
          m_lastPivotLow = pl;
          m_pivotLowBar = rightBars;
-         m_prevPivotLow = pl;
+         m_hasNewPivotLow = true;
+         Print("🔻 New PIVOT LOW detected: ", pl, " at bar ", rightBars);
+      }
+      else if(updateCount % 50 == 0) // Log when no pivot found (every 50 updates)
+      {
+         Print("📊 PivotCheck | LastLow:", DoubleToString(m_lastPivotLow, 5),
+               " | Calculated:", DoubleToString(pl, 5), " | Match:", (pl == m_lastPivotLow ? "YES" : "NO"));
       }
    }
 
@@ -216,7 +247,14 @@ public:
    double GetPivotLow() const { return m_lastPivotLow; }
    int GetPivotHighBar() const { return m_pivotHighBar; }
    int GetPivotLowBar() const { return m_pivotLowBar; }
-   bool IsNewPivotHigh() const { return m_lastPivotHigh != m_prevPivotHigh; }
-   bool IsNewPivotLow() const { return m_lastPivotLow != m_prevPivotLow; }
+   bool IsNewPivotHigh() const { return m_hasNewPivotHigh; }
+   bool IsNewPivotLow() const { return m_hasNewPivotLow; }
+   
+   void ClearNewPivotFlags()
+   {
+      m_hasNewPivotHigh = false;
+      m_hasNewPivotLow = false;
+   }
+   
    bool IsInitialized() override { return m_isInitialized; }
 };
