@@ -9,3 +9,4 @@ InpLineColor=16777215
 InpLotSize=0.01
 InpSlippage=10
 InpMagicNumber=12345
+InpLogLevel=3

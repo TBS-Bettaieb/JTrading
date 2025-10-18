@@ -7,11 +7,15 @@
 #property strict
 
 #include <Trade\Trade.mqh>
+#include "utils/Logger.mqh"
 #include "detectors/PivotDetector.mqh"
 #include "detectors/TrendlineDetector.mqh"
 #include "detectors/BreakoutDetector.mqh"
 #include "filters/VolatilityFilter.mqh"
 #include "managers/TrendlineManager.mqh"
+#include "managers/TradeManager.mqh"
+#include "events/EventManager.mqh"
+#include "events/PerformanceTracker.mqh"
 
 //+------------------------------------------------------------------+
 //| Main trader class                                                |
@@ -30,6 +34,9 @@ private:
    BreakoutDetector* m_breakoutDetector;
    VolatilityFilter* m_volatilityFilter;
    TrendlineManager* m_trendlineManager;
+   TradeManager* m_tradeManager;        // ✅ Add TradeManager
+   EventManager* m_eventManager;        // ✅ Add EventManager
+   PerformanceTracker* m_perfTracker;   // ✅ Add PerformanceTracker
    
    // Trade settings
    double m_lotSize;
@@ -44,9 +51,7 @@ private:
    double m_currentTP;
    double m_currentSL;
    datetime m_lastBarTime;
-   
-   // Trade execution
-   CTrade m_trade;
+   ulong m_currentTicket;  // ✅ Add position ticket tracking
 
 public:
    //+------------------------------------------------------------------+
@@ -62,44 +67,48 @@ public:
       double lotSize,
       int slippage,
       bool showTargets,
-      color lineColor = clrGray
+      color lineColor = clrGray,
+      ENUM_LOG_LEVEL logLevel = LOG_INFO  // ✅ Add log level parameter
    )
    {
+      // ✅ ADD LOGGER INITIALIZATION NEAR THE TOP:
+      Logger::Initialize(logLevel, "[TBT] ");
+      
       // ═══ VALIDATE AND SANITIZE INPUTS ═══
       
       if(symbol == "" || symbol == NULL)
       {
-         Print("⚠️ Invalid symbol provided, using current symbol");
+         Logger::Warning("Invalid symbol provided, using current symbol");
          symbol = _Symbol;
       }
       
       if(magicNumber <= 0)
       {
-         Print("⚠️ Invalid magic number (", magicNumber, "), using 12345");
+         Logger::Warning("Invalid magic number (" + IntegerToString(magicNumber) + "), using 12345");
          magicNumber = 12345;
       }
       
       if(period < 2 || period > 100)
       {
-         Print("⚠️ Invalid period (", period, "), using 10");
+         Logger::Warning("Invalid period (" + IntegerToString(period) + "), using 10");
          period = 10;
       }
       
       if(extension < 10 || extension > 100)
       {
-         Print("⚠️ Invalid extension (", extension, "), using 25");
+         Logger::Warning("Invalid extension (" + IntegerToString(extension) + "), using 25");
          extension = 25;
       }
       
       if(lotSize <= 0 || lotSize > 100)
       {
-         Print("⚠️ Invalid lot size (", lotSize, "), using 0.01");
+         Logger::Warning("Invalid lot size (" + DoubleToString(lotSize) + "), using 0.01");
          lotSize = 0.01;
       }
       
       if(slippage < 0 || slippage > 100)
       {
-         Print("⚠️ Invalid slippage (", slippage, "), using 10");
+         Logger::Warning("Invalid slippage (" + IntegerToString(slippage) + "), using 10");
          slippage = 10;
       }
       
@@ -119,6 +128,7 @@ public:
       m_currentTP = 0;
       m_currentSL = 0;
       m_lastBarTime = 0;
+      m_currentTicket = 0;  // ✅ Initialize ticket tracking
       
       // Create components
       m_pivotDetector = new PivotDetector(symbol, timeframe, period, useWicks);
@@ -127,11 +137,11 @@ public:
       m_volatilityFilter = new VolatilityFilter(symbol, timeframe, 30);
       m_trendlineManager = new TrendlineManager(symbol, extension, lineColor);
       
-      // Configure trade object
-      m_trade.SetExpertMagicNumber(magicNumber);
-      m_trade.SetDeviationInPoints(slippage);
-      m_trade.SetTypeFilling(ORDER_FILLING_IOC);
-      m_trade.SetAsyncMode(false);
+      // ✅ ADD NEW MANAGERS:
+      m_tradeManager = new TradeManager(symbol, magicNumber, lotSize, slippage);
+      m_eventManager = new EventManager();
+      m_perfTracker = new PerformanceTracker();
+      m_eventManager.RegisterListener(m_perfTracker);
    }
 
    //+------------------------------------------------------------------+
@@ -144,6 +154,16 @@ public:
       if(m_breakoutDetector != NULL) delete m_breakoutDetector;
       if(m_volatilityFilter != NULL) delete m_volatilityFilter;
       if(m_trendlineManager != NULL) delete m_trendlineManager;
+      
+      // ✅ ADD NEW MANAGER CLEANUP:
+      if(m_perfTracker != NULL) 
+      {
+         m_perfTracker.PrintReport();  // ✅ Print final report
+         delete m_perfTracker;
+      }
+      
+      if(m_eventManager != NULL) delete m_eventManager;
+      if(m_tradeManager != NULL) delete m_tradeManager;
    }
 
    //+------------------------------------------------------------------+
@@ -161,6 +181,10 @@ public:
       Print("═══════════════════════════════════════");
       Print("🚀 Initializing Trendline Trader");
       Print("═══════════════════════════════════════");
+      
+      // ✅ ADD SYMBOL VALIDATION FIRST:
+      if(!ValidateSymbol())
+         return false;
       
       // Track initialization status for each component
       bool pivotOK = false;
@@ -235,13 +259,23 @@ public:
       if(!ValidateComponentState())
       {
          static datetime lastWarning = 0;
+         static int warningCount = 0;
          datetime currentTime = TimeCurrent();
          
-         // Log warning once per minute to avoid spam
-         if(currentTime - lastWarning > 60)
+         // NEW CODE WITH LIMIT:
+         if(currentTime - lastWarning > 60 && warningCount < 10)
          {
-            Print("⚠️ Components not properly initialized, skipping tick");
+            Logger::Warning("Components not properly initialized (" + IntegerToString(++warningCount) + "/10), skipping tick");
             lastWarning = currentTime;
+            
+            if(warningCount == 10)
+            {
+               Logger::Error("═══════════════════════════════════════");
+               Logger::Error("Maximum validation warnings reached!");
+               Logger::Error("💡 TIP: Remove and re-add EA to chart to reinitialize.");
+               Logger::Error("💡 TIP: Check symbol and timeframe settings.");
+               Logger::Error("═══════════════════════════════════════");
+            }
          }
          return;
       }
@@ -249,6 +283,7 @@ public:
       // Check for new bar
       if(IsNewBar())
       {
+         UpdateBarTime();
          OnNewBar();
       }
       
@@ -258,13 +293,26 @@ public:
       // Update breakout detector with latest Zband
       m_breakoutDetector.SetZband(m_volatilityFilter.GetZband());
       
-      // Check for signals if no trade is open
-      if(!m_tradeIsOn)
+      // Check for signals if no trade is open - use TradeManager state
+      if(!m_tradeManager.IsPositionOpen())
       {
+         // Sync old state with TradeManager state
+         if(m_tradeIsOn)
+         {
+            m_tradeIsOn = false;
+            m_currentTicket = 0;
+         }
          CheckSignals();
       }
       else
       {
+         // Sync old state with TradeManager state
+         if(!m_tradeIsOn)
+         {
+            m_tradeIsOn = true;
+            m_currentTicket = m_tradeManager.GetCurrentTicket();
+            m_isLongTrade = m_tradeManager.IsLongPosition();
+         }
          // Manage open trade
          ManageTrade();
       }
@@ -275,7 +323,7 @@ public:
    //+------------------------------------------------------------------+
    void OnNewBar()
    {
-      Print("📊 New bar detected - Updating components");
+      Logger::Info("New bar detected - Updating components");
       
       // 1. Update pivot detector
       m_pivotDetector.Update();
@@ -288,11 +336,17 @@ public:
          
          m_trendlineDetector.UpdateUpperTrendline(pivotHigh, pivotBar);
          
+         // ✅ ADD EVENT:
+         m_eventManager.DispatchPivotDetected(true, pivotHigh, pivotBar);
+         
          // Draw trendline if no trade is open
          if(!m_tradeIsOn && m_trendlineDetector.IsUpperSlopeValid())
          {
             TrendlineData td = m_trendlineDetector.GetUpperTrendline();
             m_trendlineManager.DrawUpperTrendline(td);
+            
+            // ✅ ADD EVENT:
+            m_eventManager.DispatchTrendlineUpdated(true, td.slope, td.isValid);
          }
       }
       
@@ -304,11 +358,17 @@ public:
          
          m_trendlineDetector.UpdateLowerTrendline(pivotLow, pivotBar);
          
+         // ✅ ADD EVENT:
+         m_eventManager.DispatchPivotDetected(false, pivotLow, pivotBar);
+         
          // Draw trendline if no trade is open
          if(!m_tradeIsOn && m_trendlineDetector.IsLowerSlopeValid())
          {
             TrendlineData td = m_trendlineDetector.GetLowerTrendline();
             m_trendlineManager.DrawLowerTrendline(td);
+            
+            // ✅ ADD EVENT:
+            m_eventManager.DispatchTrendlineUpdated(false, td.slope, td.isValid);
          }
       }
    }
@@ -321,12 +381,16 @@ public:
       // Check for buy signal (breakout above resistance)
       if(m_breakoutDetector.HasBuySignal())
       {
+         // ✅ ADD EVENT:
+         m_eventManager.DispatchSignalDetected(true, 1.0, TimeCurrent());
          ExecuteBuySignal();
       }
       
       // Check for sell signal (breakout below support)
       if(m_breakoutDetector.HasSellSignal())
       {
+         // ✅ ADD EVENT:
+         m_eventManager.DispatchSignalDetected(false, 1.0, TimeCurrent());
          ExecuteSellSignal();
       }
    }
@@ -336,12 +400,12 @@ public:
    //+------------------------------------------------------------------+
    void ExecuteBuySignal()
    {
-      Print("🟢 BUY SIGNAL DETECTED");
+      Logger::Signal(true, "BUY SIGNAL DETECTED");
       
       // ✅ Add null checks
       if(m_volatilityFilter == NULL || m_trendlineManager == NULL)
       {
-         Print("⚠️ ExecuteBuySignal: Required components are NULL");
+         Logger::Warning("ExecuteBuySignal: Required components are NULL");
          return;
       }
       
@@ -358,6 +422,16 @@ public:
       {
          m_tradeIsOn = true;
          m_isLongTrade = true;
+         m_currentTicket = m_tradeManager.GetCurrentTicket();  // ✅ Sync ticket
+         
+         // ✅ ADD EVENT:
+         m_eventManager.DispatchTradeOpened(
+            true, 
+            m_currentTicket, 
+            SymbolInfoDouble(m_symbol, SYMBOL_ASK),
+            m_currentSL, 
+            m_currentTP
+         );
          
          // Draw SL/TP lines
          m_trendlineManager.DrawSLTPLines(m_currentSL, m_currentTP);
@@ -379,12 +453,12 @@ public:
    //+------------------------------------------------------------------+
    void ExecuteSellSignal()
    {
-      Print("🔴 SELL SIGNAL DETECTED");
+      Logger::Signal(false, "SELL SIGNAL DETECTED");
       
       // ✅ Add null checks
       if(m_volatilityFilter == NULL || m_trendlineManager == NULL)
       {
-         Print("⚠️ ExecuteSellSignal: Required components are NULL");
+         Logger::Warning("ExecuteSellSignal: Required components are NULL");
          return;
       }
       
@@ -401,6 +475,16 @@ public:
       {
          m_tradeIsOn = true;
          m_isLongTrade = false;
+         m_currentTicket = m_tradeManager.GetCurrentTicket();  // ✅ Sync ticket
+         
+         // ✅ ADD EVENT:
+         m_eventManager.DispatchTradeOpened(
+            false, 
+            m_currentTicket, 
+            SymbolInfoDouble(m_symbol, SYMBOL_BID),
+            m_currentSL, 
+            m_currentTP
+         );
          
          // Draw SL/TP lines
          m_trendlineManager.DrawSLTPLines(m_currentSL, m_currentTP);
@@ -434,131 +518,8 @@ public:
       double price = isLong ? 
          SymbolInfoDouble(m_symbol, SYMBOL_ASK) : 
          SymbolInfoDouble(m_symbol, SYMBOL_BID);
-      
-      int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
-      double tp = NormalizeDouble(m_currentTP, digits);
-      double sl = NormalizeDouble(m_currentSL, digits);
-      
-      // ═══ VALIDATE ORDER PARAMETERS ═══
-      
-      if(price <= 0)
-      {
-         Print("❌ Invalid price: ", price);
-         return false;
-      }
-      
-      if(tp <= 0 || sl <= 0)
-      {
-         Print("❌ Invalid TP/SL: TP=", tp, " SL=", sl);
-         return false;
-      }
-      
-      // Check minimum stop level
-      long minStopsLevel = SymbolInfoInteger(m_symbol, SYMBOL_TRADE_STOPS_LEVEL);
-      double minStops = minStopsLevel * SymbolInfoDouble(m_symbol, SYMBOL_POINT);
-      
-      double slDistance = isLong ? (price - sl) : (sl - price);
-      double tpDistance = isLong ? (tp - price) : (price - tp);
-      
-      // Adjust SL if too close
-      if(slDistance < minStops && minStops > 0)
-      {
-         Print("⚠️ SL too close: ", slDistance, " < ", minStops);
-         sl = isLong ? 
-            NormalizeDouble(price - minStops * 1.1, digits) : 
-            NormalizeDouble(price + minStops * 1.1, digits);
-         Print("   Adjusted SL to: ", sl);
-      }
-      
-      // Adjust TP if too close
-      if(tpDistance < minStops && minStops > 0)
-      {
-         Print("⚠️ TP too close: ", tpDistance, " < ", minStops);
-         tp = isLong ? 
-            NormalizeDouble(price + minStops * 1.1, digits) : 
-            NormalizeDouble(price - minStops * 1.1, digits);
-         Print("   Adjusted TP to: ", tp);
-      }
-      
-      // ═══ EXECUTE ORDER ═══
-      
-      bool result = false;
-      if(isLong)
-      {
-         result = m_trade.Buy(m_lotSize, m_symbol, price, sl, tp, "TBT Long");
-      }
-      else
-      {
-         result = m_trade.Sell(m_lotSize, m_symbol, price, sl, tp, "TBT Short");
-      }
-      
-      if(result)
-      {
-         Print("✅ Order executed: ", isLong ? "BUY" : "SELL", 
-               " | Price: ", price, " | SL: ", sl, " | TP: ", tp);
-      }
-      else
-      {
-         // ═══ DETAILED ERROR REPORTING ═══
-         
-         uint errorCode = GetLastError();
-         uint retCode = m_trade.ResultRetcode();
-         
-         Print("═══════════════════════════════════════");
-         Print("❌ ORDER EXECUTION FAILED");
-         Print("═══════════════════════════════════════");
-         Print("Symbol: ", m_symbol);
-         Print("Direction: ", isLong ? "BUY" : "SELL");
-         Print("Price: ", price);
-         Print("Lot Size: ", m_lotSize);
-         Print("SL: ", sl, " (Distance: ", slDistance, ")");
-         Print("TP: ", tp, " (Distance: ", tpDistance, ")");
-         Print("Min Stops: ", minStops);
-         Print("─────────────────────────────────────");
-         Print("Error Code: ", errorCode);
-         Print("Return Code: ", retCode);
-         Print("Description: ", m_trade.ResultRetcodeDescription());
-         Print("Comment: ", m_trade.ResultComment());
-         Print("═══════════════════════════════════════");
-         
-         // Provide specific guidance based on error
-         switch(retCode)
-         {
-            case TRADE_RETCODE_INVALID_STOPS:
-               Print("💡 TIP: SL/TP violates broker's minimum distance");
-               Print("   Check SYMBOL_TRADE_STOPS_LEVEL for ", m_symbol);
-               break;
-               
-            case TRADE_RETCODE_INVALID_VOLUME:
-               Print("💡 TIP: Lot size not within allowed range");
-               Print("   Min: ", SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MIN));
-               Print("   Max: ", SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MAX));
-               Print("   Step: ", SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_STEP));
-               break;
-               
-            case TRADE_RETCODE_NO_MONEY:
-               Print("💡 TIP: Insufficient funds to place order");
-               Print("   Free Margin: ", AccountInfoDouble(ACCOUNT_MARGIN_FREE));
-               Print("   Required: ~", m_lotSize * SymbolInfoDouble(m_symbol, SYMBOL_MARGIN_INITIAL));
-               break;
-               
-            case TRADE_RETCODE_MARKET_CLOSED:
-               Print("💡 TIP: Market is closed for ", m_symbol);
-               break;
-               
-            case TRADE_RETCODE_INVALID_PRICE:
-               Print("💡 TIP: Price has changed, order needs to be retried");
-               break;
-               
-            case TRADE_RETCODE_PRICE_OFF:
-               Print("💡 TIP: Requested price is too far from current market");
-               break;
-         }
-         
-         Print("═══════════════════════════════════════");
-      }
-      
-      return result;
+   
+      return m_tradeManager.OpenPosition(isLong, price, m_currentSL, m_currentTP);
    }
 
    //+------------------------------------------------------------------+
@@ -566,10 +527,18 @@ public:
    //+------------------------------------------------------------------+
    void ManageTrade()
    {
-      // ✅ Add null check
-      if(m_trendlineManager == NULL)
+      // ✅ Add null checks
+      if(m_trendlineManager == NULL || m_tradeManager == NULL)
       {
-         Print("⚠️ ManageTrade: TrendlineManager is NULL");
+         Logger::Warning("ManageTrade: Required managers are NULL");
+         return;
+      }
+      
+      // ✅ Use TradeManager validation:
+      if(!m_tradeManager.ValidatePosition())
+      {
+         m_tradeIsOn = false;
+         m_trendlineManager.ClearSLTPLines();
          return;
       }
       
@@ -580,51 +549,94 @@ public:
       // Update SL/TP line positions
       m_trendlineManager.UpdateSLTPLines(m_currentSL, m_currentTP);
       
-      // Check for TP or SL hit
+      // Check for TP or SL hit and close position
       if(m_isLongTrade)
       {
          if(high >= m_currentTP)
          {
-            Print("✅ Long Trade closed at TP: ", m_currentTP);
-            m_tradeIsOn = false;
-            m_trendlineManager.ClearSLTPLines();
+            if(m_tradeManager.ClosePosition("TP Hit"))
+            {
+               // ✅ ADD EVENT:
+               m_eventManager.DispatchTradeClosed(
+                  true,
+                  m_tradeManager.GetCurrentTicket(),
+                  m_tradeManager.GetPositionProfit(),
+                  "TP Hit"
+               );
+               
+               m_tradeIsOn = false;
+               m_trendlineManager.ClearSLTPLines();
+            }
          }
          else if(close <= m_currentSL)
          {
-            Print("❌ Long Trade closed at SL: ", m_currentSL);
-            m_tradeIsOn = false;
-            m_trendlineManager.ClearSLTPLines();
+            if(m_tradeManager.ClosePosition("SL Hit"))
+            {
+               // ✅ ADD EVENT:
+               m_eventManager.DispatchTradeClosed(
+                  true,
+                  m_tradeManager.GetCurrentTicket(),
+                  m_tradeManager.GetPositionProfit(),
+                  "SL Hit"
+               );
+               
+               m_tradeIsOn = false;
+               m_trendlineManager.ClearSLTPLines();
+            }
          }
       }
       else // Short trade
       {
          if(low <= m_currentTP)
          {
-            Print("✅ Short Trade closed at TP: ", m_currentTP);
-            m_tradeIsOn = false;
-            m_trendlineManager.ClearSLTPLines();
+            if(m_tradeManager.ClosePosition("TP Hit"))
+            {
+               // ✅ ADD EVENT:
+               m_eventManager.DispatchTradeClosed(
+                  false,
+                  m_tradeManager.GetCurrentTicket(),
+                  m_tradeManager.GetPositionProfit(),
+                  "TP Hit"
+               );
+               
+               m_tradeIsOn = false;
+               m_trendlineManager.ClearSLTPLines();
+            }
          }
          else if(close >= m_currentSL)
          {
-            Print("❌ Short Trade closed at SL: ", m_currentSL);
-            m_tradeIsOn = false;
-            m_trendlineManager.ClearSLTPLines();
+            if(m_tradeManager.ClosePosition("SL Hit"))
+            {
+               // ✅ ADD EVENT:
+               m_eventManager.DispatchTradeClosed(
+                  false,
+                  m_tradeManager.GetCurrentTicket(),
+                  m_tradeManager.GetPositionProfit(),
+                  "SL Hit"
+               );
+               
+               m_tradeIsOn = false;
+               m_trendlineManager.ClearSLTPLines();
+            }
          }
       }
    }
 
    //+------------------------------------------------------------------+
-   //| Check if new bar                                                |
+   //| Check if new bar (pure function - no state modification)        |
    //+------------------------------------------------------------------+
    bool IsNewBar()
    {
       datetime currentBarTime = iTime(m_symbol, m_timeframe, 0);
-      if(currentBarTime != m_lastBarTime)
-      {
-         m_lastBarTime = currentBarTime;
-         return true;
-      }
-      return false;
+      return (currentBarTime != m_lastBarTime);
+   }
+
+   //+------------------------------------------------------------------+
+   //| Update bar time state (separate from IsNewBar check)            |
+   //+------------------------------------------------------------------+
+   void UpdateBarTime()
+   {
+      m_lastBarTime = iTime(m_symbol, m_timeframe, 0);
    }
 
    //+------------------------------------------------------------------+
@@ -635,6 +647,7 @@ public:
    double GetCurrentTP() const { return m_currentTP; }
    double GetCurrentSL() const { return m_currentSL; }
    double GetZband() const { return m_volatilityFilter.GetZband(); }
+   ulong GetCurrentTicket() const { return m_currentTicket; }
 
 private:
    //+------------------------------------------------------------------+
@@ -672,6 +685,44 @@ private:
          return false;
       }
       
+      return true;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Validate symbol is tradeable and market conditions are suitable |
+   //+------------------------------------------------------------------+
+   bool ValidateSymbol()
+   {
+      // Check symbol exists and is selected
+      if(!SymbolSelect(m_symbol, true))
+      {
+         Print("❌ Symbol ", m_symbol, " not available");
+         return false;
+      }
+      
+      // Check if trading is allowed for this symbol
+      ENUM_SYMBOL_TRADE_MODE tradeMode = (ENUM_SYMBOL_TRADE_MODE)SymbolInfoInteger(m_symbol, SYMBOL_TRADE_MODE);
+      if(tradeMode == SYMBOL_TRADE_MODE_DISABLED)
+      {
+         Print("❌ Trading disabled for ", m_symbol);
+         return false;
+      }
+      
+      if(tradeMode == SYMBOL_TRADE_MODE_CLOSEONLY)
+      {
+         Print("⚠️ Symbol ", m_symbol, " is in close-only mode");
+         return false;
+      }
+      
+      // Check if we have sufficient data
+      int bars = Bars(m_symbol, m_timeframe);
+      if(bars < 100)
+      {
+         Print("⚠️ Insufficient bars (", bars, ") for ", m_symbol);
+         return false;
+      }
+      
+      Print("✅ Symbol validation passed: ", m_symbol, " | Bars: ", bars, " | Trade Mode: ", EnumToString(tradeMode));
       return true;
    }
 };

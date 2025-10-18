@@ -7,6 +7,7 @@
 #property description "Trendline Breakouts - Modular Architecture"
 
 #include <Trade\Trade.mqh>
+#include "common/utils/Logger.mqh"
 #include "common/TrendlineTrader.mqh"
 
 //--- Input parameters
@@ -21,6 +22,9 @@ input group "➞ Trade Settings 🔸"
 input double   InpLotSize = 0.01;                 // Lot Size
 input int      InpSlippage = 10;                  // Slippage (points)
 input int      InpMagicNumber = 12345;            // Magic Number
+
+input group "➞ System Settings 🔸"
+input ENUM_LOG_LEVEL InpLogLevel = LOG_INFO;     // Log Level
 
 //--- Global
 TrendlineTrader* g_trader = NULL;
@@ -44,7 +48,8 @@ int OnInit()
       InpLotSize,
       InpSlippage,
       InpShowTargets,
-      InpLineColor
+      InpLineColor,
+      InpLogLevel  // ✅ Add log level parameter
    );
    
    if(!g_trader.Initialize())

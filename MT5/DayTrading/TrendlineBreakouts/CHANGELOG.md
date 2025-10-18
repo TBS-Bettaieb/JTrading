@@ -10,6 +10,24 @@
 - **Impact**: Prevents memory leaks when component initialization fails
 - **Details**: Added proper cleanup of initialized components on failure
 
+#### IsNewBar() Idempotency Issue
+- **Fixed**: Non-idempotent IsNewBar() method causing state modification side effects
+- **File**: `TrendlineTrader.mqh`
+- **Impact**: IsNewBar() can now be called multiple times without side effects
+- **Details**: Split into IsNewBar() (pure check) and UpdateBarTime() (state update)
+
+#### Magic Number Verification in Trade Management
+- **Added**: Position ownership verification using magic numbers
+- **File**: `TrendlineTrader.mqh` - ManageTrade() method
+- **Impact**: EA only manages positions with its magic number
+- **Details**: Verifies position ownership and gracefully handles external position changes
+
+#### Position Tracking After Order Execution
+- **Added**: Position ticket tracking and verification after order execution
+- **File**: `TrendlineTrader.mqh` - SendOrder() method
+- **Impact**: Ensures position is properly tracked and verified
+- **Details**: Stores ticket, verifies position opened, includes ticket in logs
+
 ### 🟠 Important Fixes
 
 #### User Configuration
@@ -19,6 +37,24 @@
 - **Details**: Added `InpMagicNumber` parameter with default value 12345
 
 ### 🟡 Code Quality Improvements
+
+#### Actual Position Closing Logic
+- **Fixed**: EA now actively closes positions when TP/SL is hit instead of relying only on broker SL/TP
+- **File**: `TrendlineTrader.mqh` - ManageTrade() method
+- **Impact**: Active position management with proper error handling
+- **Details**: Added PositionClose() calls with error reporting and ticket reset
+
+#### Symbol Tradability Validation
+- **Added**: Comprehensive symbol validation before initialization
+- **File**: `TrendlineTrader.mqh` - ValidateSymbol() method
+- **Impact**: Ensures symbol is tradeable before attempting operations
+- **Details**: Checks trade mode, symbol availability, and sufficient data
+
+#### Warning Spam Limiter
+- **Enhanced**: Rate-limited warnings with maximum limit to prevent log spam
+- **File**: `TrendlineTrader.mqh` - OnTick() method
+- **Impact**: Prevents log spam while providing helpful recovery instructions
+- **Details**: Limited to 10 warnings with recovery tips after limit reached
 
 #### Defensive Programming
 - **Added**: Comprehensive null checks throughout the codebase
@@ -158,6 +194,113 @@
 
 ---
 
+## Version 2.2 - Enhanced Features (2025-01-18)
+
+### 🟢 New Features
+
+#### Centralized Logging System
+- **Added**: Configurable logging system with multiple levels
+- **File**: `common/utils/Logger.mqh`
+- **Impact**: Better debugging and monitoring capabilities
+- **Details**: LOG_ERROR, LOG_WARNING, LOG_INFO, LOG_DEBUG levels with formatted output
+
+#### Trade Management Centralization
+- **Added**: Dedicated TradeManager class for position management
+- **File**: `common/managers/TradeManager.mqh`
+- **Impact**: Centralized trade execution and position tracking
+- **Details**: Handles order execution, position validation, SL/TP modification, error handling
+
+#### Event-Driven Architecture
+- **Added**: Event system for component communication
+- **Files**: `common/events/ITradingEventListener.mqh`, `EventManager.mqh`, `PerformanceTracker.mqh`
+- **Impact**: Decoupled architecture with extensible event handling
+- **Details**: Event dispatching for signals, trades, pivots, and trendlines
+
+#### Performance Tracking
+- **Added**: Built-in performance metrics tracking
+- **File**: `common/events/PerformanceTracker.mqh`
+- **Impact**: Real-time performance monitoring and reporting
+- **Details**: Tracks signals, trades, profits, win rate, and generates reports
+
+### 🔧 Technical Enhancements
+
+#### Enhanced Input Parameters
+- **Added**: Log level configuration in main EA
+- **Files**: `Trendline Breakouts EA.mq5`
+- **Impact**: Users can control logging verbosity
+- **Details**: LOG_NONE, LOG_ERROR, LOG_WARNING, LOG_INFO, LOG_DEBUG options
+
+#### State Synchronization
+- **Improved**: Better synchronization between TradeManager and legacy state
+- **File**: `TrendlineTrader.mqh`
+- **Impact**: Consistent state management and reduced race conditions
+- **Details**: Proper synchronization of m_tradeIsOn, m_currentTicket, m_isLongTrade
+
+#### Comprehensive Error Handling
+- **Enhanced**: TradeManager includes detailed error reporting and parameter adjustment
+- **File**: `TradeManager.mqh`
+- **Impact**: Better order execution success rates and error diagnostics
+- **Details**: Automatic SL/TP adjustment, detailed error codes, specific recovery tips
+
+### 📊 Architecture Improvements
+
+#### Component Integration
+- **Updated**: All components now use centralized logging
+- **Files**: Multiple detector and filter files
+- **Impact**: Consistent logging across all components
+- **Details**: Replaced Print() statements with Logger:: calls
+
+#### Event Integration
+- **Integrated**: Event dispatching in all major trading operations
+- **File**: `TrendlineTrader.mqh`
+- **Impact**: Full traceability of trading decision flow
+- **Details**: Events for signal detection, trade execution, position management
+
+#### Performance Monitoring
+- **Added**: Automatic performance report generation on EA shutdown
+- **File**: `TrendlineTrader.mqh` destructor
+- **Impact**: Built-in performance analysis without external tools
+- **Details**: Comprehensive statistics including win rate, profit factor, trade counts
+
+### 🔄 Breaking Changes
+**None** - All enhancements are backward compatible
+
+### 🔧 Configuration Updates
+
+#### New Input Parameters
+```cpp
+input ENUM_LOG_LEVEL InpLogLevel = LOG_INFO;     // Log Level
+```
+
+#### Enhanced Set File
+- Added log level configuration option
+- All existing parameters maintained
+
+### 📁 New Files Added
+
+1. `common/utils/Logger.mqh` - Centralized logging system
+2. `common/managers/TradeManager.mqh` - Trade execution management
+3. `common/events/ITradingEventListener.mqh` - Event interface
+4. `common/events/EventManager.mqh` - Event management
+5. `common/events/PerformanceTracker.mqh` - Performance tracking
+
+### 🎯 Benefits
+
+#### For Users
+- **Better Monitoring**: Configurable logging levels for debugging
+- **Performance Visibility**: Automatic performance reports
+- **Improved Reliability**: Better error handling and recovery
+
+#### For Developers
+- **Extensible Architecture**: Easy to add new event listeners
+- **Centralized Management**: Single point for all trade operations
+- **Better Testing**: Event-driven architecture enables better testing
+
+#### For Maintenance
+- **Comprehensive Logging**: Detailed logs for troubleshooting
+- **Performance Tracking**: Built-in metrics for optimization
+- **Error Diagnostics**: Detailed error messages with recovery tips
+
 ## Version History
 
 ### v2.0 - Modular Architecture (2025-01-18)
@@ -172,8 +315,15 @@
 - Comprehensive documentation
 - Production-ready quality
 
+### v2.2 - Enhanced Features (2025-01-18)
+- Centralized logging system
+- Trade management centralization
+- Event-driven architecture
+- Performance tracking
+- Improved state synchronization
+
 ---
 
-**Next Version**: v2.2 - Enhanced Features (TBD)  
+**Next Version**: v2.3 - Advanced Features (TBD)  
 **Maintainer**: Development Team  
 **Last Updated**: 2025-01-18
