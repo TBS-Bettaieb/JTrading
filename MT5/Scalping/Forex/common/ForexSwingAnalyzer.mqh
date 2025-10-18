@@ -81,27 +81,46 @@ public:
    //+------------------------------------------------------------------+
    double FindHigh()
    {
-      double highestHigh = 0;
+      // Tentative 1 : Recherche sur le timeframe actuel
+      Print("🔍 FindHigh: Searching on current timeframe ", EnumToString(m_timeframe));
+      double result = SearchHighOnTimeframe(m_timeframe);
       
-      for(int i = 0; i < 200; i++)
+      if(result > 0)
       {
-         double high = iHigh(m_symbol, m_timeframe, i);
-         
-         if(i > m_barsN && iHighest(m_symbol, m_timeframe, MODE_HIGH, m_barsN*2+1, i-m_barsN) == i)
-         {
-            if(high > highestHigh)
-            {
-               // Stocker le point détecté
-               datetime barTime = iTime(m_symbol, m_timeframe, i);
-               AddHighPoint(high, barTime);
-               
-               return high;
-            }
-         }
-         
-         highestHigh = MathMax(high, highestHigh);
+         Print("✓ FindHigh: Found high point at ", DoubleToString(result, _Digits), " on ", EnumToString(m_timeframe));
+         return result;
       }
       
+      // Tentative 2 : Recherche sur le timeframe supérieur (+1 niveau)
+      ENUM_TIMEFRAMES nextTF1 = GetNextHigherTimeframe(m_timeframe);
+      if(nextTF1 != PERIOD_CURRENT)
+      {
+         Print("🔍 FindHigh: No point found. Trying higher timeframe ", EnumToString(nextTF1));
+         result = SearchHighOnTimeframe(nextTF1);
+         
+         if(result > 0)
+         {
+            Print("✓ FindHigh: Found high point at ", DoubleToString(result, _Digits), " on ", EnumToString(nextTF1));
+            return result;
+         }
+      }
+      
+      // Tentative 3 : Recherche sur le timeframe encore supérieur (+2 niveaux)
+      ENUM_TIMEFRAMES nextTF2 = GetNextHigherTimeframe(nextTF1);
+      if(nextTF2 != PERIOD_CURRENT && nextTF1 != PERIOD_CURRENT)
+      {
+         Print("🔍 FindHigh: Still no point. Trying even higher timeframe ", EnumToString(nextTF2));
+         result = SearchHighOnTimeframe(nextTF2);
+         
+         if(result > 0)
+         {
+            Print("✓ FindHigh: Found high point at ", DoubleToString(result, _Digits), " on ", EnumToString(nextTF2));
+            return result;
+         }
+      }
+      
+      // Aucun point trouvé même après 3 tentatives
+      Print("✗ FindHigh: No high point found even on higher timeframes");
       return -1;
    }
    
@@ -110,27 +129,46 @@ public:
    //+------------------------------------------------------------------+
    double FindLow()
    {
-      double lowestLow = DBL_MAX;
+      // Tentative 1 : Recherche sur le timeframe actuel
+      Print("🔍 FindLow: Searching on current timeframe ", EnumToString(m_timeframe));
+      double result = SearchLowOnTimeframe(m_timeframe);
       
-      for(int i = 0; i < 200; i++)
+      if(result > 0)
       {
-         double low = iLow(m_symbol, m_timeframe, i);
-         
-         if(i > m_barsN && iLowest(m_symbol, m_timeframe, MODE_LOW, m_barsN*2+1, i-m_barsN) == i)
-         {
-            if(low < lowestLow)
-            {
-               // Stocker le point détecté
-               datetime barTime = iTime(m_symbol, m_timeframe, i);
-               AddLowPoint(low, barTime);
-               
-               return low;
-            }
-         }
-         
-         lowestLow = MathMin(low, lowestLow);
+         Print("✓ FindLow: Found low point at ", DoubleToString(result, _Digits), " on ", EnumToString(m_timeframe));
+         return result;
       }
       
+      // Tentative 2 : Recherche sur le timeframe supérieur (+1 niveau)
+      ENUM_TIMEFRAMES nextTF1 = GetNextHigherTimeframe(m_timeframe);
+      if(nextTF1 != PERIOD_CURRENT)
+      {
+         Print("🔍 FindLow: No point found. Trying higher timeframe ", EnumToString(nextTF1));
+         result = SearchLowOnTimeframe(nextTF1);
+         
+         if(result > 0)
+         {
+            Print("✓ FindLow: Found low point at ", DoubleToString(result, _Digits), " on ", EnumToString(nextTF1));
+            return result;
+         }
+      }
+      
+      // Tentative 3 : Recherche sur le timeframe encore supérieur (+2 niveaux)
+      ENUM_TIMEFRAMES nextTF2 = GetNextHigherTimeframe(nextTF1);
+      if(nextTF2 != PERIOD_CURRENT && nextTF1 != PERIOD_CURRENT)
+      {
+         Print("🔍 FindLow: Still no point. Trying even higher timeframe ", EnumToString(nextTF2));
+         result = SearchLowOnTimeframe(nextTF2);
+         
+         if(result > 0)
+         {
+            Print("✓ FindLow: Found low point at ", DoubleToString(result, _Digits), " on ", EnumToString(nextTF2));
+            return result;
+         }
+      }
+      
+      // Aucun point trouvé même après 3 tentatives
+      Print("✗ FindLow: No low point found even on higher timeframes");
       return -1;
    }
    
@@ -300,5 +338,82 @@ private:
       }
       
       ChartRedraw(0);
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Obtenir le timeframe supérieur suivant                          |
+   //+------------------------------------------------------------------+
+   ENUM_TIMEFRAMES GetNextHigherTimeframe(ENUM_TIMEFRAMES current)
+   {
+      switch(current)
+      {
+         case PERIOD_M1:  return PERIOD_M5;
+         case PERIOD_M5:  return PERIOD_M15;
+         case PERIOD_M15: return PERIOD_M30;
+         case PERIOD_M30: return PERIOD_H1;
+         case PERIOD_H1:  return PERIOD_H4;
+         case PERIOD_H4:  return PERIOD_D1;
+         case PERIOD_D1:  return PERIOD_W1;
+         case PERIOD_W1:  return PERIOD_MN1;
+         default:         return PERIOD_CURRENT;
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Rechercher un high point sur un timeframe spécifique            |
+   //+------------------------------------------------------------------+
+   double SearchHighOnTimeframe(ENUM_TIMEFRAMES timeframe)
+   {
+      double highestHigh = 0;
+      
+      for(int i = 0; i < 200; i++)
+      {
+         double high = iHigh(m_symbol, timeframe, i);
+         
+         if(i > m_barsN && iHighest(m_symbol, timeframe, MODE_HIGH, m_barsN*2+1, i-m_barsN) == i)
+         {
+            if(high > highestHigh)
+            {
+               // Stocker le point détecté
+               datetime barTime = iTime(m_symbol, timeframe, i);
+               AddHighPoint(high, barTime);
+               
+               return high;
+            }
+         }
+         
+         highestHigh = MathMax(high, highestHigh);
+      }
+      
+      return -1;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Rechercher un low point sur un timeframe spécifique             |
+   //+------------------------------------------------------------------+
+   double SearchLowOnTimeframe(ENUM_TIMEFRAMES timeframe)
+   {
+      double lowestLow = DBL_MAX;
+      
+      for(int i = 0; i < 200; i++)
+      {
+         double low = iLow(m_symbol, timeframe, i);
+         
+         if(i > m_barsN && iLowest(m_symbol, timeframe, MODE_LOW, m_barsN*2+1, i-m_barsN) == i)
+         {
+            if(low < lowestLow)
+            {
+               // Stocker le point détecté
+               datetime barTime = iTime(m_symbol, timeframe, i);
+               AddLowPoint(low, barTime);
+               
+               return low;
+            }
+         }
+         
+         lowestLow = MathMin(low, lowestLow);
+      }
+      
+      return -1;
    }
 };
