@@ -82,6 +82,7 @@ private:
    double m_currentSL;
    datetime m_lastBarTime;
    int m_maxPositions;
+   bool m_closeOnOpposite;
 
 public:
    //+------------------------------------------------------------------+
@@ -100,6 +101,7 @@ public:
       color lineColor = clrGray,
       ENUM_LOG_LEVEL logLevel = LOG_INFO,  // ✅ Add log level parameter
       int maxPositions = 3,  // ✅ Add max positions parameter
+      bool closeOnOpposite = true,  // ✅ Add close on opposite parameter
       // TP/SL Parameters
       ENUM_TPSL_METHOD tpslMethod = ZBAND,
       double zbandMultiplier = 20.0,
@@ -208,6 +210,7 @@ public:
       
       // Initialize state
       m_maxPositions = maxPositions;
+      m_closeOnOpposite = closeOnOpposite;
       m_currentTP = 0;
       m_currentSL = 0;
       m_lastBarTime = 0;
@@ -522,11 +525,15 @@ public:
       {
          Logger::Info("🟢 BUY SIGNAL DETECTED - Executing...");
          
-         // Close any existing SHORT positions before opening LONG position
-         if(m_tradeManager.HasPositionInDirection(false))
+         // Close any existing SHORT positions before opening LONG position (if enabled)
+         if(m_closeOnOpposite && m_tradeManager.HasPositionInDirection(false))
          {
             Logger::Info("Closing SHORT positions before opening LONG position");
             m_tradeManager.ClosePositionsByDirection(false, "Opposite signal");
+         }
+         else if(!m_closeOnOpposite && m_tradeManager.HasPositionInDirection(false))
+         {
+            Logger::Info("Close on opposite disabled - keeping SHORT positions open");
          }
          
          // ✅ ADD EVENT:
@@ -539,11 +546,15 @@ public:
       {
          Logger::Info("🔴 SELL SIGNAL DETECTED - Executing...");
          
-         // Close any existing LONG positions before opening SHORT position
-         if(m_tradeManager.HasPositionInDirection(true))
+         // Close any existing LONG positions before opening SHORT position (if enabled)
+         if(m_closeOnOpposite && m_tradeManager.HasPositionInDirection(true))
          {
             Logger::Info("Closing LONG positions before opening SHORT position");
             m_tradeManager.ClosePositionsByDirection(true, "Opposite signal");
+         }
+         else if(!m_closeOnOpposite && m_tradeManager.HasPositionInDirection(true))
+         {
+            Logger::Info("Close on opposite disabled - keeping LONG positions open");
          }
          
          // ✅ ADD EVENT:
@@ -820,6 +831,7 @@ public:
    double GetCurrentSL() const { return m_currentSL; }
    double GetZband() const { return m_volatilityFilter.GetZband(); }
    int GetMaxPositions() const { return m_maxPositions; }
+   bool GetCloseOnOpposite() const { return m_closeOnOpposite; }
 
 private:
    //+------------------------------------------------------------------+

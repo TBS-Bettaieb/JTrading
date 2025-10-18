@@ -23,6 +23,7 @@ input double   InpLotSize = 0.01;                 // Lot Size
 input int      InpSlippage = 10;                  // Slippage (points)
 input int      InpMagicNumber = 12345;            // Magic Number
 input int      InpMaxPositions = 1;               // Max Simultaneous Positions
+input bool     InpCloseOnOpposite = true;         // Close Opposite Positions on Signal
 
 input group "➞ TP/SL Settings 🔸"
 input ENUM_TPSL_METHOD InpTPSLMethod = HL_RATIO;  // TP/SL Method
@@ -60,6 +61,7 @@ int OnInit()
       InpLineColor,
       InpLogLevel,  // ✅ Add log level parameter
       InpMaxPositions,  // ✅ Add max positions parameter
+      InpCloseOnOpposite,  // ✅ Add close on opposite parameter
       // TP/SL Parameters
       InpTPSLMethod,
       InpZbandMultiplier,
