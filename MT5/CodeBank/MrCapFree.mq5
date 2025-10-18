@@ -299,6 +299,29 @@ void OnTick() {
    else if(!dayOK) currentReason = DAY_RESTRICTION;
    else if(!newsOK) currentReason = NEWS_RESTRICTION;
    
+
+   if(currentReason != NO_RESTRICTION)
+   {
+      if(currentReason != LastRestrictionReason || !alertShown)
+      {
+         string alertMsg = GetRestrictionMessage(currentReason);
+         ShowTradingHourAlert(alertMsg);
+         alertShown = true;
+         LastRestrictionReason = currentReason;
+      }
+      return;
+   }
+   else
+   {
+      if(LastRestrictionReason != NO_RESTRICTION || alertShown)
+      {
+         ShowTradingHourAlert("");
+         alertShown = false;
+         LastRestrictionReason = NO_RESTRICTION;
+      }
+   }
+
+
    //+------------------------------------------------------------------+
    //| Place New Orders                                                 |
    //+------------------------------------------------------------------+
@@ -674,3 +697,70 @@ void ShowAlert(string message){
 }
 
 //+------------------------------------------------------------------+
+
+
+string GetRestrictionMessage(ENUM_RESTRICTION_REASON reason)
+{
+    switch(reason)
+    {
+        case TIME_RESTRICTION: return "Outside Trading Hours - EA Paused";
+        case DAY_RESTRICTION: return "Trading Day Restricted - EA Paused";
+        case NEWS_RESTRICTION: return TradingEnabledComm;
+        case TIME_DAY_RESTRICTION: return "Outside Hours & Day Restricted - EA Paused";
+        case TIME_NEWS_RESTRICTION: return "Outside Hours & News Event - EA Paused";
+        case DAY_NEWS_RESTRICTION: return "Day Restricted & News Event - EA Paused";
+        case ALL_RESTRICTIONS: return "Outside Hours, Day Restricted & News - EA Paused";
+    }
+    return "";
+}
+
+
+void ShowTradingHourAlert(string message)
+{
+   // Delete previous alert if exists
+ObjectDelete(0, "Trading_Hour_Alert");
+
+if(message=="") return;
+
+// Create the alert object
+if(!ObjectCreate(0, "Trading_Hour_Alert", OBJ_LABEL, 0, 0, 0))
+{
+    Print("Failed to create alert object! Error: ", GetLastError());
+    return;
+}
+
+// Set text properties - CORRECTED FONT SETTING
+
+ObjectSetString(0, "Trading_Hour_Alert", OBJPROP_TEXT, "• " + message + " •");
+ObjectSetInteger(0, "Trading_Hour_Alert", OBJPROP_FONTSIZE, 14);
+ObjectSetInteger(0, "Trading_Hour_Alert", OBJPROP_COLOR, clrGold);
+ObjectSetInteger(0, "Trading_Hour_Alert", OBJPROP_BGCOLOR, clrNavy);
+ObjectSetString(0, "Trading_Hour_Alert", OBJPROP_FONT, "Arial Black");
+
+// Position at center of chart
+int xPos = (int)(ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) / 2);
+int yPos = (int)(ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS) / 2);
+
+ObjectSetInteger(0, "Trading_Hour_Alert", OBJPROP_ANCHOR, ANCHOR_CENTER);
+ObjectSetInteger(0, "Trading_Hour_Alert", OBJPROP_XDISTANCE, xPos);
+ObjectSetInteger(0, "Trading_Hour_Alert", OBJPROP_YDISTANCE, yPos);
+ObjectSetInteger(0, "Trading_Hour_Alert", OBJPROP_SELECTABLE, false);
+ObjectSetInteger(0, "Trading_Hour_Alert", OBJPROP_BACK, false);
+
+// Make it blink for warnings
+if(StringFind(message, "?") >= 0)
+{
+    for(int i = 0; i < 3; i++)
+    {
+        ObjectSetInteger(0, "Trading_Hour_Alert", OBJPROP_COLOR, clrRed);
+        ChartRedraw();
+        Sleep(300);
+        ObjectSetInteger(0, "Trading_Hour_Alert", OBJPROP_COLOR, clrGold);
+        ChartRedraw();
+        Sleep(300);
+    }
+}
+ChartRedraw();
+}
+
+
