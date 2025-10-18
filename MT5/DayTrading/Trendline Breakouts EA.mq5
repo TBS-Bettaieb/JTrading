@@ -6,6 +6,8 @@
 #property version   "1.00"
 #property description "Trendline Breakouts With Targets EA"
 
+#include <Trade\Trade.mqh>
+
 //--- Input parameters
 input group "➞ Core Settings 🔸"
 input int      InpPeriod = 10;                    // Period
@@ -13,6 +15,10 @@ input bool     InpTrendType = true;               // Type: true=Wicks, false=Bod
 input int      InpExtension = 25;                 // Extension (25/50/75)
 input bool     InpShowTargets = true;             // Show Targets
 input color    InpLineColor = clrGray;            // Line Color
+
+input group "➞ Trade Settings 🔸"
+input double   InpLotSize = 0.01;                 // Lot Size
+input int      InpSlippage = 10;                  // Slippage (points)
 
 //--- Global variables
 bool g_TradeIsOn = false;
@@ -37,7 +43,12 @@ double g_PrevPL = 0.0;
 // Object names
 string g_TPLineName = "TPLine";
 string g_LabelName = "TargetLabel";
+string g_SLLineName = "TBT_SL_Line";
+string g_TPLineNameHoriz = "TBT_TP_Line";
 int g_ObjectCounter = 0;
+
+// Trade object
+CTrade g_Trade;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -56,6 +67,8 @@ void OnDeinit(const int reason)
    ObjectsDeleteAll(0, "TBT_");
    ObjectDelete(0, g_TPLineName);
    ObjectDelete(0, g_LabelName);
+   ObjectDelete(0, g_SLLineName);
+   ObjectDelete(0, g_TPLineNameHoriz);
 }
 
 //+------------------------------------------------------------------+
@@ -332,6 +345,76 @@ bool CheckShortSignal()
 }
 
 //+------------------------------------------------------------------+
+//| Send Order Function                                              |
+//+------------------------------------------------------------------+
+bool SendOrder(bool isLong)
+{
+   // Set trade parameters
+   g_Trade.SetDeviationInPoints(InpSlippage);
+   g_Trade.SetTypeFilling(ORDER_FILLING_IOC);
+   
+   // Get current price
+   double price = isLong ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : 
+                           SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   
+   // Normalize price levels
+   int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+   double tp = NormalizeDouble(g_TP, digits);
+   double sl = NormalizeDouble(g_SL, digits);
+   
+   // Execute order
+   bool result = false;
+   if(isLong)
+   {
+      result = g_Trade.Buy(InpLotSize, _Symbol, price, sl, tp, "TBT Long");
+   }
+   else
+   {
+      result = g_Trade.Sell(InpLotSize, _Symbol, price, sl, tp, "TBT Short");
+   }
+   
+   if(result)
+   {
+      Print("Order executed: ", isLong ? "BUY" : "SELL", 
+            " | Price: ", price, " | SL: ", sl, " | TP: ", tp);
+   }
+   else
+   {
+      Print("Order failed! Error: ", GetLastError(), 
+            " | Return code: ", g_Trade.ResultRetcode());
+   }
+   
+   return result;
+}
+
+//+------------------------------------------------------------------+
+//| Draw SL and TP Lines                                            |
+//+------------------------------------------------------------------+
+void DrawSLTPLines()
+{
+   datetime time0 = iTime(_Symbol, PERIOD_CURRENT, 0);
+   datetime timeEnd = time0 + PeriodSeconds() * 50;
+   
+   // Draw SL Line (Red)
+   ObjectDelete(0, g_SLLineName);
+   ObjectCreate(0, g_SLLineName, OBJ_TREND, 0, time0, g_SL, timeEnd, g_SL);
+   ObjectSetInteger(0, g_SLLineName, OBJPROP_COLOR, clrRed);
+   ObjectSetInteger(0, g_SLLineName, OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, g_SLLineName, OBJPROP_STYLE, STYLE_SOLID);
+   ObjectSetInteger(0, g_SLLineName, OBJPROP_RAY_RIGHT, true);
+   ObjectSetInteger(0, g_SLLineName, OBJPROP_BACK, false);
+   
+   // Draw TP Line (Green)
+   ObjectDelete(0, g_TPLineNameHoriz);
+   ObjectCreate(0, g_TPLineNameHoriz, OBJ_TREND, 0, time0, g_TP, timeEnd, g_TP);
+   ObjectSetInteger(0, g_TPLineNameHoriz, OBJPROP_COLOR, clrLime);
+   ObjectSetInteger(0, g_TPLineNameHoriz, OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, g_TPLineNameHoriz, OBJPROP_STYLE, STYLE_SOLID);
+   ObjectSetInteger(0, g_TPLineNameHoriz, OBJPROP_RAY_RIGHT, true);
+   ObjectSetInteger(0, g_TPLineNameHoriz, OBJPROP_BACK, false);
+}
+
+//+------------------------------------------------------------------+
 //| Open trade and set targets                                       |
 //+------------------------------------------------------------------+
 void OpenTrade(bool isLong)
@@ -350,17 +433,20 @@ void OpenTrade(bool isLong)
       g_SL = high + (g_Zband * 20);
    }
    
-   g_TradeIsOn = true;
-   
-   // Draw target line if enabled
-   if(InpShowTargets)
+   // Execute the order
+   if(SendOrder(isLong))
    {
-      DrawTargetLine(isLong);
+      g_TradeIsOn = true;
+      
+      // Draw SL and TP lines
+      DrawSLTPLines();
+      
+      // Draw target line if enabled (existing functionality)
+      if(InpShowTargets)
+      {
+         DrawTargetLine(isLong);
+      }
    }
-   
-   // Here you would place the actual trade
-   // For example: OrderSend(...);
-   Print("Trade Signal: ", isLong ? "LONG" : "SHORT", " | TP: ", g_TP, " | SL: ", g_SL);
 }
 
 //+------------------------------------------------------------------+
@@ -412,6 +498,15 @@ void ManageTrade()
       ObjectSetInteger(0, g_LabelName, OBJPROP_TIME, 0, currentTime + PeriodSeconds() * 5);
    }
    
+   // Update SL/TP lines
+   if(ObjectFind(0, g_SLLineName) >= 0)
+   {
+      datetime currentTime = iTime(_Symbol, PERIOD_CURRENT, 0);
+      datetime timeEnd = currentTime + PeriodSeconds() * 50;
+      ObjectSetInteger(0, g_SLLineName, OBJPROP_TIME, 1, timeEnd);
+      ObjectSetInteger(0, g_TPLineNameHoriz, OBJPROP_TIME, 1, timeEnd);
+   }
+   
    // Check for TP or SL hit
    if(g_LongTrade)
    {
@@ -420,12 +515,16 @@ void ManageTrade()
          ObjectSetInteger(0, g_LabelName, OBJPROP_COLOR, clrLime);
          Print("Long Trade closed at TP: ", g_TP);
          g_TradeIsOn = false;
+         ObjectDelete(0, g_SLLineName);
+         ObjectDelete(0, g_TPLineNameHoriz);
       }
       else if(close <= g_SL)
       {
          ObjectSetInteger(0, g_LabelName, OBJPROP_COLOR, clrRed);
          Print("Long Trade closed at SL: ", g_SL);
          g_TradeIsOn = false;
+         ObjectDelete(0, g_SLLineName);
+         ObjectDelete(0, g_TPLineNameHoriz);
       }
    }
    else if(g_ShortTrade)
@@ -435,12 +534,16 @@ void ManageTrade()
          ObjectSetInteger(0, g_LabelName, OBJPROP_COLOR, clrLime);
          Print("Short Trade closed at TP: ", g_TP);
          g_TradeIsOn = false;
+         ObjectDelete(0, g_SLLineName);
+         ObjectDelete(0, g_TPLineNameHoriz);
       }
       else if(close >= g_SL)
       {
          ObjectSetInteger(0, g_LabelName, OBJPROP_COLOR, clrRed);
          Print("Short Trade closed at SL: ", g_SL);
          g_TradeIsOn = false;
+         ObjectDelete(0, g_SLLineName);
+         ObjectDelete(0, g_TPLineNameHoriz);
       }
    }
 }
