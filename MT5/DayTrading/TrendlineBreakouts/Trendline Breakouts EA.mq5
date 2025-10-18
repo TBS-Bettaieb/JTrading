@@ -23,6 +23,14 @@ input double   InpLotSize = 0.01;                 // Lot Size
 input int      InpSlippage = 10;                  // Slippage (points)
 input int      InpMagicNumber = 12345;            // Magic Number
 
+input group "➞ TP/SL Settings 🔸"
+input ENUM_TPSL_METHOD InpTPSLMethod = ZBAND;     // TP/SL Method
+input double   InpZbandMultiplier = 20.0;         // Zband Multiplier (if ZBAND)
+input int      InpFixedPoints = 100;              // Fixed Points (if FIXED_POINTS)
+input double   InpATRMultiple = 2.0;              // ATR Multiple (if ATR_MULTIPLE)
+input double   InpRiskReward = 2.0;               // Risk/Reward Ratio (if RISK_REWARD)
+input double   InpPercent = 1.0;                  // Percent (if PERCENT)
+
 input group "➞ System Settings 🔸"
 input ENUM_LOG_LEVEL InpLogLevel = LOG_INFO;     // Log Level
 
@@ -49,7 +57,14 @@ int OnInit()
       InpSlippage,
       InpShowTargets,
       InpLineColor,
-      InpLogLevel  // ✅ Add log level parameter
+      InpLogLevel,  // ✅ Add log level parameter
+      // TP/SL Parameters
+      InpTPSLMethod,
+      InpZbandMultiplier,
+      InpFixedPoints,
+      InpATRMultiple,
+      InpRiskReward,
+      InpPercent
    );
    
    if(!g_trader.Initialize())

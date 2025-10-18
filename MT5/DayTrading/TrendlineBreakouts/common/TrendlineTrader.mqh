@@ -18,6 +18,27 @@
 #include "events/PerformanceTracker.mqh"
 
 //+------------------------------------------------------------------+
+//| TP/SL Method enumeration                                         |
+//+------------------------------------------------------------------+
+enum ENUM_TPSL_METHOD
+{
+   ZBAND = 0,           // Zband Multiplier (current method)
+   FIXED_POINTS = 1,    // Fixed Points/Pips
+   ATR_MULTIPLE = 2,    // ATR Multiple
+   RISK_REWARD = 3,     // Risk/Reward Ratio
+   PERCENT = 4          // Percentage of Price
+};
+
+//+------------------------------------------------------------------+
+//| TP/SL Levels structure                                           |
+//+------------------------------------------------------------------+
+struct TPSLLevels
+{
+   double takeProfit;
+   double stopLoss;
+};
+
+//+------------------------------------------------------------------+
 //| Main trader class                                                |
 //+------------------------------------------------------------------+
 class TrendlineTrader
@@ -45,6 +66,14 @@ private:
    int m_extension;
    color m_lineColor;
    
+   // TP/SL Settings
+   ENUM_TPSL_METHOD m_tpslMethod;
+   double m_zbandMultiplier;
+   int m_fixedPoints;
+   double m_atrMultiple;
+   double m_riskReward;
+   double m_percent;
+   
    // State tracking
    bool m_tradeIsOn;
    bool m_isLongTrade;
@@ -68,7 +97,14 @@ public:
       int slippage,
       bool showTargets,
       color lineColor = clrGray,
-      ENUM_LOG_LEVEL logLevel = LOG_INFO  // ✅ Add log level parameter
+      ENUM_LOG_LEVEL logLevel = LOG_INFO,  // ✅ Add log level parameter
+      // TP/SL Parameters
+      ENUM_TPSL_METHOD tpslMethod = ZBAND,
+      double zbandMultiplier = 20.0,
+      int fixedPoints = 100,
+      double atrMultiple = 2.0,
+      double riskReward = 2.0,
+      double percent = 1.0
    )
    {
       // ═══ VALIDATE AND SANITIZE INPUTS ═══
@@ -119,6 +155,37 @@ public:
          slippage = 10;
       }
       
+      // Validate TP/SL parameters
+      if(zbandMultiplier <= 0 || zbandMultiplier > 100)
+      {
+         Logger::Warning("Invalid zband multiplier (" + DoubleToString(zbandMultiplier) + "), using 20.0");
+         zbandMultiplier = 20.0;
+      }
+      
+      if(fixedPoints <= 0 || fixedPoints > 10000)
+      {
+         Logger::Warning("Invalid fixed points (" + IntegerToString(fixedPoints) + "), using 100");
+         fixedPoints = 100;
+      }
+      
+      if(atrMultiple <= 0 || atrMultiple > 10)
+      {
+         Logger::Warning("Invalid ATR multiple (" + DoubleToString(atrMultiple) + "), using 2.0");
+         atrMultiple = 2.0;
+      }
+      
+      if(riskReward <= 0 || riskReward > 10)
+      {
+         Logger::Warning("Invalid risk/reward ratio (" + DoubleToString(riskReward) + "), using 2.0");
+         riskReward = 2.0;
+      }
+      
+      if(percent <= 0 || percent > 10)
+      {
+         Logger::Warning("Invalid percent (" + DoubleToString(percent) + "), using 1.0");
+         percent = 1.0;
+      }
+      
       // Assign validated values
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -128,6 +195,14 @@ public:
       m_showTargets = showTargets;
       m_extension = extension;
       m_lineColor = lineColor;
+      
+      // Assign TP/SL settings
+      m_tpslMethod = tpslMethod;
+      m_zbandMultiplier = zbandMultiplier;
+      m_fixedPoints = fixedPoints;
+      m_atrMultiple = atrMultiple;
+      m_riskReward = riskReward;
+      m_percent = percent;
       
       // Initialize state
       m_tradeIsOn = false;
@@ -405,13 +480,13 @@ public:
          return;
       }
       
-      double zband = m_volatilityFilter.GetZband();
       double high = iHigh(m_symbol, m_timeframe, 0);
       double low = iLow(m_symbol, m_timeframe, 0);
       
-      // Calculate TP and SL
-      m_currentTP = high + (zband * 20);
-      m_currentSL = low - (zband * 20);
+      // Calculate TP and SL using the new modular system
+      TPSLLevels levels = CalculateTPSL(true, high);
+      m_currentTP = levels.takeProfit;
+      m_currentSL = levels.stopLoss;
       
       // Send order
       if(SendOrder(true))
@@ -458,13 +533,13 @@ public:
          return;
       }
       
-      double zband = m_volatilityFilter.GetZband();
       double high = iHigh(m_symbol, m_timeframe, 0);
       double low = iLow(m_symbol, m_timeframe, 0);
       
-      // Calculate TP and SL
-      m_currentTP = low - (zband * 20);
-      m_currentSL = high + (zband * 20);
+      // Calculate TP and SL using the new modular system
+      TPSLLevels levels = CalculateTPSL(false, low);
+      m_currentTP = levels.takeProfit;
+      m_currentSL = levels.stopLoss;
       
       // Send order
       if(SendOrder(false))
@@ -658,6 +733,169 @@ public:
    ulong GetCurrentTicket() const { return m_currentTicket; }
 
 private:
+   //+------------------------------------------------------------------+
+   //| Calculate TP/SL levels based on selected method                  |
+   //|                                                                  |
+   //| @param isLong - true for LONG position, false for SHORT         |
+   //| @param entryPrice - entry price of the trade                    |
+   //|                                                                  |
+   //| @return TPSLLevels - structure containing calculated TP and SL  |
+   //+------------------------------------------------------------------+
+   TPSLLevels CalculateTPSL(bool isLong, double entryPrice)
+   {
+      TPSLLevels levels;
+      levels.takeProfit = 0;
+      levels.stopLoss = 0;
+      
+      if(m_volatilityFilter == NULL)
+      {
+         Logger::Error("CalculateTPSL: VolatilityFilter is NULL");
+         return levels;
+      }
+      
+      double zband = m_volatilityFilter.GetZband();
+      double atr = m_volatilityFilter.GetATR();
+      int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
+      double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+      
+      switch(m_tpslMethod)
+      {
+         case ZBAND:
+            // Method 1: ZBAND (current method - kept for compatibility)
+            if(isLong)
+            {
+               levels.takeProfit = entryPrice + (zband * m_zbandMultiplier);
+               levels.stopLoss = entryPrice - (zband * m_zbandMultiplier);
+            }
+            else
+            {
+               levels.takeProfit = entryPrice - (zband * m_zbandMultiplier);
+               levels.stopLoss = entryPrice + (zband * m_zbandMultiplier);
+            }
+            break;
+            
+         case FIXED_POINTS:
+            // Method 2: Fixed Points/Pips
+            if(isLong)
+            {
+               levels.takeProfit = entryPrice + (m_fixedPoints * point);
+               levels.stopLoss = entryPrice - (m_fixedPoints * point);
+            }
+            else
+            {
+               levels.takeProfit = entryPrice - (m_fixedPoints * point);
+               levels.stopLoss = entryPrice + (m_fixedPoints * point);
+            }
+            break;
+            
+         case ATR_MULTIPLE:
+            // Method 3: ATR Multiple
+            if(isLong)
+            {
+               levels.takeProfit = entryPrice + (atr * m_atrMultiple);
+               levels.stopLoss = entryPrice - (atr * m_atrMultiple);
+            }
+            else
+            {
+               levels.takeProfit = entryPrice - (atr * m_atrMultiple);
+               levels.stopLoss = entryPrice + (atr * m_atrMultiple);
+            }
+            break;
+            
+         case RISK_REWARD:
+            // Method 4: Risk/Reward Ratio (SL based on Zband, TP calculated by ratio)
+            {
+               if(isLong)
+               {
+                  levels.stopLoss = entryPrice - (zband * m_zbandMultiplier);
+                  double riskDistance = entryPrice - levels.stopLoss;
+                  levels.takeProfit = entryPrice + (riskDistance * m_riskReward);
+               }
+               else
+               {
+                  levels.stopLoss = entryPrice + (zband * m_zbandMultiplier);
+                  double riskDistance = levels.stopLoss - entryPrice;
+                  levels.takeProfit = entryPrice - (riskDistance * m_riskReward);
+               }
+            }
+            break;
+            
+         case PERCENT:
+            // Method 5: Percentage of Price
+            {
+               double tpDistance = entryPrice * (m_percent / 100.0);
+               double slDistance = entryPrice * (m_percent / 100.0);
+               
+               if(isLong)
+               {
+                  levels.takeProfit = entryPrice + tpDistance;
+                  levels.stopLoss = entryPrice - slDistance;
+               }
+               else
+               {
+                  levels.takeProfit = entryPrice - tpDistance;
+                  levels.stopLoss = entryPrice + slDistance;
+               }
+            }
+            break;
+            
+         default:
+            Logger::Warning("CalculateTPSL: Unknown TP/SL method, using ZBAND");
+            // Fallback to ZBAND method
+            if(isLong)
+            {
+               levels.takeProfit = entryPrice + (zband * m_zbandMultiplier);
+               levels.stopLoss = entryPrice - (zband * m_zbandMultiplier);
+            }
+            else
+            {
+               levels.takeProfit = entryPrice - (zband * m_zbandMultiplier);
+               levels.stopLoss = entryPrice + (zband * m_zbandMultiplier);
+            }
+            break;
+      }
+      
+      // Validate and normalize the results
+      if(levels.takeProfit <= 0 || levels.stopLoss <= 0)
+      {
+         Logger::Warning("CalculateTPSL: Invalid TP/SL calculated, using defaults");
+         // Use ZBAND as fallback
+         if(isLong)
+         {
+            levels.takeProfit = entryPrice + (zband * 20.0);
+            levels.stopLoss = entryPrice - (zband * 20.0);
+         }
+         else
+         {
+            levels.takeProfit = entryPrice - (zband * 20.0);
+            levels.stopLoss = entryPrice + (zband * 20.0);
+         }
+      }
+      
+      // Validate TP vs SL relationship
+      if(isLong && levels.takeProfit <= levels.stopLoss)
+      {
+         Logger::Warning("CalculateTPSL: TP <= SL for LONG position, adjusting");
+         double distance = (levels.stopLoss - entryPrice) * 0.5;
+         levels.takeProfit = entryPrice + MathAbs(distance);
+      }
+      else if(!isLong && levels.takeProfit >= levels.stopLoss)
+      {
+         Logger::Warning("CalculateTPSL: TP >= SL for SHORT position, adjusting");
+         double distance = (levels.stopLoss - entryPrice) * 0.5;
+         levels.takeProfit = entryPrice - MathAbs(distance);
+      }
+      
+      // Normalize to symbol digits
+      levels.takeProfit = NormalizeDouble(levels.takeProfit, digits);
+      levels.stopLoss = NormalizeDouble(levels.stopLoss, digits);
+      
+      Logger::Info(StringFormat("CalculateTPSL: Method=%d, TP=%.5f, SL=%.5f", 
+                                (int)m_tpslMethod, levels.takeProfit, levels.stopLoss));
+      
+      return levels;
+   }
+
    //+------------------------------------------------------------------+
    //| Validate that all components are properly initialized           |
    //+------------------------------------------------------------------+
