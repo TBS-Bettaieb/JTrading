@@ -8,6 +8,7 @@
 
 #include <Trade\Trade.mqh>
 #include "utils/Logger.mqh"
+#include "../../../CommonUtils/TradingUtils.mqh"
 #include "utils/SymbolClassifier.mqh"
 #include "detectors/PivotDetector.mqh"
 #include "detectors/TrendlineDetector.mqh"
@@ -77,12 +78,10 @@ private:
    double m_percent;
    
    // State tracking
-   bool m_tradeIsOn;
-   bool m_isLongTrade;
    double m_currentTP;
    double m_currentSL;
    datetime m_lastBarTime;
-   ulong m_currentTicket;  // ✅ Add position ticket tracking
+   int m_maxPositions;
 
 public:
    //+------------------------------------------------------------------+
@@ -100,6 +99,7 @@ public:
       bool showTargets,
       color lineColor = clrGray,
       ENUM_LOG_LEVEL logLevel = LOG_INFO,  // ✅ Add log level parameter
+      int maxPositions = 3,  // ✅ Add max positions parameter
       // TP/SL Parameters
       ENUM_TPSL_METHOD tpslMethod = ZBAND,
       double zbandMultiplier = 20.0,
@@ -207,12 +207,10 @@ public:
       m_percent = percent;
       
       // Initialize state
-      m_tradeIsOn = false;
-      m_isLongTrade = false;
+      m_maxPositions = maxPositions;
       m_currentTP = 0;
       m_currentSL = 0;
       m_lastBarTime = 0;
-      m_currentTicket = 0;  // ✅ Initialize ticket tracking
       
       // Create components
       m_pivotDetector = new PivotDetector(symbol, timeframe, period, useWicks);
@@ -222,7 +220,7 @@ public:
       m_trendlineManager = new TrendlineManager(symbol, extension, lineColor);
       
       // ✅ ADD NEW MANAGERS:
-      m_tradeManager = new TradeManager(symbol, magicNumber, lotSize, slippage);
+      m_tradeManager = new TradeManager(symbol, magicNumber, lotSize, slippage, m_maxPositions, timeframe);
       m_eventManager = new EventManager();
       m_perfTracker = new PerformanceTracker();
       m_eventManager.RegisterListener(m_perfTracker);
@@ -378,17 +376,13 @@ public:
       m_breakoutDetector.SetZband(m_volatilityFilter.GetZband());
       
       // ✅ ALWAYS sync state from TradeManager (single source of truth)
-      SyncTradeState();
+      m_tradeManager.ValidatePositions();
       
-      // Check for signals if no trade is open
-      if(!m_tradeIsOn)
-      {
-         CheckSignals();
-      }
-      else
-      {
-         ManageTrade();
-      }
+      // Always check for signals (allow multiple simultaneous trades)
+      CheckSignals();
+      
+      // Manage all active positions
+      ManageTrade();
    }
 
    //+------------------------------------------------------------------+
@@ -414,8 +408,8 @@ public:
          // ✅ ADD EVENT:
          m_eventManager.DispatchPivotDetected(true, pivotHigh, pivotBar);
          
-         // Draw trendline if no trade is open
-         if(!m_tradeIsOn && m_trendlineDetector.IsUpperSlopeValid())
+         // Draw trendline if slope is valid (allow multiple positions)
+         if(m_trendlineDetector.IsUpperSlopeValid())
          {
             TrendlineData td = m_trendlineDetector.GetUpperTrendline();
             m_trendlineManager.DrawUpperTrendline(td);
@@ -423,12 +417,12 @@ public:
             // ✅ ADD EVENT:
             m_eventManager.DispatchTrendlineUpdated(true, td.slope, td.isValid);
             
-            Logger::Info("📈 Upper trendline drawn | Slope: " + DoubleToString(td.slope) + " | Valid: " + (td.isValid ? "YES" : "NO"));
+            Logger::Info("📈 Upper trendline drawn | Slope: " + DoubleToString(td.slope) + " | Valid: " + (td.isValid ? "YES" : "NO") +
+                        " | ActivePositions: " + IntegerToString(m_tradeManager.GetActivePositionCount()));
          }
          else
          {
-            Logger::Info("Upper trendline NOT drawn | TradeOpen: " + (m_tradeIsOn ? "YES" : "NO") + 
-                        " | SlopeValid: " + (m_trendlineDetector.IsUpperSlopeValid() ? "YES" : "NO"));
+            Logger::Info("Upper trendline NOT drawn | SlopeValid: " + (m_trendlineDetector.IsUpperSlopeValid() ? "YES" : "NO"));
          }
       }
       
@@ -445,8 +439,8 @@ public:
          // ✅ ADD EVENT:
          m_eventManager.DispatchPivotDetected(false, pivotLow, pivotBar);
          
-         // Draw trendline if no trade is open
-         if(!m_tradeIsOn && m_trendlineDetector.IsLowerSlopeValid())
+         // Draw trendline if slope is valid (allow multiple positions)
+         if(m_trendlineDetector.IsLowerSlopeValid())
          {
             TrendlineData td = m_trendlineDetector.GetLowerTrendline();
             m_trendlineManager.DrawLowerTrendline(td);
@@ -454,12 +448,12 @@ public:
             // ✅ ADD EVENT:
             m_eventManager.DispatchTrendlineUpdated(false, td.slope, td.isValid);
             
-            Logger::Info("📉 Lower trendline drawn | Slope: " + DoubleToString(td.slope) + " | Valid: " + (td.isValid ? "YES" : "NO"));
+            Logger::Info("📉 Lower trendline drawn | Slope: " + DoubleToString(td.slope) + " | Valid: " + (td.isValid ? "YES" : "NO") +
+                        " | ActivePositions: " + IntegerToString(m_tradeManager.GetActivePositionCount()));
          }
          else
          {
-            Logger::Info("Lower trendline NOT drawn | TradeOpen: " + (m_tradeIsOn ? "YES" : "NO") + 
-                        " | SlopeValid: " + (m_trendlineDetector.IsLowerSlopeValid() ? "YES" : "NO"));
+            Logger::Info("Lower trendline NOT drawn | SlopeValid: " + (m_trendlineDetector.IsLowerSlopeValid() ? "YES" : "NO"));
          }
       }
       
@@ -519,7 +513,7 @@ public:
          Logger::Info("🔍 Signal Status | BreakoutDetector: " + (m_breakoutDetector.IsInitialized() ? "OK" : "FAILED") +
                      " | UpperTrend: " + (hasUpperTrend ? "VALID" : "NONE") +
                      " | LowerTrend: " + (hasLowerTrend ? "VALID" : "NONE") +
-                     " | TradeOpen: " + (m_tradeIsOn ? "YES" : "NO"));
+                     " | ActivePositions: " + IntegerToString(m_tradeManager.GetActivePositionCount()));
          lastSignalCheck = currentTime;
       }
       
@@ -527,6 +521,14 @@ public:
       if(m_breakoutDetector.HasBuySignal())
       {
          Logger::Info("🟢 BUY SIGNAL DETECTED - Executing...");
+         
+         // Close any existing SHORT positions before opening LONG position
+         if(m_tradeManager.HasPositionInDirection(false))
+         {
+            Logger::Info("Closing SHORT positions before opening LONG position");
+            m_tradeManager.ClosePositionsByDirection(false, "Opposite signal");
+         }
+         
          // ✅ ADD EVENT:
          m_eventManager.DispatchSignalDetected(true, 1.0, TimeCurrent());
          ExecuteBuySignal();
@@ -536,6 +538,14 @@ public:
       if(m_breakoutDetector.HasSellSignal())
       {
          Logger::Info("🔴 SELL SIGNAL DETECTED - Executing...");
+         
+         // Close any existing LONG positions before opening SHORT position
+         if(m_tradeManager.HasPositionInDirection(true))
+         {
+            Logger::Info("Closing LONG positions before opening SHORT position");
+            m_tradeManager.ClosePositionsByDirection(true, "Opposite signal");
+         }
+         
          // ✅ ADD EVENT:
          m_eventManager.DispatchSignalDetected(false, 1.0, TimeCurrent());
          ExecuteSellSignal();
@@ -567,18 +577,21 @@ public:
       // Send order
       if(SendOrder(true))
       {
-         m_tradeIsOn = true;
-         m_isLongTrade = true;
-         m_currentTicket = m_tradeManager.GetCurrentTicket();  // ✅ Sync ticket
-         
-         // ✅ ADD EVENT:
-         m_eventManager.DispatchTradeOpened(
-            true, 
-            m_currentTicket, 
-            SymbolInfoDouble(m_symbol, SYMBOL_ASK),
-            m_currentSL, 
-            m_currentTP
-         );
+         // Get the latest ticket from active positions array
+         ulong activeTickets[];
+         if(m_tradeManager.GetActiveTickets(activeTickets) && ArraySize(activeTickets) > 0)
+         {
+            ulong latestTicket = activeTickets[ArraySize(activeTickets) - 1];
+            
+            // ✅ ADD EVENT:
+            m_eventManager.DispatchTradeOpened(
+               true, 
+               latestTicket, 
+               SymbolInfoDouble(m_symbol, SYMBOL_ASK),
+               m_currentSL, 
+               m_currentTP
+            );
+         }
          
          // Draw SL/TP lines
          m_trendlineManager.DrawSLTPLines(m_currentSL, m_currentTP);
@@ -620,18 +633,21 @@ public:
       // Send order
       if(SendOrder(false))
       {
-         m_tradeIsOn = true;
-         m_isLongTrade = false;
-         m_currentTicket = m_tradeManager.GetCurrentTicket();  // ✅ Sync ticket
-         
-         // ✅ ADD EVENT:
-         m_eventManager.DispatchTradeOpened(
-            false, 
-            m_currentTicket, 
-            SymbolInfoDouble(m_symbol, SYMBOL_BID),
-            m_currentSL, 
-            m_currentTP
-         );
+         // Get the latest ticket from active positions array
+         ulong activeTickets[];
+         if(m_tradeManager.GetActiveTickets(activeTickets) && ArraySize(activeTickets) > 0)
+         {
+            ulong latestTicket = activeTickets[ArraySize(activeTickets) - 1];
+            
+            // ✅ ADD EVENT:
+            m_eventManager.DispatchTradeOpened(
+               false, 
+               latestTicket, 
+               SymbolInfoDouble(m_symbol, SYMBOL_BID),
+               m_currentSL, 
+               m_currentTP
+            );
+         }
          
          // Draw SL/TP lines
          m_trendlineManager.DrawSLTPLines(m_currentSL, m_currentTP);
@@ -670,7 +686,7 @@ public:
    }
 
    //+------------------------------------------------------------------+
-   //| Manage open trade                                               |
+   //| Manage all active positions                                     |
    //+------------------------------------------------------------------+
    void ManageTrade()
    {
@@ -681,10 +697,11 @@ public:
          return;
       }
       
-      // ✅ Use TradeManager validation:
-      if(!m_tradeManager.ValidatePosition())
+      // Get all active positions
+      ulong activeTickets[];
+      if(!m_tradeManager.GetActiveTickets(activeTickets))
       {
-         m_tradeIsOn = false;
+         // No positions to manage, clear SL/TP lines if any
          m_trendlineManager.ClearSLTPLines();
          return;
       }
@@ -693,115 +710,88 @@ public:
       double low = iLow(m_symbol, m_timeframe, 0);
       double close = iClose(m_symbol, m_timeframe, 0);
       
-      // Update SL/TP line positions
+      // Update SL/TP line positions (using the most recent trade levels)
       m_trendlineManager.UpdateSLTPLines(m_currentSL, m_currentTP);
       
-      // Check for TP or SL hit and close position
-      if(m_isLongTrade)
+      // Check each active position for TP/SL hits
+      int count = ArraySize(activeTickets);
+      for(int i = count - 1; i >= 0; i--)
       {
-         if(high >= m_currentTP)
+         ulong ticket = activeTickets[i];
+         
+         // Get position direction and prices
+         bool isLong;
+         if(!m_tradeManager.GetPositionDirection(ticket, isLong))
          {
-            // ✅ CAPTURE DATA BEFORE CLOSING
-            ulong ticket = m_tradeManager.GetCurrentTicket();
-            double profit = m_tradeManager.GetPositionProfit();
-            
-            if(m_tradeManager.ClosePosition("TP Hit"))
+            // Position not found in our tracking, skip
+            continue;
+         }
+         
+         if(!PositionSelectByTicket(ticket))
+         {
+            // Position closed externally, remove from tracking
+            continue;
+         }
+         
+         // Get position's TP and SL
+         double positionTP = PositionGetDouble(POSITION_TP);
+         double positionSL = PositionGetDouble(POSITION_SL);
+         
+         bool shouldClose = false;
+         string closeReason = "";
+         
+         if(isLong)
+         {
+            if(high >= positionTP && positionTP > 0)
             {
-               m_eventManager.DispatchTradeClosed(
-                  true,
-                  ticket,   // ✅ Use captured ticket
-                  profit,   // ✅ Use captured profit
-                  "TP Hit"
-               );
-               
-               m_tradeIsOn = false;
-               m_currentTicket = 0;  // ✅ Reset ticket
-               m_trendlineManager.ClearSLTPLines();
+               shouldClose = true;
+               closeReason = "TP Hit";
             }
-            else
+            else if(close <= positionSL && positionSL > 0)
             {
-               // ✅ ADD ERROR HANDLING
-               Logger::Error("Failed to close LONG position at TP, will retry");
+               shouldClose = true;
+               closeReason = "SL Hit";
             }
          }
-         else if(close <= m_currentSL)
+         else
          {
-            // ✅ CAPTURE DATA BEFORE CLOSING
-            ulong ticket = m_tradeManager.GetCurrentTicket();
-            double profit = m_tradeManager.GetPositionProfit();
+            if(low <= positionTP && positionTP > 0)
+            {
+               shouldClose = true;
+               closeReason = "TP Hit";
+            }
+            else if(close >= positionSL && positionSL > 0)
+            {
+               shouldClose = true;
+               closeReason = "SL Hit";
+            }
+         }
+         
+         if(shouldClose)
+         {
+            // Capture data before closing
+            double profit = PositionGetDouble(POSITION_PROFIT);
             
-            if(m_tradeManager.ClosePosition("SL Hit"))
+            if(m_tradeManager.ClosePosition(ticket, closeReason))
             {
                m_eventManager.DispatchTradeClosed(
-                  true,
-                  ticket,   // ✅ Use captured ticket
-                  profit,   // ✅ Use captured profit
-                  "SL Hit"
+                  isLong,
+                  ticket,
+                  profit,
+                  closeReason
                );
-               
-               m_tradeIsOn = false;
-               m_currentTicket = 0;  // ✅ Reset ticket
-               m_trendlineManager.ClearSLTPLines();
             }
             else
             {
-               // ✅ ADD ERROR HANDLING
-               Logger::Error("Failed to close LONG position at SL, will retry");
+               Logger::Error("Failed to close position " + IntegerToString(ticket) + " at " + closeReason);
             }
          }
       }
-      else // Short trade
+      
+      // Clear SL/TP lines if no positions are open
+      if(m_tradeManager.GetActivePositionCount() == 0)
       {
-         if(low <= m_currentTP)
-         {
-            // ✅ CAPTURE DATA BEFORE CLOSING
-            ulong ticket = m_tradeManager.GetCurrentTicket();
-            double profit = m_tradeManager.GetPositionProfit();
-            
-            if(m_tradeManager.ClosePosition("TP Hit"))
-            {
-               m_eventManager.DispatchTradeClosed(
-                  false,
-                  ticket,   // ✅ Use captured ticket
-                  profit,   // ✅ Use captured profit
-                  "TP Hit"
-               );
-               
-               m_tradeIsOn = false;
-               m_currentTicket = 0;  // ✅ Reset ticket
-               m_trendlineManager.ClearSLTPLines();
-            }
-            else
-            {
-               // ✅ ADD ERROR HANDLING
-               Logger::Error("Failed to close SHORT position at TP, will retry");
-            }
-         }
-         else if(close >= m_currentSL)
-         {
-            // ✅ CAPTURE DATA BEFORE CLOSING
-            ulong ticket = m_tradeManager.GetCurrentTicket();
-            double profit = m_tradeManager.GetPositionProfit();
-            
-            if(m_tradeManager.ClosePosition("SL Hit"))
-            {
-               m_eventManager.DispatchTradeClosed(
-                  false,
-                  ticket,   // ✅ Use captured ticket
-                  profit,   // ✅ Use captured profit
-                  "SL Hit"
-               );
-               
-               m_tradeIsOn = false;
-               m_currentTicket = 0;  // ✅ Reset ticket
-               m_trendlineManager.ClearSLTPLines();
-            }
-            else
-            {
-               // ✅ ADD ERROR HANDLING
-               Logger::Error("Failed to close SHORT position at SL, will retry");
-            }
-         }
+         m_trendlineManager.ClearSLTPLines();
       }
    }
 
@@ -825,12 +815,11 @@ public:
    //+------------------------------------------------------------------+
    //| Getters for monitoring                                          |
    //+------------------------------------------------------------------+
-   bool IsTradeOpen() const { return m_tradeIsOn; }
-   bool IsLongTrade() const { return m_isLongTrade; }
+   int GetActiveTradeCount() const { return m_tradeManager.GetActivePositionCount(); }
    double GetCurrentTP() const { return m_currentTP; }
    double GetCurrentSL() const { return m_currentSL; }
    double GetZband() const { return m_volatilityFilter.GetZband(); }
-   ulong GetCurrentTicket() const { return m_currentTicket; }
+   int GetMaxPositions() const { return m_maxPositions; }
 
 private:
    //+------------------------------------------------------------------+
@@ -1213,32 +1202,6 @@ private:
       return true;
    }
 
-   //+------------------------------------------------------------------+
-   //| Sync trade state from TradeManager (single source of truth)     |
-   //+------------------------------------------------------------------+
-   void SyncTradeState()
-   {
-      bool managerState = m_tradeManager.IsPositionOpen();
-      
-      if(managerState != m_tradeIsOn)
-      {
-         m_tradeIsOn = managerState;
-         
-         if(m_tradeIsOn)
-         {
-            m_currentTicket = m_tradeManager.GetCurrentTicket();
-            m_isLongTrade = m_tradeManager.IsLongPosition();
-            Logger::Info("Trade state synced: Position opened");
-         }
-         else
-         {
-            m_currentTicket = 0;
-            Logger::Info("Trade state synced: Position closed externally");
-            if(m_trendlineManager != NULL)
-               m_trendlineManager.ClearSLTPLines();
-         }
-      }
-   }
 
    //+------------------------------------------------------------------+
    //| Validate symbol is tradeable and market conditions are suitable |

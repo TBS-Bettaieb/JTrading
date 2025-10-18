@@ -9,6 +9,7 @@
 
 #include <Trade\Trade.mqh>
 #include "../utils/Logger.mqh"
+#include "../../../../CommonUtils/TradingUtils.mqh"
 
 //+------------------------------------------------------------------+
 //| Trade manager class                                              |
@@ -17,31 +18,34 @@ class TradeManager
 {
 private:
    string m_symbol;
-   int m_magicNumber;
+   int m_baseMagicNumber;
    double m_lotSize;
    int m_slippage;
+   int m_maxPositions;
+   ENUM_TIMEFRAMES m_timeframe;
    
    CTrade m_trade;
-   ulong m_currentTicket;
-   bool m_positionIsOpen;
-   bool m_isLongPosition;
+   ulong m_activeTickets[];
+   bool m_isLongPositions[];
 
 public:
    //+------------------------------------------------------------------+
    //| Constructor                                                      |
    //+------------------------------------------------------------------+
-   TradeManager(string symbol, int magicNumber, double lotSize, int slippage)
+   TradeManager(string symbol, int baseMagicNumber, double lotSize, int slippage, int maxPositions = 3, ENUM_TIMEFRAMES timeframe = PERIOD_CURRENT)
    {
       m_symbol = symbol;
-      m_magicNumber = magicNumber;
+      m_baseMagicNumber = baseMagicNumber;
       m_lotSize = lotSize;
       m_slippage = slippage;
-      m_currentTicket = 0;
-      m_positionIsOpen = false;
-      m_isLongPosition = false;
+      m_maxPositions = maxPositions;
+      m_timeframe = timeframe;
+      
+      // Initialize arrays
+      ArrayResize(m_activeTickets, 0);
+      ArrayResize(m_isLongPositions, 0);
       
       // Configure trade object
-      m_trade.SetExpertMagicNumber(magicNumber);
       m_trade.SetDeviationInPoints(slippage);
       m_trade.SetTypeFilling(ORDER_FILLING_IOC);
       m_trade.SetAsyncMode(false);
@@ -52,10 +56,11 @@ public:
    //+------------------------------------------------------------------+
    bool OpenPosition(bool isLong, double price, double sl, double tp)
    {
-      // Validate position isn't already open
-      if(m_positionIsOpen)
+      // Check maximum positions limit
+      int currentCount = ArraySize(m_activeTickets);
+      if(currentCount >= m_maxPositions)
       {
-         Logger::Warning("Cannot open new position - position already open");
+         Logger::Warning("Cannot open new position - maximum positions reached (" + IntegerToString(m_maxPositions) + ")");
          return false;
       }
       
@@ -108,6 +113,13 @@ public:
          return false;
       }
       
+      // Generate unique magic number for this position
+      int positionIndex = ArraySize(m_activeTickets);
+      int uniqueMagic = GenerateMagicNumber(m_baseMagicNumber, positionIndex, m_timeframe, "TBT");
+      
+      // Set magic number for trade
+      m_trade.SetExpertMagicNumber(uniqueMagic);
+      
       // Execute order
       bool result = false;
       if(isLong)
@@ -121,30 +133,37 @@ public:
       
       if(result)
       {
-         m_currentTicket = m_trade.ResultOrder();
+         ulong newTicket = m_trade.ResultOrder();
          
          // Verify position opened - retry up to 5 times with small delay
          int retries = 0;
-         while(retries < 5 && !PositionSelectByTicket(m_currentTicket))
+         while(retries < 5 && !PositionSelectByTicket(newTicket))
          {
             Sleep(20);  // Short delay
             retries++;
          }
 
-         if(!PositionSelectByTicket(m_currentTicket))
+         if(!PositionSelectByTicket(newTicket))
          {
-            Logger::Warning("Order executed but position not found after " + IntegerToString(retries) + " retries! Ticket: " + IntegerToString(m_currentTicket));
+            Logger::Warning("Order executed but position not found after " + IntegerToString(retries) + " retries! Ticket: " + IntegerToString(newTicket));
             return false;
          }
          
-         m_positionIsOpen = true;
-         m_isLongPosition = isLong;
+         // Add to active positions array
+         int newSize = ArraySize(m_activeTickets) + 1;
+         ArrayResize(m_activeTickets, newSize);
+         ArrayResize(m_isLongPositions, newSize);
+         
+         m_activeTickets[newSize - 1] = newTicket;
+         m_isLongPositions[newSize - 1] = isLong;
          
          Logger::Success("Position opened: " + (isLong ? "BUY" : "SELL") + 
-                        " | Ticket: " + IntegerToString(m_currentTicket) +
+                        " | Ticket: " + IntegerToString(newTicket) +
+                        " | Magic: " + IntegerToString(uniqueMagic) +
                         " | Price: " + DoubleToString(price, digits) + 
                         " | SL: " + DoubleToString(sl, digits) + 
-                        " | TP: " + DoubleToString(tp, digits));
+                        " | TP: " + DoubleToString(tp, digits) +
+                        " | Active positions: " + IntegerToString(ArraySize(m_activeTickets)));
       }
       else
       {
@@ -155,30 +174,23 @@ public:
    }
 
    //+------------------------------------------------------------------+
-   //| Close current position                                          |
+   //| Close position by ticket                                        |
    //+------------------------------------------------------------------+
-   bool ClosePosition(string reason = "")
+   bool ClosePosition(ulong ticket, string reason = "")
    {
-      if(!m_positionIsOpen || m_currentTicket == 0)
+      if(!PositionSelectByTicket(ticket))
       {
-         Logger::Warning("No position to close");
-         return false;
-      }
-      
-      if(!PositionSelectByTicket(m_currentTicket))
-      {
-         Logger::Warning("Position not found for ticket: " + IntegerToString(m_currentTicket));
-         m_positionIsOpen = false;
-         m_currentTicket = 0;
+         Logger::Warning("Position not found for ticket: " + IntegerToString(ticket));
+         RemoveTicketFromArray(ticket);
          return false;
       }
       
       double profit = PositionGetDouble(POSITION_PROFIT);
       
-      if(m_trade.PositionClose(m_currentTicket))
+      if(m_trade.PositionClose(ticket))
       {
          string msg = "Position closed" + (reason != "" ? " (" + reason + ")" : "") +
-                     " | Ticket: " + IntegerToString(m_currentTicket) +
+                     " | Ticket: " + IntegerToString(ticket) +
                      " | Profit: " + DoubleToString(profit, 2);
          
          if(profit >= 0)
@@ -186,68 +198,145 @@ public:
          else
             Logger::Info(msg);
          
-         m_positionIsOpen = false;
-         m_currentTicket = 0;
-         m_isLongPosition = false;
-         
+         RemoveTicketFromArray(ticket);
          return true;
       }
       else
       {
-         Logger::Error("Failed to close position. Error: " + IntegerToString(GetLastError()));
+         Logger::Error("Failed to close position " + IntegerToString(ticket) + ". Error: " + IntegerToString(GetLastError()));
          return false;
       }
    }
 
    //+------------------------------------------------------------------+
-   //| Check if our position is still open                            |
+   //| Close all positions                                             |
    //+------------------------------------------------------------------+
-   bool ValidatePosition()
+   bool CloseAllPositions(string reason = "")
    {
-      if(!m_positionIsOpen || m_currentTicket == 0)
-         return false;
-      
-      // Select by ticket first (more specific)
-      if(!PositionSelectByTicket(m_currentTicket))
+      int count = ArraySize(m_activeTickets);
+      if(count == 0)
       {
-         Logger::Info("Position no longer exists for ticket " + IntegerToString(m_currentTicket));
-         m_positionIsOpen = false;
-         m_currentTicket = 0;
-         return false;
+         Logger::Info("No positions to close");
+         return true;
       }
       
-      // Verify it's still our symbol
-      string posSymbol = PositionGetString(POSITION_SYMBOL);
-      if(posSymbol != m_symbol)
+      Logger::Info("Closing all " + IntegerToString(count) + " positions" + (reason != "" ? " (" + reason + ")" : ""));
+      
+      bool allClosed = true;
+      for(int i = count - 1; i >= 0; i--)
       {
-         Logger::Warning("Position symbol mismatch: " + posSymbol + " vs " + m_symbol);
-         m_positionIsOpen = false;
-         m_currentTicket = 0;
-         return false;
+         ulong ticket = m_activeTickets[i];
+         if(!ClosePosition(ticket, reason))
+         {
+            allClosed = false;
+         }
       }
       
-      // Verify magic number
-      long positionMagic = PositionGetInteger(POSITION_MAGIC);
-      if(positionMagic != m_magicNumber)
-      {
-         Logger::Warning("Position magic mismatch: " + IntegerToString(positionMagic) + 
-                        " vs " + IntegerToString(m_magicNumber));
-         m_positionIsOpen = false;
-         m_currentTicket = 0;
-         return false;
-      }
-      
-      return true;
+      return allClosed;
    }
 
    //+------------------------------------------------------------------+
-   //| Update SL/TP levels                                             |
+   //| Close positions by direction                                    |
    //+------------------------------------------------------------------+
-   bool ModifyPosition(double newSL, double newTP)
+   bool ClosePositionsByDirection(bool isLong, string reason = "")
    {
-      if(!m_positionIsOpen || !ValidatePosition())
+      int count = ArraySize(m_activeTickets);
+      if(count == 0)
       {
-         Logger::Warning("Cannot modify - no valid position");
+         Logger::Info("No positions to close");
+         return true;
+      }
+      
+      int closeCount = 0;
+      for(int i = count - 1; i >= 0; i--)
+      {
+         if(m_isLongPositions[i] == isLong)
+         {
+            closeCount++;
+         }
+      }
+      
+      if(closeCount == 0)
+      {
+         Logger::Info("No " + (isLong ? "LONG" : "SHORT") + " positions to close");
+         return true;
+      }
+      
+      Logger::Info("Closing " + IntegerToString(closeCount) + " " + (isLong ? "LONG" : "SHORT") + 
+                  " positions" + (reason != "" ? " (" + reason + ")" : ""));
+      
+      bool allClosed = true;
+      for(int i = count - 1; i >= 0; i--)
+      {
+         if(m_isLongPositions[i] == isLong)
+         {
+            ulong ticket = m_activeTickets[i];
+            if(!ClosePosition(ticket, reason))
+            {
+               allClosed = false;
+            }
+         }
+      }
+      
+      return allClosed;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Validate all positions and remove closed ones                  |
+   //+------------------------------------------------------------------+
+   bool ValidatePositions()
+   {
+      int count = ArraySize(m_activeTickets);
+      if(count == 0)
+         return false;
+      
+      bool hasValidPositions = false;
+      
+      // Loop backwards to allow safe removal
+      for(int i = count - 1; i >= 0; i--)
+      {
+         ulong ticket = m_activeTickets[i];
+         
+         if(!PositionSelectByTicket(ticket))
+         {
+            Logger::Info("Position no longer exists for ticket " + IntegerToString(ticket));
+            RemoveTicketFromArray(ticket);
+            continue;
+         }
+         
+         // Verify it's still our symbol and has valid magic (any of our generated magics)
+         string posSymbol = PositionGetString(POSITION_SYMBOL);
+         if(posSymbol != m_symbol)
+         {
+            Logger::Warning("Position symbol mismatch: " + posSymbol + " vs " + m_symbol + " | Ticket: " + IntegerToString(ticket));
+            RemoveTicketFromArray(ticket);
+            continue;
+         }
+         
+         // Check if magic number is one of our generated ones
+         long positionMagic = PositionGetInteger(POSITION_MAGIC);
+         if(!IsOurMagicNumber(positionMagic))
+         {
+            Logger::Warning("Position magic not ours: " + IntegerToString(positionMagic) + " | Ticket: " + IntegerToString(ticket));
+            RemoveTicketFromArray(ticket);
+            continue;
+         }
+         
+         hasValidPositions = true;
+      }
+      
+      return hasValidPositions;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Update SL/TP levels for specific position                       |
+   //+------------------------------------------------------------------+
+   bool ModifyPosition(ulong ticket, double newSL, double newTP)
+   {
+      if(!PositionSelectByTicket(ticket))
+      {
+         Logger::Warning("Cannot modify - position not found: " + IntegerToString(ticket));
+         RemoveTicketFromArray(ticket);
          return false;
       }
       
@@ -255,26 +344,29 @@ public:
       newSL = NormalizeDouble(newSL, digits);
       newTP = NormalizeDouble(newTP, digits);
       
-      if(m_trade.PositionModify(m_currentTicket, newSL, newTP))
+      if(m_trade.PositionModify(ticket, newSL, newTP))
       {
-         Logger::Debug("Position modified | SL: " + DoubleToString(newSL, digits) + 
+         Logger::Debug("Position " + IntegerToString(ticket) + " modified | SL: " + DoubleToString(newSL, digits) + 
                       " | TP: " + DoubleToString(newTP, digits));
          return true;
       }
       else
       {
-         Logger::Error("Failed to modify position. Error: " + IntegerToString(GetLastError()));
+         Logger::Error("Failed to modify position " + IntegerToString(ticket) + ". Error: " + IntegerToString(GetLastError()));
          return false;
       }
    }
 
    //+------------------------------------------------------------------+
-   //| Get current position profit                                     |
+   //| Get position profit for specific ticket                         |
    //+------------------------------------------------------------------+
-   double GetPositionProfit()
+   double GetPositionProfit(ulong ticket)
    {
-      if(!m_positionIsOpen || !ValidatePosition())
+      if(!PositionSelectByTicket(ticket))
+      {
+         RemoveTicketFromArray(ticket);
          return 0.0;
+      }
       
       return PositionGetDouble(POSITION_PROFIT);
    }
@@ -282,9 +374,43 @@ public:
    //+------------------------------------------------------------------+
    //| Getters                                                         |
    //+------------------------------------------------------------------+
-   bool IsPositionOpen() const { return m_positionIsOpen; }
-   bool IsLongPosition() const { return m_isLongPosition; }
-   ulong GetCurrentTicket() const { return m_currentTicket; }
+   int GetActivePositionCount() const { return ArraySize(m_activeTickets); }
+   
+   bool HasPositionInDirection(bool isLong) const 
+   {
+      int count = ArraySize(m_activeTickets);
+      for(int i = 0; i < count; i++)
+      {
+         if(m_isLongPositions[i] == isLong)
+            return true;
+      }
+      return false;
+   }
+   
+   bool GetActiveTickets(ulong &tickets[])
+   {
+      int count = ArraySize(m_activeTickets);
+      ArrayResize(tickets, count);
+      for(int i = 0; i < count; i++)
+      {
+         tickets[i] = m_activeTickets[i];
+      }
+      return count > 0;
+   }
+   
+   bool GetPositionDirection(ulong ticket, bool &isLong)
+   {
+      int count = ArraySize(m_activeTickets);
+      for(int i = 0; i < count; i++)
+      {
+         if(m_activeTickets[i] == ticket)
+         {
+            isLong = m_isLongPositions[i];
+            return true;
+         }
+      }
+      return false;
+   }
    
    //+------------------------------------------------------------------+
    //| Set lot size                                                    |
@@ -385,5 +511,41 @@ private:
       }
       
       Logger::Error("═══════════════════════════════════════");
+   }
+
+   //+------------------------------------------------------------------+
+   //| Remove ticket from tracking arrays                              |
+   //+------------------------------------------------------------------+
+   void RemoveTicketFromArray(ulong ticket)
+   {
+      int count = ArraySize(m_activeTickets);
+      for(int i = 0; i < count; i++)
+      {
+         if(m_activeTickets[i] == ticket)
+         {
+            // Shift remaining elements left
+            for(int j = i; j < count - 1; j++)
+            {
+               m_activeTickets[j] = m_activeTickets[j + 1];
+               m_isLongPositions[j] = m_isLongPositions[j + 1];
+            }
+            
+            // Resize arrays
+            ArrayResize(m_activeTickets, count - 1);
+            ArrayResize(m_isLongPositions, count - 1);
+            break;
+         }
+      }
+   }
+
+   //+------------------------------------------------------------------+
+   //| Check if magic number belongs to us                             |
+   //+------------------------------------------------------------------+
+   bool IsOurMagicNumber(long magic)
+   {
+      // Check if this magic number could have been generated by our system
+      // Our magic numbers use format: baseMagic * 10000 + strategyHash * 100 + timeframeHash * 10 + positionIndex
+      int base = (int)(magic / 10000);
+      return (base == m_baseMagicNumber || base % 100 == m_baseMagicNumber % 100);
    }
 };
