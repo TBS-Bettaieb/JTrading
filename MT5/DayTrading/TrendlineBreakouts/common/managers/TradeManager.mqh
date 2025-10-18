@@ -72,6 +72,30 @@ public:
          return false;
       }
       
+      // ✅ ADD LOT SIZE VALIDATION
+      double minLot = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MIN);
+      double maxLot = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MAX);
+      double stepLot = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_STEP);
+      
+      if(m_lotSize < minLot || m_lotSize > maxLot)
+      {
+         Logger::Error("Invalid lot size: " + DoubleToString(m_lotSize) + 
+                      " (Min: " + DoubleToString(minLot) + 
+                      ", Max: " + DoubleToString(maxLot) + ")");
+         return false;
+      }
+      
+      // Normalize lot size to step
+      double originalLotSize = m_lotSize;
+      m_lotSize = MathFloor(m_lotSize / stepLot) * stepLot;
+      m_lotSize = NormalizeDouble(m_lotSize, 2);
+      
+      if(m_lotSize != originalLotSize)
+      {
+         Logger::Info("Lot size adjusted from " + DoubleToString(originalLotSize, 2) + 
+                     " to " + DoubleToString(m_lotSize, 2) + " (step: " + DoubleToString(stepLot, 2) + ")");
+      }
+      
       // Normalize levels
       int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
       tp = NormalizeDouble(tp, digits);

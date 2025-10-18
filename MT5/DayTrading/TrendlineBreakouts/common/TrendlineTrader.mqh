@@ -107,17 +107,17 @@ public:
       double percent = 1.0
    )
    {
+      // ═══ INITIALIZE LOGGER FIRST ═══
+      Logger::Initialize(logLevel, "[TBT] ");
+      
       // ═══ VALIDATE AND SANITIZE INPUTS ═══
       
-      // Validate log level
+      // Validate log level (after logger init)
       if(logLevel < LOG_NONE || logLevel > LOG_DEBUG)
       {
          Logger::Warning("Invalid log level (" + IntegerToString(logLevel) + "), using LOG_INFO");
          logLevel = LOG_INFO;
       }
-      
-      // ✅ ADD LOGGER INITIALIZATION AFTER VALIDATION:
-      Logger::Initialize(logLevel, "[TBT] ");
       
       if(symbol == "" || symbol == NULL)
       {
@@ -125,9 +125,9 @@ public:
          symbol = _Symbol;
       }
       
-      if(magicNumber <= 0)
+      if(magicNumber <= 0 || magicNumber > 999999)
       {
-         Logger::Warning("Invalid magic number (" + IntegerToString(magicNumber) + "), using 12345");
+         Logger::Warning("Invalid magic number (" + IntegerToString(magicNumber) + "), must be between 1-999999, using 12345");
          magicNumber = 12345;
       }
       
@@ -639,7 +639,13 @@ public:
                );
                
                m_tradeIsOn = false;
+               m_currentTicket = 0;  // ✅ Reset ticket
                m_trendlineManager.ClearSLTPLines();
+            }
+            else
+            {
+               // ✅ ADD ERROR HANDLING
+               Logger::Error("Failed to close LONG position at TP, will retry");
             }
          }
          else if(close <= m_currentSL)
@@ -658,7 +664,13 @@ public:
                );
                
                m_tradeIsOn = false;
+               m_currentTicket = 0;  // ✅ Reset ticket
                m_trendlineManager.ClearSLTPLines();
+            }
+            else
+            {
+               // ✅ ADD ERROR HANDLING
+               Logger::Error("Failed to close LONG position at SL, will retry");
             }
          }
       }
@@ -680,7 +692,13 @@ public:
                );
                
                m_tradeIsOn = false;
+               m_currentTicket = 0;  // ✅ Reset ticket
                m_trendlineManager.ClearSLTPLines();
+            }
+            else
+            {
+               // ✅ ADD ERROR HANDLING
+               Logger::Error("Failed to close SHORT position at TP, will retry");
             }
          }
          else if(close >= m_currentSL)
@@ -699,7 +717,13 @@ public:
                );
                
                m_tradeIsOn = false;
+               m_currentTicket = 0;  // ✅ Reset ticket
                m_trendlineManager.ClearSLTPLines();
+            }
+            else
+            {
+               // ✅ ADD ERROR HANDLING
+               Logger::Error("Failed to close SHORT position at SL, will retry");
             }
          }
       }
@@ -734,6 +758,43 @@ public:
 
 private:
    //+------------------------------------------------------------------+
+   //| Calculate ZBAND-based TP/SL levels                              |
+   //|                                                                  |
+   //| @param isLong - true for LONG position, false for SHORT         |
+   //| @param entryPrice - entry price of the trade                    |
+   //| @param multiplier - ZBAND multiplier value                       |
+   //|                                                                  |
+   //| @return TPSLLevels - structure containing calculated TP and SL  |
+   //+------------------------------------------------------------------+
+   TPSLLevels CalculateZbandTPSL(bool isLong, double entryPrice, double multiplier)
+   {
+      TPSLLevels levels;
+      levels.takeProfit = 0;
+      levels.stopLoss = 0;
+      
+      if(m_volatilityFilter == NULL)
+      {
+         Logger::Error("CalculateZbandTPSL: VolatilityFilter is NULL");
+         return levels;
+      }
+      
+      double zband = m_volatilityFilter.GetZband();
+      
+      if(isLong)
+      {
+         levels.takeProfit = entryPrice + (zband * multiplier);
+         levels.stopLoss = entryPrice - (zband * multiplier);
+      }
+      else
+      {
+         levels.takeProfit = entryPrice - (zband * multiplier);
+         levels.stopLoss = entryPrice + (zband * multiplier);
+      }
+      
+      return levels;
+   }
+
+   //+------------------------------------------------------------------+
    //| Calculate TP/SL levels based on selected method                  |
    //|                                                                  |
    //| @param isLong - true for LONG position, false for SHORT         |
@@ -762,16 +823,7 @@ private:
       {
          case ZBAND:
             // Method 1: ZBAND (current method - kept for compatibility)
-            if(isLong)
-            {
-               levels.takeProfit = entryPrice + (zband * m_zbandMultiplier);
-               levels.stopLoss = entryPrice - (zband * m_zbandMultiplier);
-            }
-            else
-            {
-               levels.takeProfit = entryPrice - (zband * m_zbandMultiplier);
-               levels.stopLoss = entryPrice + (zband * m_zbandMultiplier);
-            }
+            levels = CalculateZbandTPSL(isLong, entryPrice, m_zbandMultiplier);
             break;
             
          case FIXED_POINTS:
@@ -841,17 +893,7 @@ private:
             
          default:
             Logger::Warning("CalculateTPSL: Unknown TP/SL method, using ZBAND");
-            // Fallback to ZBAND method
-            if(isLong)
-            {
-               levels.takeProfit = entryPrice + (zband * m_zbandMultiplier);
-               levels.stopLoss = entryPrice - (zband * m_zbandMultiplier);
-            }
-            else
-            {
-               levels.takeProfit = entryPrice - (zband * m_zbandMultiplier);
-               levels.stopLoss = entryPrice + (zband * m_zbandMultiplier);
-            }
+            levels = CalculateZbandTPSL(isLong, entryPrice, m_zbandMultiplier);
             break;
       }
       
@@ -859,17 +901,8 @@ private:
       if(levels.takeProfit <= 0 || levels.stopLoss <= 0)
       {
          Logger::Warning("CalculateTPSL: Invalid TP/SL calculated, using defaults");
-         // Use ZBAND as fallback
-         if(isLong)
-         {
-            levels.takeProfit = entryPrice + (zband * 20.0);
-            levels.stopLoss = entryPrice - (zband * 20.0);
-         }
-         else
-         {
-            levels.takeProfit = entryPrice - (zband * 20.0);
-            levels.stopLoss = entryPrice + (zband * 20.0);
-         }
+         // Use ZBAND as fallback with default multiplier
+         levels = CalculateZbandTPSL(isLong, entryPrice, 20.0);
       }
       
       // Validate TP vs SL relationship

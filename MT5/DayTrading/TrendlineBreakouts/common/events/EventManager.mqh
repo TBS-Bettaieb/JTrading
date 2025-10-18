@@ -98,7 +98,10 @@ public:
             int error = GetLastError();
             if(error != 0)
             {
-               Print("⚠️ EventManager: Listener ", i, " failed with error: ", error);
+               Print("⚠️ EventManager: Listener #" + IntegerToString(i) + 
+                     " failed in OnSignalDetected | Error: " + IntegerToString(error) +
+                     " | Signal: " + (isBuy ? "BUY" : "SELL") + 
+                     " | Confidence: " + DoubleToString(confidence, 2));
             }
          }
       }
