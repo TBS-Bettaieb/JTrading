@@ -24,7 +24,7 @@ input int      InpSlippage = 10;                  // Slippage (points)
 input int      InpMagicNumber = 12345;            // Magic Number
 
 input group "➞ TP/SL Settings 🔸"
-input ENUM_TPSL_METHOD InpTPSLMethod = ZBAND;     // TP/SL Method
+input ENUM_TPSL_METHOD InpTPSLMethod = HL_RATIO;  // TP/SL Method
 input double   InpZbandMultiplier = 20.0;         // Zband Multiplier (if ZBAND)
 input int      InpFixedPoints = 100;              // Fixed Points (if FIXED_POINTS)
 input double   InpATRMultiple = 2.0;              // ATR Multiple (if ATR_MULTIPLE)

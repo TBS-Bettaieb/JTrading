@@ -8,6 +8,7 @@
 
 #include <Trade\Trade.mqh>
 #include "utils/Logger.mqh"
+#include "utils/SymbolClassifier.mqh"
 #include "detectors/PivotDetector.mqh"
 #include "detectors/TrendlineDetector.mqh"
 #include "detectors/BreakoutDetector.mqh"
@@ -26,7 +27,8 @@ enum ENUM_TPSL_METHOD
    FIXED_POINTS = 1,    // Fixed Points/Pips
    ATR_MULTIPLE = 2,    // ATR Multiple
    RISK_REWARD = 3,     // Risk/Reward Ratio
-   PERCENT = 4          // Percentage of Price
+   PERCENT = 4,         // Percentage of Price
+   HL_RATIO = 5         // High/Low 5-candle with 1:2 R:R
 };
 
 //+------------------------------------------------------------------+
@@ -965,6 +967,11 @@ private:
             }
             break;
             
+         case HL_RATIO:
+            // Method 6: High/Low 5-candle with 1:2 R:R
+            levels = CalculateHL5TPSLWithFallback(isLong, entryPrice);
+            break;
+            
          default:
             Logger::Warning("CalculateTPSL: Unknown TP/SL method, using ZBAND");
             levels = CalculateZbandTPSL(isLong, entryPrice, m_zbandMultiplier);
@@ -1001,6 +1008,171 @@ private:
                                 (int)m_tpslMethod, levels.takeProfit, levels.stopLoss));
       
       return levels;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Calculate High/Low 5-candle TP/SL with fallback                 |
+   //| SL = H/L of last 5 candles, TP = 1:2 R:R, fallback if too close |
+   //| @param isLong - true for LONG position, false for SHORT         |
+   //| @param entryPrice - entry price of the trade                    |
+   //| @return TPSLLevels - structure containing calculated TP and SL  |
+   //+------------------------------------------------------------------+
+   TPSLLevels CalculateHL5TPSLWithFallback(bool isLong, double entryPrice)
+   {
+      TPSLLevels levels;
+      levels.takeProfit = 0;
+      levels.stopLoss = 0;
+      
+      // Step 1: Get H/L of last 5 candles
+      double slLevel = GetHL5Level(isLong);
+      
+      if(slLevel <= 0)
+      {
+         Logger::Warning("CalculateHL5TPSLWithFallback: Invalid HL5 level, using ZBAND fallback");
+         return CalculateZbandTPSL(isLong, entryPrice, m_zbandMultiplier);
+      }
+      
+      // Step 2: Calculate SL distance
+      double slDistance = MathAbs(entryPrice - slLevel);
+      
+      // Step 3: Check against dynamic threshold
+      ENUM_ASSET_CLASS assetClass = SymbolClassifier::DetectAssetClass(m_symbol);
+      double minThresholdPoints = SymbolClassifier::GetMinThresholdPoints(assetClass, m_symbol);
+      double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+      double minThresholdDistance = minThresholdPoints * point;
+      
+      Logger::Info(StringFormat("HL5 Check: SL=%.5f, Entry=%.5f, Distance=%.5f, Threshold=%.5f", 
+                                slLevel, entryPrice, slDistance, minThresholdDistance));
+      
+      // Step 4: If too close, fallback to best alternative method
+      if(slDistance < minThresholdDistance)
+      {
+         Logger::Warning(StringFormat("HL5 distance (%.5f) too close, using fallback method", slDistance));
+         return GetBestFallbackTPSL(isLong, entryPrice, minThresholdDistance);
+      }
+      
+      // Step 5: Calculate TP at 1:2 R:R
+      levels.stopLoss = slLevel;
+      levels.takeProfit = isLong ? 
+         entryPrice + (slDistance * 2.0) : 
+         entryPrice - (slDistance * 2.0);
+      
+      int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
+      levels.takeProfit = NormalizeDouble(levels.takeProfit, digits);
+      levels.stopLoss = NormalizeDouble(levels.stopLoss, digits);
+      
+      Logger::Info(StringFormat("HL5 TPSL: SL=%.5f, TP=%.5f, R:R=1:2", levels.stopLoss, levels.takeProfit));
+      
+      return levels;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Get High/Low level from last 5 candles                           |
+   //| @param isLong - true for lowest low, false for highest high      |
+   //| @return double - extreme level from last 5 candles               |
+   //+------------------------------------------------------------------+
+   double GetHL5Level(bool isLong)
+   {
+      double extremeLevel = isLong ? DBL_MAX : 0.0;
+      
+      for(int i = 1; i <= 5; i++)  // Last 5 closed candles
+      {
+         if(isLong)
+         {
+            double low = iLow(m_symbol, m_timeframe, i);
+            if(low > 0 && low < extremeLevel) 
+               extremeLevel = low;
+         }
+         else
+         {
+            double high = iHigh(m_symbol, m_timeframe, i);
+            if(high > 0 && high > extremeLevel) 
+               extremeLevel = high;
+         }
+      }
+      
+      return extremeLevel;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Get best fallback TP/SL method when HL5 is too close             |
+   //| @param isLong - true for LONG position, false for SHORT         |
+   //| @param entryPrice - entry price of the trade                    |
+   //| @param minDistance - minimum required distance                   |
+   //| @return TPSLLevels - best fallback method result                |
+   //+------------------------------------------------------------------+
+   TPSLLevels GetBestFallbackTPSL(bool isLong, double entryPrice, double minDistance)
+   {
+      // Test all methods, return closest valid one above threshold
+      TPSLLevels candidates[4];
+      double distances[4];
+      
+      // Test ZBAND
+      candidates[0] = CalculateZbandTPSL(isLong, entryPrice, m_zbandMultiplier);
+      distances[0] = MathAbs(entryPrice - candidates[0].stopLoss);
+      
+      // Test ATR
+      if(m_volatilityFilter != NULL)
+      {
+         double atr = m_volatilityFilter.GetATR();
+         double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+         
+         candidates[1].stopLoss = isLong ? 
+            entryPrice - (atr * m_atrMultiple) : 
+            entryPrice + (atr * m_atrMultiple);
+         candidates[1].takeProfit = isLong ? 
+            entryPrice + (atr * m_atrMultiple) : 
+            entryPrice - (atr * m_atrMultiple);
+         distances[1] = MathAbs(entryPrice - candidates[1].stopLoss);
+      }
+      else
+      {
+         distances[1] = 0; // Invalid
+      }
+      
+      // Test FIXED_POINTS
+      double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+      candidates[2].stopLoss = isLong ? 
+         entryPrice - (m_fixedPoints * point) : 
+         entryPrice + (m_fixedPoints * point);
+      candidates[2].takeProfit = isLong ? 
+         entryPrice + (m_fixedPoints * point) : 
+         entryPrice - (m_fixedPoints * point);
+      distances[2] = MathAbs(entryPrice - candidates[2].stopLoss);
+      
+      // Test PERCENT
+      double tpDistance = entryPrice * (m_percent / 100.0);
+      candidates[3].stopLoss = isLong ? 
+         entryPrice - tpDistance : 
+         entryPrice + tpDistance;
+      candidates[3].takeProfit = isLong ? 
+         entryPrice + tpDistance : 
+         entryPrice - tpDistance;
+      distances[3] = MathAbs(entryPrice - candidates[3].stopLoss);
+      
+      // Find closest valid method (distance >= minDistance)
+      int bestIdx = -1;
+      double closestValid = DBL_MAX;
+      
+      for(int i = 0; i < 4; i++)
+      {
+         if(distances[i] >= minDistance && distances[i] < closestValid)
+         {
+            closestValid = distances[i];
+            bestIdx = i;
+         }
+      }
+      
+      if(bestIdx >= 0)
+      {
+         Logger::Info(StringFormat("Using fallback method %d with distance %.5f", bestIdx + 1, closestValid));
+         return candidates[bestIdx];
+      }
+      else
+      {
+         Logger::Warning("All fallback methods too close, using ZBAND default");
+         return candidates[0]; // Default to ZBAND
+      }
    }
 
    //+------------------------------------------------------------------+
