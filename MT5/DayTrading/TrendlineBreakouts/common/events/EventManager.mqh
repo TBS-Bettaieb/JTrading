@@ -2,6 +2,7 @@
 //| EventManager.mqh                                                  |
 //| Manages event listeners and dispatches events                    |
 //+------------------------------------------------------------------+
+#property once
 #property copyright "(c) 2025"
 #property version   "1.0"
 #property strict
@@ -90,7 +91,16 @@ public:
       for(int i = 0; i < m_listenerCount; i++)
       {
          if(m_listeners[i] != NULL)
+         {
+            // Wrap in basic error handling
+            ResetLastError();
             m_listeners[i].OnSignalDetected(isBuy, confidence, time);
+            int error = GetLastError();
+            if(error != 0)
+            {
+               Print("⚠️ EventManager: Listener ", i, " failed with error: ", error);
+            }
+         }
       }
    }
 
@@ -102,7 +112,15 @@ public:
       for(int i = 0; i < m_listenerCount; i++)
       {
          if(m_listeners[i] != NULL)
+         {
+            ResetLastError();
             m_listeners[i].OnTradeOpened(isLong, ticket, price, sl, tp);
+            int error = GetLastError();
+            if(error != 0)
+            {
+               Print("⚠️ EventManager: Listener ", i, " failed with error: ", error);
+            }
+         }
       }
    }
 
@@ -114,7 +132,15 @@ public:
       for(int i = 0; i < m_listenerCount; i++)
       {
          if(m_listeners[i] != NULL)
+         {
+            ResetLastError();
             m_listeners[i].OnTradeClosed(wasLong, ticket, profit, reason);
+            int error = GetLastError();
+            if(error != 0)
+            {
+               Print("⚠️ EventManager: Listener ", i, " failed with error: ", error);
+            }
+         }
       }
    }
 
@@ -126,7 +152,15 @@ public:
       for(int i = 0; i < m_listenerCount; i++)
       {
          if(m_listeners[i] != NULL)
+         {
+            ResetLastError();
             m_listeners[i].OnTradeModified(ticket, newSL, newTP);
+            int error = GetLastError();
+            if(error != 0)
+            {
+               Print("⚠️ EventManager: Listener ", i, " failed with error: ", error);
+            }
+         }
       }
    }
 
@@ -138,7 +172,15 @@ public:
       for(int i = 0; i < m_listenerCount; i++)
       {
          if(m_listeners[i] != NULL)
+         {
+            ResetLastError();
             m_listeners[i].OnPivotDetected(isHigh, price, bar);
+            int error = GetLastError();
+            if(error != 0)
+            {
+               Print("⚠️ EventManager: Listener ", i, " failed with error: ", error);
+            }
+         }
       }
    }
 
@@ -150,7 +192,15 @@ public:
       for(int i = 0; i < m_listenerCount; i++)
       {
          if(m_listeners[i] != NULL)
+         {
+            ResetLastError();
             m_listeners[i].OnTrendlineUpdated(isUpper, slope, isValid);
+            int error = GetLastError();
+            if(error != 0)
+            {
+               Print("⚠️ EventManager: Listener ", i, " failed with error: ", error);
+            }
+         }
       }
    }
 

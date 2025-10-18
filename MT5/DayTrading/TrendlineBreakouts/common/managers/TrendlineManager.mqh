@@ -2,11 +2,13 @@
 //| TrendlineManager.mqh                                             |
 //| Draw and manage trendline objects on chart                      |
 //+------------------------------------------------------------------+
+#property once
 #property copyright "(c) 2025"
 #property version   "1.0"
 #property strict
 
 #include "../detectors/TrendlineDetector.mqh"
+#include "../utils/Logger.mqh"
 
 //+------------------------------------------------------------------+
 //| Trendline manager class                                          |
@@ -66,7 +68,7 @@ public:
       ObjectSetInteger(0, objName, OBJPROP_RAY_RIGHT, false);
       ObjectSetInteger(0, objName, OBJPROP_BACK, true);
       
-      Print("📈 Upper trendline drawn: ", objName);
+      Logger::Debug("Upper trendline drawn: " + objName);
    }
 
    //+------------------------------------------------------------------+
@@ -89,7 +91,7 @@ public:
       ObjectSetInteger(0, objName, OBJPROP_RAY_RIGHT, false);
       ObjectSetInteger(0, objName, OBJPROP_BACK, true);
       
-      Print("📉 Lower trendline drawn: ", objName);
+      Logger::Debug("Lower trendline drawn: " + objName);
    }
 
    //+------------------------------------------------------------------+
@@ -118,7 +120,7 @@ public:
       ObjectSetInteger(0, m_tpLineName, OBJPROP_RAY_RIGHT, true);
       ObjectSetInteger(0, m_tpLineName, OBJPROP_BACK, false);
       
-      Print("✅ SL/TP lines drawn | SL: ", sl, " | TP: ", tp);
+      Logger::Info("SL/TP lines drawn | SL: " + DoubleToString(sl) + " | TP: " + DoubleToString(tp));
    }
 
    //+------------------------------------------------------------------+
@@ -143,7 +145,7 @@ public:
    {
       ObjectDelete(0, m_slLineName);
       ObjectDelete(0, m_tpLineName);
-      Print("🧹 SL/TP lines cleared");
+      Logger::Debug("SL/TP lines cleared");
    }
 
    //+------------------------------------------------------------------+
@@ -157,7 +159,7 @@ public:
       ObjectSetInteger(0, arrowName, OBJPROP_COLOR, isLong ? clrLime : clrRed);
       ObjectSetInteger(0, arrowName, OBJPROP_WIDTH, 3);
       
-      Print("➡️ Signal arrow drawn: ", isLong ? "BUY" : "SELL");
+      Logger::Signal(isLong, "Signal arrow drawn");
    }
 
    //+------------------------------------------------------------------+
@@ -191,7 +193,7 @@ public:
       ObjectSetInteger(0, labelName, OBJPROP_COLOR, clrWhite);
       ObjectSetInteger(0, labelName, OBJPROP_FONTSIZE, 8);
       
-      Print("🎯 Target projection drawn");
+      Logger::Debug("Target projection drawn");
    }
 
    //+------------------------------------------------------------------+
@@ -201,7 +203,7 @@ public:
    {
       ObjectsDeleteAll(0, "TBT_Upper_");
       ObjectsDeleteAll(0, "TBT_Lower_");
-      Print("🧹 Trendlines cleared");
+      Logger::Debug("Trendlines cleared");
    }
 
    //+------------------------------------------------------------------+
@@ -212,7 +214,7 @@ public:
       ObjectsDeleteAll(0, "TBT_");
       ObjectDelete(0, m_slLineName);
       ObjectDelete(0, m_tpLineName);
-      Print("🧹 All TBT objects cleared");
+      Logger::Debug("All TBT objects cleared");
    }
 
    //+------------------------------------------------------------------+

@@ -71,10 +71,17 @@ public:
       ENUM_LOG_LEVEL logLevel = LOG_INFO  // ✅ Add log level parameter
    )
    {
-      // ✅ ADD LOGGER INITIALIZATION NEAR THE TOP:
-      Logger::Initialize(logLevel, "[TBT] ");
-      
       // ═══ VALIDATE AND SANITIZE INPUTS ═══
+      
+      // Validate log level
+      if(logLevel < LOG_NONE || logLevel > LOG_DEBUG)
+      {
+         Logger::Warning("Invalid log level (" + IntegerToString(logLevel) + "), using LOG_INFO");
+         logLevel = LOG_INFO;
+      }
+      
+      // ✅ ADD LOGGER INITIALIZATION AFTER VALIDATION:
+      Logger::Initialize(logLevel, "[TBT] ");
       
       if(symbol == "" || symbol == NULL)
       {
@@ -293,27 +300,16 @@ public:
       // Update breakout detector with latest Zband
       m_breakoutDetector.SetZband(m_volatilityFilter.GetZband());
       
-      // Check for signals if no trade is open - use TradeManager state
-      if(!m_tradeManager.IsPositionOpen())
+      // ✅ ALWAYS sync state from TradeManager (single source of truth)
+      SyncTradeState();
+      
+      // Check for signals if no trade is open
+      if(!m_tradeIsOn)
       {
-         // Sync old state with TradeManager state
-         if(m_tradeIsOn)
-         {
-            m_tradeIsOn = false;
-            m_currentTicket = 0;
-         }
          CheckSignals();
       }
       else
       {
-         // Sync old state with TradeManager state
-         if(!m_tradeIsOn)
-         {
-            m_tradeIsOn = true;
-            m_currentTicket = m_tradeManager.GetCurrentTicket();
-            m_isLongTrade = m_tradeManager.IsLongPosition();
-         }
-         // Manage open trade
          ManageTrade();
       }
    }
@@ -554,13 +550,16 @@ public:
       {
          if(high >= m_currentTP)
          {
+            // ✅ CAPTURE DATA BEFORE CLOSING
+            ulong ticket = m_tradeManager.GetCurrentTicket();
+            double profit = m_tradeManager.GetPositionProfit();
+            
             if(m_tradeManager.ClosePosition("TP Hit"))
             {
-               // ✅ ADD EVENT:
                m_eventManager.DispatchTradeClosed(
                   true,
-                  m_tradeManager.GetCurrentTicket(),
-                  m_tradeManager.GetPositionProfit(),
+                  ticket,   // ✅ Use captured ticket
+                  profit,   // ✅ Use captured profit
                   "TP Hit"
                );
                
@@ -570,13 +569,16 @@ public:
          }
          else if(close <= m_currentSL)
          {
+            // ✅ CAPTURE DATA BEFORE CLOSING
+            ulong ticket = m_tradeManager.GetCurrentTicket();
+            double profit = m_tradeManager.GetPositionProfit();
+            
             if(m_tradeManager.ClosePosition("SL Hit"))
             {
-               // ✅ ADD EVENT:
                m_eventManager.DispatchTradeClosed(
                   true,
-                  m_tradeManager.GetCurrentTicket(),
-                  m_tradeManager.GetPositionProfit(),
+                  ticket,   // ✅ Use captured ticket
+                  profit,   // ✅ Use captured profit
                   "SL Hit"
                );
                
@@ -589,13 +591,16 @@ public:
       {
          if(low <= m_currentTP)
          {
+            // ✅ CAPTURE DATA BEFORE CLOSING
+            ulong ticket = m_tradeManager.GetCurrentTicket();
+            double profit = m_tradeManager.GetPositionProfit();
+            
             if(m_tradeManager.ClosePosition("TP Hit"))
             {
-               // ✅ ADD EVENT:
                m_eventManager.DispatchTradeClosed(
                   false,
-                  m_tradeManager.GetCurrentTicket(),
-                  m_tradeManager.GetPositionProfit(),
+                  ticket,   // ✅ Use captured ticket
+                  profit,   // ✅ Use captured profit
                   "TP Hit"
                );
                
@@ -605,13 +610,16 @@ public:
          }
          else if(close >= m_currentSL)
          {
+            // ✅ CAPTURE DATA BEFORE CLOSING
+            ulong ticket = m_tradeManager.GetCurrentTicket();
+            double profit = m_tradeManager.GetPositionProfit();
+            
             if(m_tradeManager.ClosePosition("SL Hit"))
             {
-               // ✅ ADD EVENT:
                m_eventManager.DispatchTradeClosed(
                   false,
-                  m_tradeManager.GetCurrentTicket(),
-                  m_tradeManager.GetPositionProfit(),
+                  ticket,   // ✅ Use captured ticket
+                  profit,   // ✅ Use captured profit
                   "SL Hit"
                );
                
@@ -686,6 +694,33 @@ private:
       }
       
       return true;
+   }
+
+   //+------------------------------------------------------------------+
+   //| Sync trade state from TradeManager (single source of truth)     |
+   //+------------------------------------------------------------------+
+   void SyncTradeState()
+   {
+      bool managerState = m_tradeManager.IsPositionOpen();
+      
+      if(managerState != m_tradeIsOn)
+      {
+         m_tradeIsOn = managerState;
+         
+         if(m_tradeIsOn)
+         {
+            m_currentTicket = m_tradeManager.GetCurrentTicket();
+            m_isLongTrade = m_tradeManager.IsLongPosition();
+            Logger::Info("Trade state synced: Position opened");
+         }
+         else
+         {
+            m_currentTicket = 0;
+            Logger::Info("Trade state synced: Position closed externally");
+            if(m_trendlineManager != NULL)
+               m_trendlineManager.ClearSLTPLines();
+         }
+      }
    }
 
    //+------------------------------------------------------------------+

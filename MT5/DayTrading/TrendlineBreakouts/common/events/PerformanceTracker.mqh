@@ -2,6 +2,7 @@
 //| PerformanceTracker.mqh                                            |
 //| Sample event listener that tracks performance metrics            |
 //+------------------------------------------------------------------+
+#property once
 #property copyright "(c) 2025"
 #property version   "1.0"
 #property strict
@@ -19,6 +20,7 @@ private:
    int m_totalTrades;
    int m_winningTrades;
    int m_losingTrades;
+   int m_breakevenTrades;
    double m_totalProfit;
    double m_grossProfit;
    double m_grossLoss;
@@ -44,6 +46,7 @@ public:
       m_totalTrades = 0;
       m_winningTrades = 0;
       m_losingTrades = 0;
+      m_breakevenTrades = 0;
       m_totalProfit = 0;
       m_grossProfit = 0;
       m_grossLoss = 0;
@@ -92,6 +95,10 @@ public:
       {
          m_losingTrades++;
          m_grossLoss += MathAbs(profit);
+      }
+      else
+      {
+         m_breakevenTrades++;
       }
       
       Logger::Debug("Trade closed: Ticket " + IntegerToString(ticket) + 
@@ -145,6 +152,7 @@ public:
       Logger::Info("───────────────────────────────────────");
       Logger::Info("Winning Trades: " + IntegerToString(m_winningTrades));
       Logger::Info("Losing Trades: " + IntegerToString(m_losingTrades));
+      Logger::Info("Breakeven Trades: " + IntegerToString(m_breakevenTrades));
       
       if(m_totalTrades > 0)
       {

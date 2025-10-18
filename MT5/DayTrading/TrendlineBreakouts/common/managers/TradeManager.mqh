@@ -2,6 +2,7 @@
 //| TradeManager.mqh                                                  |
 //| Centralized trade execution and position management              |
 //+------------------------------------------------------------------+
+#property once
 #property copyright "(c) 2025"
 #property version   "1.0"
 #property strict
@@ -98,11 +99,17 @@ public:
       {
          m_currentTicket = m_trade.ResultOrder();
          
-         // Verify position opened
-         Sleep(100);
+         // Verify position opened - retry up to 5 times with small delay
+         int retries = 0;
+         while(retries < 5 && !PositionSelectByTicket(m_currentTicket))
+         {
+            Sleep(20);  // Short delay
+            retries++;
+         }
+
          if(!PositionSelectByTicket(m_currentTicket))
          {
-            Logger::Warning("Order executed but position not found! Ticket: " + IntegerToString(m_currentTicket));
+            Logger::Warning("Order executed but position not found after " + IntegerToString(retries) + " retries! Ticket: " + IntegerToString(m_currentTicket));
             return false;
          }
          
@@ -173,17 +180,29 @@ public:
    //+------------------------------------------------------------------+
    bool ValidatePosition()
    {
-      if(!m_positionIsOpen)
+      if(!m_positionIsOpen || m_currentTicket == 0)
          return false;
       
-      if(!PositionSelect(m_symbol))
+      // Select by ticket first (more specific)
+      if(!PositionSelectByTicket(m_currentTicket))
       {
-         Logger::Info("Position no longer exists for " + m_symbol);
+         Logger::Info("Position no longer exists for ticket " + IntegerToString(m_currentTicket));
          m_positionIsOpen = false;
          m_currentTicket = 0;
          return false;
       }
       
+      // Verify it's still our symbol
+      string posSymbol = PositionGetString(POSITION_SYMBOL);
+      if(posSymbol != m_symbol)
+      {
+         Logger::Warning("Position symbol mismatch: " + posSymbol + " vs " + m_symbol);
+         m_positionIsOpen = false;
+         m_currentTicket = 0;
+         return false;
+      }
+      
+      // Verify magic number
       long positionMagic = PositionGetInteger(POSITION_MAGIC);
       if(positionMagic != m_magicNumber)
       {

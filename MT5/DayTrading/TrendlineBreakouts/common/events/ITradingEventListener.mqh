@@ -2,6 +2,7 @@
 //| ITradingEventListener.mqh                                         |
 //| Interface for trading event notifications                        |
 //+------------------------------------------------------------------+
+#property once
 #property copyright "(c) 2025"
 #property version   "1.0"
 #property strict
