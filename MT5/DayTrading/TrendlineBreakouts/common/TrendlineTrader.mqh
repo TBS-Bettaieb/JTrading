@@ -65,6 +65,45 @@ public:
       color lineColor = clrGray
    )
    {
+      // ═══ VALIDATE AND SANITIZE INPUTS ═══
+      
+      if(symbol == "" || symbol == NULL)
+      {
+         Print("⚠️ Invalid symbol provided, using current symbol");
+         symbol = _Symbol;
+      }
+      
+      if(magicNumber <= 0)
+      {
+         Print("⚠️ Invalid magic number (", magicNumber, "), using 12345");
+         magicNumber = 12345;
+      }
+      
+      if(period < 2 || period > 100)
+      {
+         Print("⚠️ Invalid period (", period, "), using 10");
+         period = 10;
+      }
+      
+      if(extension < 10 || extension > 100)
+      {
+         Print("⚠️ Invalid extension (", extension, "), using 25");
+         extension = 25;
+      }
+      
+      if(lotSize <= 0 || lotSize > 100)
+      {
+         Print("⚠️ Invalid lot size (", lotSize, "), using 0.01");
+         lotSize = 0.01;
+      }
+      
+      if(slippage < 0 || slippage > 100)
+      {
+         Print("⚠️ Invalid slippage (", slippage, "), using 10");
+         slippage = 10;
+      }
+      
+      // Assign validated values
       m_symbol = symbol;
       m_magicNumber = magicNumber;
       m_timeframe = timeframe;
@@ -108,7 +147,14 @@ public:
    }
 
    //+------------------------------------------------------------------+
-   //| Initialize all components                                        |
+   //| Initialize all components with proper error handling             |
+   //| Sets up all detectors, filters, and managers                     |
+   //| Implements rollback on any initialization failure                |
+   //|                                                                  |
+   //| @return bool - true if all components initialized successfully   |
+   //|                                                                  |
+   //| @note Automatically cleans up components if any initialization   |
+   //|       fails to prevent memory leaks                              |
    //+------------------------------------------------------------------+
    bool Initialize()
    {
@@ -116,31 +162,51 @@ public:
       Print("🚀 Initializing Trendline Trader");
       Print("═══════════════════════════════════════");
       
-      // Initialize pivot detector
-      if(!m_pivotDetector.Initialize())
-      {
+      // Track initialization status for each component
+      bool pivotOK = false;
+      bool trendlineOK = false;
+      bool breakoutOK = false;
+      bool volatilityOK = false;
+      
+      // Initialize all components and track success
+      pivotOK = m_pivotDetector.Initialize();
+      if(!pivotOK) 
          Print("❌ Failed to initialize PivotDetector");
-         return false;
-      }
       
-      // Initialize trendline detector
-      if(!m_trendlineDetector.Initialize())
-      {
+      trendlineOK = m_trendlineDetector.Initialize();
+      if(!trendlineOK) 
          Print("❌ Failed to initialize TrendlineDetector");
-         return false;
-      }
       
-      // Initialize breakout detector
-      if(!m_breakoutDetector.Initialize())
-      {
+      breakoutOK = m_breakoutDetector.Initialize();
+      if(!breakoutOK) 
          Print("❌ Failed to initialize BreakoutDetector");
-         return false;
-      }
       
-      // Initialize volatility filter
-      if(!m_volatilityFilter.Initialize())
-      {
+      volatilityOK = m_volatilityFilter.Initialize();
+      if(!volatilityOK) 
          Print("❌ Failed to initialize VolatilityFilter");
+      
+      // Check if all components initialized successfully
+      bool allSuccess = pivotOK && trendlineOK && breakoutOK && volatilityOK;
+      
+      if(!allSuccess)
+      {
+         Print("═══════════════════════════════════════");
+         Print("❌ Initialization failed - Cleaning up");
+         Print("═══════════════════════════════════════");
+         
+         // Cleanup any successfully initialized components
+         if(pivotOK && m_pivotDetector != NULL)
+            m_pivotDetector.Release();
+         
+         if(trendlineOK && m_trendlineDetector != NULL)
+            m_trendlineDetector.Release();
+         
+         if(breakoutOK && m_breakoutDetector != NULL)
+            m_breakoutDetector.Release();
+         
+         if(volatilityOK && m_volatilityFilter != NULL)
+            m_volatilityFilter.Release();
+         
          return false;
       }
       
@@ -154,10 +220,32 @@ public:
    }
 
    //+------------------------------------------------------------------+
-   //| Main tick handler                                               |
+   //| Main tick handler with component validation                      |
+   //| Processes each market tick with comprehensive error checking     |
+   //| Updates components and checks for trading signals                |
+   //|                                                                  |
+   //| @return void                                                     |
+   //|                                                                  |
+   //| @note Validates all components before processing to prevent     |
+   //|       crashes from uninitialized components                      |
    //+------------------------------------------------------------------+
    void OnTick()
    {
+      // ✅ Verify components are initialized
+      if(!ValidateComponentState())
+      {
+         static datetime lastWarning = 0;
+         datetime currentTime = TimeCurrent();
+         
+         // Log warning once per minute to avoid spam
+         if(currentTime - lastWarning > 60)
+         {
+            Print("⚠️ Components not properly initialized, skipping tick");
+            lastWarning = currentTime;
+         }
+         return;
+      }
+      
       // Check for new bar
       if(IsNewBar())
       {
@@ -250,6 +338,13 @@ public:
    {
       Print("🟢 BUY SIGNAL DETECTED");
       
+      // ✅ Add null checks
+      if(m_volatilityFilter == NULL || m_trendlineManager == NULL)
+      {
+         Print("⚠️ ExecuteBuySignal: Required components are NULL");
+         return;
+      }
+      
       double zband = m_volatilityFilter.GetZband();
       double high = iHigh(m_symbol, m_timeframe, 0);
       double low = iLow(m_symbol, m_timeframe, 0);
@@ -286,6 +381,13 @@ public:
    {
       Print("🔴 SELL SIGNAL DETECTED");
       
+      // ✅ Add null checks
+      if(m_volatilityFilter == NULL || m_trendlineManager == NULL)
+      {
+         Print("⚠️ ExecuteSellSignal: Required components are NULL");
+         return;
+      }
+      
       double zband = m_volatilityFilter.GetZband();
       double high = iHigh(m_symbol, m_timeframe, 0);
       double low = iLow(m_symbol, m_timeframe, 0);
@@ -316,7 +418,16 @@ public:
    }
 
    //+------------------------------------------------------------------+
-   //| Send order to broker                                            |
+   //| Send order to broker with comprehensive validation               |
+   //| Validates order parameters and provides detailed error reporting |
+   //| Automatically adjusts SL/TP if they violate broker requirements  |
+   //|                                                                  |
+   //| @param isLong - true for BUY order, false for SELL order        |
+   //|                                                                  |
+   //| @return bool - true if order executed successfully               |
+   //|                                                                  |
+   //| @note Includes detailed error reporting with specific tips for  |
+   //|       common order execution failures                             |
    //+------------------------------------------------------------------+
    bool SendOrder(bool isLong)
    {
@@ -327,6 +438,49 @@ public:
       int digits = (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS);
       double tp = NormalizeDouble(m_currentTP, digits);
       double sl = NormalizeDouble(m_currentSL, digits);
+      
+      // ═══ VALIDATE ORDER PARAMETERS ═══
+      
+      if(price <= 0)
+      {
+         Print("❌ Invalid price: ", price);
+         return false;
+      }
+      
+      if(tp <= 0 || sl <= 0)
+      {
+         Print("❌ Invalid TP/SL: TP=", tp, " SL=", sl);
+         return false;
+      }
+      
+      // Check minimum stop level
+      long minStopsLevel = SymbolInfoInteger(m_symbol, SYMBOL_TRADE_STOPS_LEVEL);
+      double minStops = minStopsLevel * SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+      
+      double slDistance = isLong ? (price - sl) : (sl - price);
+      double tpDistance = isLong ? (tp - price) : (price - tp);
+      
+      // Adjust SL if too close
+      if(slDistance < minStops && minStops > 0)
+      {
+         Print("⚠️ SL too close: ", slDistance, " < ", minStops);
+         sl = isLong ? 
+            NormalizeDouble(price - minStops * 1.1, digits) : 
+            NormalizeDouble(price + minStops * 1.1, digits);
+         Print("   Adjusted SL to: ", sl);
+      }
+      
+      // Adjust TP if too close
+      if(tpDistance < minStops && minStops > 0)
+      {
+         Print("⚠️ TP too close: ", tpDistance, " < ", minStops);
+         tp = isLong ? 
+            NormalizeDouble(price + minStops * 1.1, digits) : 
+            NormalizeDouble(price - minStops * 1.1, digits);
+         Print("   Adjusted TP to: ", tp);
+      }
+      
+      // ═══ EXECUTE ORDER ═══
       
       bool result = false;
       if(isLong)
@@ -345,8 +499,63 @@ public:
       }
       else
       {
-         Print("❌ Order failed! Error: ", GetLastError(), 
-               " | Return code: ", m_trade.ResultRetcode());
+         // ═══ DETAILED ERROR REPORTING ═══
+         
+         uint errorCode = GetLastError();
+         uint retCode = m_trade.ResultRetcode();
+         
+         Print("═══════════════════════════════════════");
+         Print("❌ ORDER EXECUTION FAILED");
+         Print("═══════════════════════════════════════");
+         Print("Symbol: ", m_symbol);
+         Print("Direction: ", isLong ? "BUY" : "SELL");
+         Print("Price: ", price);
+         Print("Lot Size: ", m_lotSize);
+         Print("SL: ", sl, " (Distance: ", slDistance, ")");
+         Print("TP: ", tp, " (Distance: ", tpDistance, ")");
+         Print("Min Stops: ", minStops);
+         Print("─────────────────────────────────────");
+         Print("Error Code: ", errorCode);
+         Print("Return Code: ", retCode);
+         Print("Description: ", m_trade.ResultRetcodeDescription());
+         Print("Comment: ", m_trade.ResultComment());
+         Print("═══════════════════════════════════════");
+         
+         // Provide specific guidance based on error
+         switch(retCode)
+         {
+            case TRADE_RETCODE_INVALID_STOPS:
+               Print("💡 TIP: SL/TP violates broker's minimum distance");
+               Print("   Check SYMBOL_TRADE_STOPS_LEVEL for ", m_symbol);
+               break;
+               
+            case TRADE_RETCODE_INVALID_VOLUME:
+               Print("💡 TIP: Lot size not within allowed range");
+               Print("   Min: ", SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MIN));
+               Print("   Max: ", SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MAX));
+               Print("   Step: ", SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_STEP));
+               break;
+               
+            case TRADE_RETCODE_NO_MONEY:
+               Print("💡 TIP: Insufficient funds to place order");
+               Print("   Free Margin: ", AccountInfoDouble(ACCOUNT_MARGIN_FREE));
+               Print("   Required: ~", m_lotSize * SymbolInfoDouble(m_symbol, SYMBOL_MARGIN_INITIAL));
+               break;
+               
+            case TRADE_RETCODE_MARKET_CLOSED:
+               Print("💡 TIP: Market is closed for ", m_symbol);
+               break;
+               
+            case TRADE_RETCODE_INVALID_PRICE:
+               Print("💡 TIP: Price has changed, order needs to be retried");
+               break;
+               
+            case TRADE_RETCODE_PRICE_OFF:
+               Print("💡 TIP: Requested price is too far from current market");
+               break;
+         }
+         
+         Print("═══════════════════════════════════════");
       }
       
       return result;
@@ -357,6 +566,13 @@ public:
    //+------------------------------------------------------------------+
    void ManageTrade()
    {
+      // ✅ Add null check
+      if(m_trendlineManager == NULL)
+      {
+         Print("⚠️ ManageTrade: TrendlineManager is NULL");
+         return;
+      }
+      
       double high = iHigh(m_symbol, m_timeframe, 0);
       double low = iLow(m_symbol, m_timeframe, 0);
       double close = iClose(m_symbol, m_timeframe, 0);
@@ -419,4 +635,43 @@ public:
    double GetCurrentTP() const { return m_currentTP; }
    double GetCurrentSL() const { return m_currentSL; }
    double GetZband() const { return m_volatilityFilter.GetZband(); }
+
+private:
+   //+------------------------------------------------------------------+
+   //| Validate that all components are properly initialized           |
+   //+------------------------------------------------------------------+
+   bool ValidateComponentState()
+   {
+      if(m_pivotDetector == NULL || !m_pivotDetector.IsInitialized())
+      {
+         Print("⚠️ PivotDetector not initialized");
+         return false;
+      }
+      
+      if(m_trendlineDetector == NULL || !m_trendlineDetector.IsInitialized())
+      {
+         Print("⚠️ TrendlineDetector not initialized");
+         return false;
+      }
+      
+      if(m_breakoutDetector == NULL || !m_breakoutDetector.IsInitialized())
+      {
+         Print("⚠️ BreakoutDetector not initialized");
+         return false;
+      }
+      
+      if(m_volatilityFilter == NULL || !m_volatilityFilter.IsInitialized())
+      {
+         Print("⚠️ VolatilityFilter not initialized");
+         return false;
+      }
+      
+      if(m_trendlineManager == NULL)
+      {
+         Print("⚠️ TrendlineManager is NULL");
+         return false;
+      }
+      
+      return true;
+   }
 };

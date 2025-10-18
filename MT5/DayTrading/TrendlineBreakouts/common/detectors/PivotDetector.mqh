@@ -68,7 +68,19 @@ public:
    }
 
    //+------------------------------------------------------------------+
-   //| Update pivot values (call on new bar)                          |
+   //| Update pivot values on new bar                                   |
+   //| Call this method when a new bar is detected                      |
+   //| Updates both pivot high and pivot low values                     |
+   //|                                                                  |
+   //| @return void                                                     |
+   //|                                                                  |
+   //| @example                                                         |
+   //|   if(IsNewBar()) {                                               |
+   //|       detector.Update();                                         |
+   //|       if(detector.IsNewPivotHigh()) {                            |
+   //|           // Handle new pivot...                                 |
+   //|       }                                                          |
+   //|   }                                                              |
    //+------------------------------------------------------------------+
    void Update() override
    {
@@ -97,7 +109,16 @@ public:
    }
 
    //+------------------------------------------------------------------+
-   //| Calculate Pivot High                                            |
+   //| Calculate Pivot High using left/right bar analysis              |
+   //| Determines if the center bar is higher than surrounding bars    |
+   //|                                                                  |
+   //| @param useWicks - true=use high/low wicks, false=use body       |
+   //| @param leftBars - number of bars to check on the left side      |
+   //| @param rightBars - number of bars to check on the right side    |
+   //|                                                                  |
+   //| @return double - pivot high price or 0.0 if no pivot found     |
+   //|                                                                  |
+   //| @note Returns 0.0 if insufficient bars or no valid pivot       |
    //+------------------------------------------------------------------+
    double CalculatePivotHigh(bool useWicks, int leftBars, int rightBars)
    {

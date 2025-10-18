@@ -20,6 +20,7 @@ input color    InpLineColor = clrGray;            // Line Color
 input group "➞ Trade Settings 🔸"
 input double   InpLotSize = 0.01;                 // Lot Size
 input int      InpSlippage = 10;                  // Slippage (points)
+input int      InpMagicNumber = 12345;            // Magic Number
 
 //--- Global
 TrendlineTrader* g_trader = NULL;
@@ -35,7 +36,7 @@ int OnInit()
    
    g_trader = new TrendlineTrader(
       _Symbol, 
-      12345,  // Magic number
+      InpMagicNumber,  // ✅ Now configurable
       PERIOD_CURRENT,
       InpPeriod,
       InpTrendType,
