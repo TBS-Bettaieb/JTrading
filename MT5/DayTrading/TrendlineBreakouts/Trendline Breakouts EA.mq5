@@ -9,6 +9,7 @@
 #include <Trade\Trade.mqh>
 #include "common/utils/Logger.mqh"
 #include "common/TrendlineTrader.mqh"
+#include "../../CommonUtils/TrailingTP_System.mqh"
 
 //--- Input parameters
 input group "➞ Core Settings 🔸"
@@ -32,6 +33,11 @@ input int      InpFixedPoints = 100;              // Fixed Points (if FIXED_POIN
 input double   InpATRMultiple = 2.0;              // ATR Multiple (if ATR_MULTIPLE)
 input double   InpRiskReward = 2.0;               // Risk/Reward Ratio (if RISK_REWARD)
 input double   InpPercent = 1.0;                  // Percent (if PERCENT)
+
+input group "➞ Trailing TP Settings 🔸"
+input bool     InpEnableTrailingTP = true;       // Enable Trailing TP
+input ENUM_TRAILING_TP_MODE InpTrailingTPMode = TRAILING_TP_CUSTOM;  // Trailing TP Mode
+input string   InpCustomLevels = "25:0:0, 50:25:25, 75:40:50, 100:60:100";   // Custom Levels (profit:slMove:tpExtend)
 
 input group "➞ System Settings 🔸"
 input ENUM_LOG_LEVEL InpLogLevel = LOG_INFO;     // Log Level
@@ -68,7 +74,11 @@ int OnInit()
       InpFixedPoints,
       InpATRMultiple,
       InpRiskReward,
-      InpPercent
+      InpPercent,
+      // Trailing TP Parameters
+      InpEnableTrailingTP,
+      InpTrailingTPMode,
+      InpCustomLevels
    );
    
    if(!g_trader.Initialize())

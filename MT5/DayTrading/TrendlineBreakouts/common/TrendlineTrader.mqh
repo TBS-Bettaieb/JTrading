@@ -9,6 +9,7 @@
 #include <Trade\Trade.mqh>
 #include "utils/Logger.mqh"
 #include "../../../CommonUtils/TradingUtils.mqh"
+#include "../../../CommonUtils/TrailingTP_System.mqh"
 #include "utils/SymbolClassifier.mqh"
 #include "detectors/PivotDetector.mqh"
 #include "detectors/TrendlineDetector.mqh"
@@ -83,6 +84,19 @@ private:
    datetime m_lastBarTime;
    int m_maxPositions;
    bool m_closeOnOpposite;
+   
+   // Trailing TP Settings
+   bool m_enableTrailingTP;
+   ENUM_TRAILING_TP_MODE m_trailingTPMode;
+   string m_customLevels;
+   CTrailingTP* m_trailingTP;
+   
+   // Structure pour gérer plusieurs positions avec trailing TP
+   struct PositionTrailing {
+      ulong ticket;
+      CTrailingTP* trailing;
+   };
+   PositionTrailing m_positionTrailings[];
 
 public:
    //+------------------------------------------------------------------+
@@ -108,7 +122,11 @@ public:
       int fixedPoints = 100,
       double atrMultiple = 2.0,
       double riskReward = 2.0,
-      double percent = 1.0
+      double percent = 1.0,
+      // Trailing TP Parameters
+      bool enableTrailingTP = false,
+      ENUM_TRAILING_TP_MODE trailingTPMode = TRAILING_TP_STEPPED,
+      string customLevels = ""
    )
    {
       // ═══ INITIALIZE LOGGER FIRST ═══
@@ -190,6 +208,31 @@ public:
          percent = 1.0;
       }
       
+      // Validate Trailing TP parameters
+      if(enableTrailingTP)
+      {
+         if(trailingTPMode == TRAILING_TP_CUSTOM && customLevels == "")
+         {
+            Logger::Warning("Trailing TP Custom mode requires custom levels, disabling trailing TP");
+            enableTrailingTP = false;
+         }
+         else if(trailingTPMode == TRAILING_TP_CUSTOM && customLevels != "")
+         {
+            // Validate custom levels string
+            string errorMessage;
+            if(!CTrailingTPValidator::ValidateCustomLevelsString(customLevels, errorMessage))
+            {
+               Logger::Error("Invalid custom levels: " + errorMessage);
+               enableTrailingTP = false;
+            }
+            else
+            {
+               Logger::Info("Trailing TP Custom levels validated: " + errorMessage);
+               CTrailingTPValidator::PrintParsedLevels(customLevels);
+            }
+         }
+      }
+      
       // Assign validated values
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -207,6 +250,27 @@ public:
       m_atrMultiple = atrMultiple;
       m_riskReward = riskReward;
       m_percent = percent;
+      
+      // Assign Trailing TP settings
+      m_enableTrailingTP = enableTrailingTP;
+      m_trailingTPMode = trailingTPMode;
+      m_customLevels = customLevels;
+      
+      // Initialize trailing TP template instance
+      if(m_enableTrailingTP) {
+         m_trailingTP = new CTrailingTP(m_trailingTPMode, m_customLevels);
+         if(!m_trailingTP.ValidateConfiguration()) {
+            Logger::Warning("Trailing TP configuration invalid - disabling");
+            delete m_trailingTP;
+            m_trailingTP = NULL;
+            m_enableTrailingTP = false;
+         }
+      } else {
+         m_trailingTP = NULL;
+      }
+      
+      // Initialize trailing TP array
+      ArrayResize(m_positionTrailings, 0);
       
       // Initialize state
       m_maxPositions = maxPositions;
@@ -249,6 +313,14 @@ public:
       
       if(m_eventManager != NULL) delete m_eventManager;
       if(m_tradeManager != NULL) delete m_tradeManager;
+      
+      // ✅ CLEANUP TRAILING TP:
+      for(int i = 0; i < ArraySize(m_positionTrailings); i++) {
+         if(m_positionTrailings[i].trailing != NULL) {
+            delete m_positionTrailings[i].trailing;
+         }
+      }
+      if(m_trailingTP != NULL) delete m_trailingTP;
    }
 
    //+------------------------------------------------------------------+
@@ -365,27 +437,28 @@ public:
          return;
       }
       
-      // Check for new bar
+      // Update volatility filter BEFORE new bar check (always up to date)
+      m_volatilityFilter.Update();
+      m_breakoutDetector.SetZband(m_volatilityFilter.GetZband());
+      
+      // Check for new bar and execute signals ONLY at candle close
       if(IsNewBar())
       {
          UpdateBarTime();
          OnNewBar();
+         
+         // ✅ CHECK SIGNALS ONLY AT CANDLE CLOSE
+         CheckSignals();
       }
-      
-      // Update volatility filter (needed for Zband)
-      m_volatilityFilter.Update();
-      
-      // Update breakout detector with latest Zband
-      m_breakoutDetector.SetZband(m_volatilityFilter.GetZband());
       
       // ✅ ALWAYS sync state from TradeManager (single source of truth)
       m_tradeManager.ValidatePositions();
       
-      // Always check for signals (allow multiple simultaneous trades)
-      CheckSignals();
-      
       // Manage all active positions
       ManageTrade();
+      
+      // Apply trailing TP to all positions
+      ApplyTrailingTP();
    }
 
    //+------------------------------------------------------------------+
@@ -747,6 +820,10 @@ public:
          // Get position's TP and SL
          double positionTP = PositionGetDouble(POSITION_TP);
          double positionSL = PositionGetDouble(POSITION_SL);
+         double entryPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+         
+         // ✅ TRAILING TP MANAGEMENT - Use new multi-position system
+         // This is now handled by ApplyTrailingTP() called elsewhere
          
          bool shouldClose = false;
          string closeReason = "";
@@ -783,6 +860,12 @@ public:
             // Capture data before closing
             double profit = PositionGetDouble(POSITION_PROFIT);
             
+            // Clean up trailing TP for this position
+            if(m_enableTrailingTP)
+            {
+               OnPositionClosed(ticket);
+            }
+            
             if(m_tradeManager.ClosePosition(ticket, closeReason))
             {
                m_eventManager.DispatchTradeClosed(
@@ -803,6 +886,9 @@ public:
       if(m_tradeManager.GetActivePositionCount() == 0)
       {
          m_trendlineManager.ClearSLTPLines();
+         
+         // Reset trailing TP system when no positions are open
+         // This is now handled automatically by ApplyTrailingTP() through OnPositionClosed()
       }
    }
 
@@ -1214,6 +1300,176 @@ private:
       return true;
    }
 
+   //+------------------------------------------------------------------+
+   //| Détecter les nouvelles positions pour Trailing TP              |
+   //+------------------------------------------------------------------+
+   void CheckForNewPositions()
+   {
+      if(!m_enableTrailingTP) return;
+      
+      for(int i = 0; i < PositionsTotal(); i++)
+      {
+         ulong ticket = PositionGetTicket(i);
+         if(ticket <= 0) continue;
+         
+         if(!PositionSelectByTicket(ticket)) continue;
+         
+         // ✅ FIX: Utiliser la même logique que TradeManager.IsOurMagicNumber()
+         long positionMagic = PositionGetInteger(POSITION_MAGIC);
+         int baseMagic = (int)(positionMagic / 10000);
+         // Utiliser exactement la même logique que TradeManager.IsOurMagicNumber()
+         if(!(baseMagic == m_magicNumber || baseMagic % 100 == m_magicNumber % 100))
+            continue;
+         
+         if(PositionGetString(POSITION_SYMBOL) != m_symbol) continue;
+         
+         bool alreadyTracked = false;
+         for(int j = 0; j < ArraySize(m_positionTrailings); j++)
+         {
+            if(m_positionTrailings[j].ticket == ticket)
+            {
+               alreadyTracked = true;
+               break;
+            }
+         }
+         
+         if(!alreadyTracked) 
+         {
+            Logger::Debug("New position detected for Trailing TP: " + IntegerToString(ticket) + 
+                         " | Magic: " + IntegerToString(positionMagic));
+            OnPositionOpened(ticket);
+         }
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Appelé quand une position est ouverte                           |
+   //+------------------------------------------------------------------+
+   void OnPositionOpened(ulong ticket)
+   {
+      if(!m_enableTrailingTP || m_trailingTP == NULL) 
+      {
+         Logger::Debug("Trailing TP not enabled or NULL template");
+         return;
+      }
+      
+      if(!PositionSelectByTicket(ticket)) 
+      {
+         Logger::Warning("Cannot select position for Trailing TP: " + IntegerToString(ticket));
+         return;
+      }
+      
+      // Vérifier que ce n'est pas déjà tracké
+      for(int i = 0; i < ArraySize(m_positionTrailings); i++) {
+         if(m_positionTrailings[i].ticket == ticket) 
+         {
+            Logger::Debug("Position already tracked: " + IntegerToString(ticket));
+            return;
+         }
+      }
+      
+      double entryPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      double sl = PositionGetDouble(POSITION_SL);
+      double tp = PositionGetDouble(POSITION_TP);
+      bool isLong = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
+      
+      Logger::Info("Initializing Trailing TP | Ticket: " + IntegerToString(ticket) + 
+                  " | Entry: " + DoubleToString(entryPrice, 5) + 
+                  " | SL: " + DoubleToString(sl, 5) + 
+                  " | TP: " + DoubleToString(tp, 5) +
+                  " | Direction: " + (isLong ? "LONG" : "SHORT"));
+      
+      // Créer un nouveau CTrailingTP pour cette position
+      CTrailingTP* newTrailing = new CTrailingTP(
+         m_trailingTP.GetMode(),
+         m_trailingTP.GetCustomLevelsString()
+      );
+      
+      if(newTrailing.Initialize(entryPrice, sl, tp, isLong))
+      {
+         int size = ArraySize(m_positionTrailings);
+         ArrayResize(m_positionTrailings, size + 1);
+         m_positionTrailings[size].ticket = ticket;
+         m_positionTrailings[size].trailing = newTrailing;
+         
+         Logger::Success(StringFormat("🎯 Trailing TP initialized for position %d | Mode: %s | Levels: %d",
+                   ticket, EnumToString(m_trailingTP.GetMode()), newTrailing.GetLevelCount()));
+      }
+      else
+      {
+         delete newTrailing;
+         Logger::Error(StringFormat("❌ Failed to initialize Trailing TP for position %d", ticket));
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Appelé quand une position est fermée                            |
+   //+------------------------------------------------------------------+
+   void OnPositionClosed(ulong ticket)
+   {
+      for(int i = 0; i < ArraySize(m_positionTrailings); i++) {
+         if(m_positionTrailings[i].ticket == ticket) {
+            if(m_positionTrailings[i].trailing != NULL) {
+               delete m_positionTrailings[i].trailing;
+            }
+            for(int j = i; j < ArraySize(m_positionTrailings) - 1; j++) {
+               m_positionTrailings[j] = m_positionTrailings[j + 1];
+            }
+            ArrayResize(m_positionTrailings, ArraySize(m_positionTrailings) - 1);
+            Logger::Info(StringFormat("Trailing TP cleaned up for closed position %d", ticket));
+            break;
+         }
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Appliquer le Trailing TP à toutes les positions                 |
+   //+------------------------------------------------------------------+
+   void ApplyTrailingTP()
+   {
+      if(!m_enableTrailingTP) return;
+      
+      CheckForNewPositions();
+      
+      int trackingCount = ArraySize(m_positionTrailings);
+      if(trackingCount == 0)
+      {
+         static datetime lastLog = 0;
+         if(TimeCurrent() - lastLog > 60) // Log toutes les 60 secondes
+         {
+            Logger::Debug("No positions tracked for Trailing TP");
+            lastLog = TimeCurrent();
+         }
+         return;
+      }
+      
+      Logger::Debug("Applying Trailing TP to " + IntegerToString(trackingCount) + " positions");
+      
+      for(int i = ArraySize(m_positionTrailings) - 1; i >= 0; i--) {
+         ulong ticket = m_positionTrailings[i].ticket;
+         
+         if(!PositionSelectByTicket(ticket)) {
+            Logger::Info("Position closed externally, cleaning up Trailing TP: " + IntegerToString(ticket));
+            OnPositionClosed(ticket);
+            continue;
+         }
+         
+         double currentPrice = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) 
+            ? SymbolInfoDouble(m_symbol, SYMBOL_BID)
+            : SymbolInfoDouble(m_symbol, SYMBOL_ASK);
+         
+         double newSL, newTP;
+         if(m_positionTrailings[i].trailing.Update(currentPrice, newSL, newTP)) {
+            if(newSL > 0 && newTP > 0) {
+               if(m_tradeManager.ModifyPosition(ticket, newSL, newTP)) {
+                  Logger::Info(StringFormat("🎯 Position %d updated | New SL: %.5f | New TP: %.5f", ticket, newSL, newTP));
+               } else {
+                  Logger::Warning(StringFormat("Failed to update position %d | SL: %.5f | TP: %.5f", ticket, newSL, newTP));
+               }
+            }
+         }
+      }
+   }
 
    //+------------------------------------------------------------------+
    //| Validate symbol is tradeable and market conditions are suitable |

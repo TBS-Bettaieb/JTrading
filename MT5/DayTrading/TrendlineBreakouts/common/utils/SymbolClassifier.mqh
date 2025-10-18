@@ -177,11 +177,11 @@ private:
             pipSize = point;
             
          // Threshold: 15-25 pips minimum distance
-         return 15 * pipSize / point;  // Convert to points
+         return 50 * pipSize / point;  // Convert to points
       }
       
       // Fallback: assume 4-digit quote, 15 points = ~1.5 pips
-      return 15.0;
+      return 50.0;
    }
    
    //+------------------------------------------------------------------+
