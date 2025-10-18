@@ -433,6 +433,40 @@ public:
    int GetMagicNumber() const { return m_magicNumber; }
    
    //+------------------------------------------------------------------+
+   //| Méthode pour changer le risque dynamiquement                     |
+   //+------------------------------------------------------------------+
+   void SetRiskPercent(double newRiskPercent)
+   {
+      if(newRiskPercent > 0)
+      {
+         m_riskPercent = newRiskPercent;
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Méthode publique pour calculer le volume avec un risque donné   |
+   //+------------------------------------------------------------------+
+   double CalculateVolume(double entryPrice, double stopLoss, double riskPercent)
+   {
+      // Sauvegarder le risque actuel
+      double tempRisk = m_riskPercent;
+      
+      // Utiliser temporairement le nouveau risque
+      m_riskPercent = riskPercent;
+      
+      // Calculer les points de stop loss
+      double slPoints = MathAbs(entryPrice - stopLoss) / m_point;
+      
+      // Calculer le volume avec la méthode existante
+      double volume = CalcLots(slPoints);
+      
+      // Restaurer le risque original
+      m_riskPercent = tempRisk;
+      
+      return volume;
+   }
+   
+   //+------------------------------------------------------------------+
    //| Rafraîchir l'affichage des lignes swing                          |
    //+------------------------------------------------------------------+
    void RefreshSwingDisplay()
