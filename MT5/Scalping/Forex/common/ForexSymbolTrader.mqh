@@ -40,6 +40,7 @@ private:
    int               m_slPoints;            // Stop Loss en points
    int               m_tslTriggerPoints;    // Points en profit avant TSL
    int               m_tslPoints;           // Trailing Stop Loss
+   bool              m_disableTslInProfit;  // Désactiver TSL en profit NET
    int               m_barsN;               // Nombre de barres pour l'analyse
    int               m_expirationBars;      // Expiration des ordres
    int               m_orderDistPoints;     // Distance des ordres
@@ -86,7 +87,8 @@ public:
                      ENUM_STRATEGY_MODE strategyMode,
                      bool useTrailingTP = false,
                      ENUM_TRAILING_TP_MODE trailingTPMode = TRAILING_TP_STEPPED,
-                     string customTPLevels = "")
+                     string customTPLevels = "",
+                     bool disableTslInProfit = false)
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -96,6 +98,7 @@ public:
       m_slPoints = slPoints;
       m_tslTriggerPoints = tslTriggerPoints;
       m_tslPoints = tslPoints;
+      m_disableTslInProfit = disableTslInProfit;
       m_barsN = barsN;
       m_expirationBars = expirationBars;
       m_orderDistPoints = orderDistPoints;
@@ -239,69 +242,99 @@ public:
    //+------------------------------------------------------------------+
    //| Trailing Stop pour ce symbole                                   |
    //+------------------------------------------------------------------+
+   //+------------------------------------------------------------------+
+   //| Trailing Stop Loss avec option de désactivation en profit NET   |
+   //+------------------------------------------------------------------+
    void TrailStop()
    {
-      double sl = 0;
-      double tp = 0;
-      double ask = SymbolInfoDouble(m_symbol, SYMBOL_ASK);
-      double bid = SymbolInfoDouble(m_symbol, SYMBOL_BID);
-      
+      // Parcourir toutes les positions de ce symbole
       for(int i = PositionsTotal() - 1; i >= 0; i--)
       {
-         if(m_position.SelectByIndex(i))
+         ulong ticket = PositionGetTicket(i);
+         if(ticket <= 0) continue;
+         
+         // Vérifier que c'est notre position
+         if(PositionGetString(POSITION_SYMBOL) != m_symbol) continue;
+         if(PositionGetInteger(POSITION_MAGIC) != m_magicNumber) continue;
+         
+         // 🆕 VÉRIFICATION PROFIT NET AVEC COMMISSIONS ET SWAP
+         if(m_disableTslInProfit)
          {
-            ulong ticket = m_position.Ticket();
-            
+            // Calculer le profit NET (CRITIQUE: inclure commissions + swap)
+            double profitGross = PositionGetDouble(POSITION_PROFIT);
             double commission = m_commissionManager.GetCommission(m_position);
             double commissionPoints = m_commissionManager.CalculateCommissionInPoints(m_position.Symbol(), commission, m_position.Volume());
+           
+           
             
-            if(m_position.Magic() == m_magicNumber && m_position.Symbol() == m_symbol)
+            // Profit NET = Profit brut + Commissions (négatives) + Swap
+            double profitNet = profitGross + commission ;
+            
+            // Si position en profit NET, on désactive le trailing stop
+            if(profitNet > 0)
             {
-               if(m_position.PositionType() == POSITION_TYPE_BUY)
+               // Log optionnel pour debug (seulement la première fois)
+               static datetime lastLogTime = 0;
+               if(TimeCurrent() - lastLogTime > 300)  // Log toutes les 5 minutes max
                {
-                     if(m_position.StopLoss() >= m_position.PriceOpen() && m_position.StopLoss() != 0)
-                     {
-                        
-                        commissionPoints=0;
-                        //continue;
-                     }
-                     // Profit actuel en points
-                    double profitPoints = (bid - m_position.PriceOpen()) / m_point;
-                    
-                    // Activer le TSL seulement si profit > trigger + commission
-                    if(profitPoints > ((m_tslTriggerPoints+commissionPoints) + commissionPoints)){
-                    
-                     tp = m_position.TakeProfit();
-                     sl = bid - (m_tslPoints * m_point);
-                     
-                     if(sl > m_position.StopLoss() && sl != 0)
-                     {
-                        m_trade.PositionModify(ticket, sl, tp);
-                     }
+                  Print("🔒 TSL désactivé #", ticket, " [", m_symbol, "] - Profit NET: $", 
+                        DoubleToString(profitNet, 2), 
+                        " (Brut: $", DoubleToString(profitGross, 2),
+                        " | Com: $", DoubleToString(commission, 2),
+                         ")");
+                  lastLogTime = TimeCurrent();
+               }
+               
+               continue;  // Skip le trailing stop pour cette position
+            }
+            
+            // Si profitNet <= 0, on continue normalement avec le trailing stop
+         }
+         
+         // ═══ LOGIQUE DE TRAILING STOP NORMALE ═══
+         double currentSL = PositionGetDouble(POSITION_SL);
+         double currentPrice = PositionGetDouble(POSITION_PRICE_CURRENT);
+         double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+         ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+         
+         double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+         double profitPoints = 0;
+         
+         if(posType == POSITION_TYPE_BUY)
+         {
+            profitPoints = (currentPrice - openPrice) / point;
+            
+            // Vérifier si trigger atteint
+            if(profitPoints >= m_tslTriggerPoints)
+            {
+               double newSL = currentPrice - (m_tslPoints * point);
+               
+               // Ne bouger que si amélioration du SL
+               if(newSL > currentSL)
+               {
+                  if(m_trade.PositionModify(ticket, newSL, PositionGetDouble(POSITION_TP)))
+                  {
+                     Print("📈 TSL appliqué #", ticket, " [", m_symbol, "] BUY: SL ", 
+                           DoubleToString(currentSL, 5), " → ", DoubleToString(newSL, 5));
                   }
                }
-               else if(m_position.PositionType() == POSITION_TYPE_SELL)
+            }
+         }
+         else if(posType == POSITION_TYPE_SELL)
+         {
+            profitPoints = (openPrice - currentPrice) / point;
+            
+            if(profitPoints >= m_tslTriggerPoints)
+            {
+               double newSL = currentPrice + (m_tslPoints * point);
+               
+               // Ne bouger que si amélioration (ou SL non défini)
+               if(newSL < currentSL || currentSL == 0)
                {
-                  if(m_position.StopLoss() <= m_position.PriceOpen() && m_position.StopLoss() != 0)
-                     {
-                        
-                        commissionPoints=0;
-                        //continue;
-                     }
-                  
-                  // Profit actuel en points
-                    double profitPoints = (m_position.PriceOpen() - ask) / m_point;
-                    
-                    // Activer le TSL seulement si profit > trigger + commission
-                    if(profitPoints > (m_tslTriggerPoints + commissionPoints))
+                  if(m_trade.PositionModify(ticket, newSL, PositionGetDouble(POSITION_TP)))
                   {
-                     tp = m_position.TakeProfit();
-                     sl = ask + ((m_tslPoints+commissionPoints) * m_point);
-                     
-                     if(sl < m_position.StopLoss() && sl != 0)
-                     {
-                        m_trade.PositionModify(ticket, sl, tp);
-                     }
+                     Print("📉 TSL appliqué #", ticket, " [", m_symbol, "] SELL: SL ", 
+                           DoubleToString(currentSL, 5), " → ", DoubleToString(newSL, 5));
                   }
                }
             }

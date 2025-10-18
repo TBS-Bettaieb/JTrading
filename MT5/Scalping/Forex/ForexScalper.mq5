@@ -40,6 +40,7 @@ input int      Tppoints           = 200;   // Take Profit (10 points = 1 pip)
 input int      Slpoints           = 200;   // StopLoss Points (10 points = 1 pip)
 input int      TslTriggerPoints   = 10;    // Points in profit before Trailing SL is activated (10 points = 1 pip)
 input int      TslPoints          = 10;    // Trailing Stop Loss (10 points = 1 pip)
+input bool     DisableTslInProfit = false; // Désactiver Trailing SL une fois en profit NET
 input string   TradeComment       = "Scalping Robot";
 
 //--- Time Filters
@@ -329,7 +330,8 @@ int OnInit()
          StrategyMode,                  // strategy mode
          UseTrailingTP,                 // use trailing TP
          TrailingTPMode,                // trailing TP mode
-         CustomTPLevels                 // custom TP levels
+         CustomTPLevels,                // custom TP levels
+         DisableTslInProfit             // disable TSL in profit NET
       );
       
       if(symbolTraders[i] == NULL)
@@ -386,6 +388,12 @@ int OnInit()
       Print("🎯 TRAILING TP: ", EnumToString(TrailingTPMode));
       if(TrailingTPMode == TRAILING_TP_CUSTOM)
          Print("   Niveaux: ", CustomTPLevels);
+   }
+   
+   if(DisableTslInProfit)
+   {
+      Print("🔒 Trailing SL sera DÉSACTIVÉ pour les positions en profit NET");
+      Print("   (Profit NET = Profit brut + Commissions + Swap)");
    }
    
    Print("═══════════════════════════════════════");
@@ -532,6 +540,12 @@ void UpdateChartInfo()
    if(UseRiskMultiplier && IsCurrentHourInRange(RiskMultStartHour, RiskMultEndHour))
    {
       globalStatus += " | 🔥 RISK ×" + DoubleToString(RiskMultFactor, 1);
+   }
+   
+   // Ajouter indicateur visuel si DisableTslInProfit est actif
+   if(DisableTslInProfit)
+   {
+      globalStatus += " | 🔒 TSL-OFF";
    }
    
    // Couleur basée sur le statut trading et P/L
