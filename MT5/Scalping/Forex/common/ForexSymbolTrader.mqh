@@ -68,7 +68,6 @@ private:
    
    // Statistiques
    double            m_totalProfit;         // Profit total pour ce symbole
-   int               m_tradesCount;         // Nombre de trades
    
 public:
    //+------------------------------------------------------------------+
@@ -113,7 +112,6 @@ public:
       m_buyTotal = 0;
       m_sellTotal = 0;
       m_totalProfit = 0;
-      m_tradesCount = 0;
       // Configurer l'objet de trading
       m_trade.SetExpertMagicNumber(magicNumber);
       m_trade.SetDeviationInPoints(10);
@@ -178,29 +176,7 @@ public:
       // Vérifier si c'est une nouvelle barre
       if(!IsNewBar()) return;
       
-      // Vérifier les heures de trading
-      if(!IsTradingTimeAllowed())
-      {
-         // Log uniquement lors d'un changement d'état (anti-spam)
-         static bool lastWasBlocked = false;
-         if(!lastWasBlocked)
-         {
-            Print("⏸️ ", m_symbol, ": Trading paused, closing orders");
-            lastWasBlocked = true;
-         }
-         
-         CloseAllOrders();
-         return;
-      }
-      else
-      {
-         static bool lastWasBlocked = false;
-         if(lastWasBlocked)
-         {
-            Print("▶️ ", m_symbol, ": Trading resumed");
-            lastWasBlocked = false;
-         }
-      }
+      // Note: Trading time control is now handled at the global level in the bot's OnTick()
       
       // Mettre à jour les compteurs
       UpdateCounters();
@@ -490,50 +466,6 @@ public:
    int GetTotalPositions()
    {
       return m_buyTotal + m_sellTotal;
-   }
-   
-   //+------------------------------------------------------------------+
-   //| Obtenir le symbole                                              |
-   //+------------------------------------------------------------------+
-   string GetSymbol() const { return m_symbol; }
-   
-   //+------------------------------------------------------------------+
-   //| Obtenir le magic number                                         |
-   //+------------------------------------------------------------------+
-   int GetMagicNumber() const { return m_magicNumber; }
-   
-   //+------------------------------------------------------------------+
-   //| Méthode pour changer le risque dynamiquement                     |
-   //+------------------------------------------------------------------+
-   void SetRiskPercent(double newRiskPercent)
-   {
-      if(newRiskPercent > 0)
-      {
-         m_riskPercent = newRiskPercent;
-      }
-   }
-   
-   //+------------------------------------------------------------------+
-   //| Méthode publique pour calculer le volume avec un risque donné   |
-   //+------------------------------------------------------------------+
-   double CalculateVolume(double entryPrice, double stopLoss, double riskPercent)
-   {
-      // Sauvegarder le risque actuel
-      double tempRisk = m_riskPercent;
-      
-      // Utiliser temporairement le nouveau risque
-      m_riskPercent = riskPercent;
-      
-      // Calculer les points de stop loss
-      double slPoints = MathAbs(entryPrice - stopLoss) / m_point;
-      
-      // Calculer le volume avec la méthode existante
-      double volume = CalcLots(slPoints);
-      
-      // Restaurer le risque original
-      m_riskPercent = tempRisk;
-      
-      return volume;
    }
    
    //+------------------------------------------------------------------+
@@ -847,12 +779,4 @@ private:
       }
    }
    
-   //+------------------------------------------------------------------+
-   //| Vérifier si le trading est autorisé selon les heures            |
-   //+------------------------------------------------------------------+
-   bool IsTradingTimeAllowed()
-   {
-      // Le contrôle se fait maintenant au niveau global dans OnTick()
-      return true;
-   }
 };
