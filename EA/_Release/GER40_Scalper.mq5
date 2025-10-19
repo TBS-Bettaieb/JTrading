@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
-//|                                    EU_GU_FXScalper.mq5           |
-//|                         Forex scalper for EURUSd and GBPUSD      |
+//|                                    GER40_Scalper.mq5             |
+//|                         Scalper for GER40                        |
 //|                                                     Version 1.0  |
 //+------------------------------------------------------------------+
 #property link      "https://www.mql5.com"
@@ -8,58 +8,58 @@
 #property strict
 
 // User Input Parameters
-input double InpRiskPercent = 1;  // Risk per trade (%)
+input double InpRiskPercent = 0.5;  // Risk per trade (%)
 
-//-------------------------------------------------------------------
-//   ¦¦¦¦¦¦¦¦+                  CONFIG BLOCK                ¦¦¦¦¦¦¦¦+
-//-------------------------------------------------------------------
+//═══════════════════════════════════════════════════════════════════
+//   CONFIG BLOCK - PERSONNALISEZ ICI
+//═══════════════════════════════════════════════════════════════════
 
-// ?? IDENTITÉ DE LA STRATÉGIE
-#define STRATEGY_NAME          "EU_GU_FXScalper V1.0"
-#define STRATEGY_COMMENT       "EU_GU_FXScalper"
-#define BASE_MAGIC_NUMBER      2971308  // ?? DOIT ÊTRE UNIQUE!
+// IDENTITE DE LA STRATEGIE
+#define STRATEGY_NAME          "GER40 Scalper V1.0"
+#define STRATEGY_COMMENT       "GER40_Scalper"
+#define BASE_MAGIC_NUMBER      28834731
 
-// ?? CONFIGURATION DES SYMBOLES
-#define DEFAULT_SYMBOLS        "EURUSD,GBPUSD"
+// CONFIGURATION DES SYMBOLES
+#define DEFAULT_SYMBOLS        "GER40.cash"
 #define USE_ALL_MARKET_WATCH   false
 #define TRADING_TIMEFRAME      PERIOD_M5
 
-// ?? GESTION DU RISQUE
+// GESTION DU RISQUE
 
-// ?? TAKE PROFIT / STOP LOSS (en points, 10 points = 1 pip)
-#define TAKE_PROFIT_POINTS     200
-#define STOP_LOSS_POINTS       180
+// TAKE PROFIT / STOP LOSS (en points, 10 points = 1 pip)
+#define TAKE_PROFIT_POINTS     5000
+#define STOP_LOSS_POINTS       5000
 
-// ?? TRAILING STOP LOSS
-#define TSL_TRIGGER_POINTS     10
-#define TSL_POINTS             10
+// TRAILING STOP LOSS
+#define TSL_TRIGGER_POINTS     200
+#define TSL_POINTS             150
 
-// ? HEURES DE TRADING (0 = inactif, 1-23 = actif)
+// HEURES DE TRADING (0 = inactif, 1-23 = actif)
 #define START_HOUR             7
-#define END_HOUR               20
+#define END_HOUR               21
 
-// ?? PARAMÈTRES DE STRATÉGIE
+// PARAMETRES DE STRATEGIE
 #define STRATEGY_TYPE          STRATEGY_BREAKOUT
-#define BARS_ANALYSIS          5
-#define EXPIRATION_BARS        50
-#define ORDER_DISTANCE_POINTS  80
+#define BARS_ANALYSIS          6
+#define EXPIRATION_BARS        60
+#define ORDER_DISTANCE_POINTS  120
 
-// ?? TRAILING TAKE PROFIT
+// TRAILING TAKE PROFIT
 #define USE_TRAILING_TP        true
-#define TRAILING_TP_MODE       TRAILING_TP_CUSTOM
+#define TRAILING_TP_MODE       TRAILING_TP_STEPPED
 #define CUSTOM_TP_LEVELS       "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150"
 
 // RISK MULTIPLIER (BOOST PERIOD)
-#define USE_RISK_MULTIPLIER    false
-#define RISK_MULT_START_HOUR   13
+#define USE_RISK_MULTIPLIER    true
+#define RISK_MULT_START_HOUR   8
 #define RISK_MULT_START_MINUTE 0
-#define RISK_MULT_END_HOUR     17
+#define RISK_MULT_END_HOUR     10
 #define RISK_MULT_END_MINUTE   0
 #define RISK_MULTIPLIER        2.0
-#define RISK_MULT_DESCRIPTION  "London-NY Overlap"
+#define RISK_MULT_DESCRIPTION  "Euro Session"
 
 // NEWS FILTER
-#define USE_NEWS_FILTER        false
+#define USE_NEWS_FILTER        true
 #define NEWS_CURRENCIES        "USD,EUR,GBP"
 #define KEY_NEWS_EVENTS        "NFP,JOLTS,Nonfarm,PMI,Interest Rate,CPI,GDP"
 #define STOP_BEFORE_NEWS_MIN   30
@@ -68,14 +68,14 @@ input double InpRiskPercent = 1;  // Risk per trade (%)
 #define NEWS_SEPARATOR         COMMA
 #define NEWS_BLOCK_MSG         "📰 TRADING PAUSED - High Impact News Event"
 
-// ?? MESSAGES D ALERTE
+// MESSAGES D'ALERTE
 #define HOUR_BLOCK_MSG         "⏰ TRADING PAUSED - Outside Trading Hours"
 #define DAY_BLOCK_MSG          "📅 TRADING PAUSED - Outside Trading Days"
 #define BOTH_BLOCK_MSG         "🚫 TRADING PAUSED - Outside Trading Schedule"
 
-//-------------------------------------------------------------------
-//   ¦¦¦¦¦¦¦¦+        FIN DU CONFIG BLOCK                   ¦¦¦¦¦¦¦¦+
-//-------------------------------------------------------------------
+//═══════════════════════════════════════════════════════════════════
+//   FIN DU CONFIG BLOCK - NE PAS MODIFIER CI-DESSOUS
+//═══════════════════════════════════════════════════════════════════
 
 
 // Include bot engine
@@ -111,21 +111,6 @@ int OnInit()
    config.useTrailingTP = USE_TRAILING_TP;
    config.trailingTPMode = TRAILING_TP_MODE;
    config.customTPLevels = CUSTOM_TP_LEVELS;
-   config.useRiskMultiplier = USE_RISK_MULTIPLIER;
-   config.riskMultStartHour = RISK_MULT_START_HOUR;
-   config.riskMultStartMinute = RISK_MULT_START_MINUTE;
-   config.riskMultEndHour = RISK_MULT_END_HOUR;
-   config.riskMultEndMinute = RISK_MULT_END_MINUTE;
-   config.riskMultiplier = RISK_MULTIPLIER;
-   config.riskMultDescription = RISK_MULT_DESCRIPTION;
-   config.useNewsFilter = USE_NEWS_FILTER;
-   config.newsCurrencies = NEWS_CURRENCIES;
-   config.keyNewsEvents = KEY_NEWS_EVENTS;
-   config.stopBeforeNewsMin = STOP_BEFORE_NEWS_MIN;
-   config.startAfterNewsMin = START_AFTER_NEWS_MIN;
-   config.newsLookupDays = NEWS_LOOKUP_DAYS;
-   config.newsSeparator = NEWS_SEPARATOR;
-   config.newsBlockMsg = NEWS_BLOCK_MSG;
    config.hourBlockMsg = HOUR_BLOCK_MSG;
    config.dayBlockMsg = DAY_BLOCK_MSG;
    config.bothBlockMsg = BOTH_BLOCK_MSG;

@@ -7,6 +7,8 @@
 #property version   "1.0"
 #property strict
 
+// User Input Parameters
+input double InpRiskPercent = 0.5;  // Risk per trade (%)
 
 //-------------------------------------------------------------------
 //   ¦¦¦¦¦¦¦¦+ CONFIG BLOCK - GENERATED FROM TESTER ¦¦¦¦¦¦¦¦+
@@ -15,7 +17,7 @@
 // ?? IDENTITÉ DE LA STRATÉGIE
 #define STRATEGY_NAME          "USDJPY_FXScalper V1.0"
 #define STRATEGY_COMMENT       "USDJPY_FXScalper"
-#define BASE_MAGIC_NUMBER      29854347  // ?? DOIT ÊTRE UNIQUE!
+#define BASE_MAGIC_NUMBER      37483647
 
 // ?? CONFIGURATION DES SYMBOLES
 #define DEFAULT_SYMBOLS        "USDJPY"
@@ -23,7 +25,6 @@
 #define TRADING_TIMEFRAME      PERIOD_M5
 
 // ?? GESTION DU RISQUE
-#define RISK_PERCENT           2
 
 // ?? TAKE PROFIT / STOP LOSS (en points, 10 points = 1 pip)
 #define TAKE_PROFIT_POINTS     200
@@ -48,10 +49,29 @@
 #define TRAILING_TP_MODE       TRAILING_TP_CUSTOM
 #define CUSTOM_TP_LEVELS       "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150"
 
+// RISK MULTIPLIER (BOOST PERIOD)
+#define USE_RISK_MULTIPLIER    true
+#define RISK_MULT_START_HOUR   14
+#define RISK_MULT_START_MINUTE 0
+#define RISK_MULT_END_HOUR     15
+#define RISK_MULT_END_MINUTE   30
+#define RISK_MULTIPLIER        2.0
+#define RISK_MULT_DESCRIPTION  "London-NY Overlap"
+
+// NEWS FILTER
+#define USE_NEWS_FILTER        false
+#define NEWS_CURRENCIES        "USD,EUR,GBP"
+#define KEY_NEWS_EVENTS        "NFP,JOLTS,Nonfarm,PMI,Interest Rate,CPI,GDP"
+#define STOP_BEFORE_NEWS_MIN   30
+#define START_AFTER_NEWS_MIN   10
+#define NEWS_LOOKUP_DAYS       7
+#define NEWS_SEPARATOR         COMMA
+#define NEWS_BLOCK_MSG         "📰 TRADING PAUSED - High Impact News Event"
+
 // ?? MESSAGES D ALERTE
-#define HOUR_BLOCK_MSG         "? TRADING PAUSED - Outside Trading Hours"
-#define DAY_BLOCK_MSG          "?? TRADING PAUSED - Outside Trading Days"
-#define BOTH_BLOCK_MSG         "?? TRADING PAUSED - Outside Trading Schedule"
+#define HOUR_BLOCK_MSG         "⏰ TRADING PAUSED - Outside Trading Hours"
+#define DAY_BLOCK_MSG          "📅 TRADING PAUSED - Outside Trading Days"
+#define BOTH_BLOCK_MSG         "🚫 TRADING PAUSED - Outside Trading Schedule"
 
 //-------------------------------------------------------------------
 //   ¦¦¦¦¦¦¦¦+ FIN DU CONFIG BLOCK - GÉNÉRÉ AUTOMATIQUEMENT ¦¦¦¦¦¦¦¦+
@@ -77,7 +97,7 @@ int OnInit()
    config.symbolsList = DEFAULT_SYMBOLS;
    config.useAllSymbols = USE_ALL_MARKET_WATCH;
    config.timeframe = TRADING_TIMEFRAME;
-   config.riskPercent = RISK_PERCENT;
+   config.riskPercent = InpRiskPercent;
    config.tpPoints = TAKE_PROFIT_POINTS;
    config.slPoints = STOP_LOSS_POINTS;
    config.tslTriggerPoints = TSL_TRIGGER_POINTS;
@@ -91,6 +111,21 @@ int OnInit()
    config.useTrailingTP = USE_TRAILING_TP;
    config.trailingTPMode = TRAILING_TP_MODE;
    config.customTPLevels = CUSTOM_TP_LEVELS;
+   config.useRiskMultiplier = USE_RISK_MULTIPLIER;
+   config.riskMultStartHour = RISK_MULT_START_HOUR;
+   config.riskMultStartMinute = RISK_MULT_START_MINUTE;
+   config.riskMultEndHour = RISK_MULT_END_HOUR;
+   config.riskMultEndMinute = RISK_MULT_END_MINUTE;
+   config.riskMultiplier = RISK_MULTIPLIER;
+   config.riskMultDescription = RISK_MULT_DESCRIPTION;
+   config.useNewsFilter = USE_NEWS_FILTER;
+   config.newsCurrencies = NEWS_CURRENCIES;
+   config.keyNewsEvents = KEY_NEWS_EVENTS;
+   config.stopBeforeNewsMin = STOP_BEFORE_NEWS_MIN;
+   config.startAfterNewsMin = START_AFTER_NEWS_MIN;
+   config.newsLookupDays = NEWS_LOOKUP_DAYS;
+   config.newsSeparator = NEWS_SEPARATOR;
+   config.newsBlockMsg = NEWS_BLOCK_MSG;
    config.hourBlockMsg = HOUR_BLOCK_MSG;
    config.dayBlockMsg = DAY_BLOCK_MSG;
    config.bothBlockMsg = BOTH_BLOCK_MSG;

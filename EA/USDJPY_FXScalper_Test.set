@@ -1,0 +1,50 @@
+;USDJPY_FXScalper_Test.set
+;Generated from USDJPY_FXScalper.mq5 for ForexScalper_Tester.mq5
+
+InpStrategyName=USDJPY_FXScalper V1.0
+InpStrategyComment=USDJPY_FXScalper
+InpBaseMagicNumber=2147483647
+
+InpDefaultSymbols=USDJPY
+InpUseAllMarketWatch=0
+InpTradingTimeframe=5
+
+InpRiskPercent=0.5
+InpTpPoints=200
+InpSlPoints=180
+
+InpTslTriggerPoints=10
+InpTslPoints=10
+
+InpStartHour=13
+InpEndHour=18
+
+InpStrategyType=0
+InpBarsAnalysis=5
+InpExpirationBars=50
+InpOrderDistancePoints=80
+
+InpUseTrailingTP=1
+InpTrailingTPMode=3
+InpCustomTPLevels=25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150
+
+InpUseRiskMultiplier=1
+InpRiskMultStartHour=14
+InpRiskMultStartMinute=0
+InpRiskMultEndHour=15
+InpRiskMultEndMinute=30
+InpRiskMultiplier=2.0
+InpRiskMultDescription=London-NY Overlap
+
+InpUseNewsFilter=0
+InpNewsCurrencies=USD,EUR,GBP
+InpKeyNewsEvents=NFP,JOLTS,Nonfarm,PMI,Interest Rate,CPI,GDP
+InpStopBeforeNewsMin=30
+InpStartAfterNewsMin=10
+InpNewsLookupDays=7
+InpNewsSeparator=0
+InpNewsBlockMsg=📰 TRADING PAUSED - High Impact News Event
+
+InpHourBlockMsg=⏰ TRADING PAUSED - Outside Trading Hours
+InpDayBlockMsg=📅 TRADING PAUSED - Outside Trading Days
+InpBothBlockMsg=🚫 TRADING PAUSED - Outside Trading Schedule

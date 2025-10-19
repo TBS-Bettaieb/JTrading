@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
-//|                                    EU_GU_FXScalper.mq5           |
-//|                         Forex scalper for EURUSd and GBPUSD      |
+//|                                    XAUUSD_Gold_Scalper.mq5        |
+//|                         Gold scalper for XAUUSD                   |
 //|                                                     Version 1.0  |
 //+------------------------------------------------------------------+
 #property link      "https://www.mql5.com"
@@ -8,58 +8,58 @@
 #property strict
 
 // User Input Parameters
-input double InpRiskPercent = 1;  // Risk per trade (%)
+input double InpRiskPercent = 0.5;  // Risk per trade (%)
 
-//-------------------------------------------------------------------
-//   ¦¦¦¦¦¦¦¦+                  CONFIG BLOCK                ¦¦¦¦¦¦¦¦+
-//-------------------------------------------------------------------
+//═══════════════════════════════════════════════════════════════════
+//   CONFIG BLOCK - PERSONNALISEZ ICI
+//═══════════════════════════════════════════════════════════════════
 
-// ?? IDENTITÉ DE LA STRATÉGIE
-#define STRATEGY_NAME          "EU_GU_FXScalper V1.0"
-#define STRATEGY_COMMENT       "EU_GU_FXScalper"
-#define BASE_MAGIC_NUMBER      2971308  // ?? DOIT ÊTRE UNIQUE!
+// IDENTITE DE LA STRATEGIE
+#define STRATEGY_NAME          "XAUUSD Gold Scalper V1.0"
+#define STRATEGY_COMMENT       "XAUUSD_Gold_Scalper"
+#define BASE_MAGIC_NUMBER      29479999
 
-// ?? CONFIGURATION DES SYMBOLES
-#define DEFAULT_SYMBOLS        "EURUSD,GBPUSD"
+// CONFIGURATION DES SYMBOLES
+#define DEFAULT_SYMBOLS        "XAUUSD"
 #define USE_ALL_MARKET_WATCH   false
 #define TRADING_TIMEFRAME      PERIOD_M5
 
-// ?? GESTION DU RISQUE
+// GESTION DU RISQUE
 
-// ?? TAKE PROFIT / STOP LOSS (en points, 10 points = 1 pip)
-#define TAKE_PROFIT_POINTS     200
-#define STOP_LOSS_POINTS       180
+// TAKE PROFIT / STOP LOSS (en points, 10 points = 1 pip)
+#define TAKE_PROFIT_POINTS     1500
+#define STOP_LOSS_POINTS       1500
 
-// ?? TRAILING STOP LOSS
-#define TSL_TRIGGER_POINTS     10
-#define TSL_POINTS             10
+// TRAILING STOP LOSS
+#define TSL_TRIGGER_POINTS     20
+#define TSL_POINTS             15
 
-// ? HEURES DE TRADING (0 = inactif, 1-23 = actif)
-#define START_HOUR             7
-#define END_HOUR               20
+// HEURES DE TRADING (0 = inactif, 1-23 = actif)
+#define START_HOUR             10
+#define END_HOUR               17
 
-// ?? PARAMÈTRES DE STRATÉGIE
+// PARAMETRES DE STRATEGIE
 #define STRATEGY_TYPE          STRATEGY_BREAKOUT
-#define BARS_ANALYSIS          5
-#define EXPIRATION_BARS        50
-#define ORDER_DISTANCE_POINTS  80
+#define BARS_ANALYSIS          6
+#define EXPIRATION_BARS        60
+#define ORDER_DISTANCE_POINTS  120
 
-// ?? TRAILING TAKE PROFIT
+// TRAILING TAKE PROFIT
 #define USE_TRAILING_TP        true
-#define TRAILING_TP_MODE       TRAILING_TP_CUSTOM
+#define TRAILING_TP_MODE       TRAILING_TP_STEPPED
 #define CUSTOM_TP_LEVELS       "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150"
 
 // RISK MULTIPLIER (BOOST PERIOD)
-#define USE_RISK_MULTIPLIER    false
+#define USE_RISK_MULTIPLIER    true
 #define RISK_MULT_START_HOUR   13
 #define RISK_MULT_START_MINUTE 0
-#define RISK_MULT_END_HOUR     17
+#define RISK_MULT_END_HOUR     18
 #define RISK_MULT_END_MINUTE   0
 #define RISK_MULTIPLIER        2.0
 #define RISK_MULT_DESCRIPTION  "London-NY Overlap"
 
 // NEWS FILTER
-#define USE_NEWS_FILTER        false
+#define USE_NEWS_FILTER        true
 #define NEWS_CURRENCIES        "USD,EUR,GBP"
 #define KEY_NEWS_EVENTS        "NFP,JOLTS,Nonfarm,PMI,Interest Rate,CPI,GDP"
 #define STOP_BEFORE_NEWS_MIN   30
@@ -68,14 +68,14 @@ input double InpRiskPercent = 1;  // Risk per trade (%)
 #define NEWS_SEPARATOR         COMMA
 #define NEWS_BLOCK_MSG         "📰 TRADING PAUSED - High Impact News Event"
 
-// ?? MESSAGES D ALERTE
+// MESSAGES D'ALERTE
 #define HOUR_BLOCK_MSG         "⏰ TRADING PAUSED - Outside Trading Hours"
 #define DAY_BLOCK_MSG          "📅 TRADING PAUSED - Outside Trading Days"
 #define BOTH_BLOCK_MSG         "🚫 TRADING PAUSED - Outside Trading Schedule"
 
-//-------------------------------------------------------------------
-//   ¦¦¦¦¦¦¦¦+        FIN DU CONFIG BLOCK                   ¦¦¦¦¦¦¦¦+
-//-------------------------------------------------------------------
+//═══════════════════════════════════════════════════════════════════
+//   FIN DU CONFIG BLOCK - NE PAS MODIFIER CI-DESSOUS
+//═══════════════════════════════════════════════════════════════════
 
 
 // Include bot engine
@@ -177,24 +177,24 @@ void OnTick()
 // 📝 NOTES RAPIDES POUR PERSONNALISATION:
 //
 // 1. CHANGER LE NOM DU FICHIER:
-//    - Utiliser un nom descriptif: E_G_USDScalper.mq5
+//    - Utiliser un nom descriptif: XAUUSD_Gold_Scalper.mq5
 //    - Éviter les noms génériques: Scalper2.mq5
 //
 // 2. MAGIC NUMBER UNIQUE:
 //    - Utiliser une plage: 298000-299999
 //    - Documenter quelque part: quel magic = quel bot
 //
-// 3. OPTIMISATION PAR PAIRE:
-//    - Backtester chaque combinaison de symboles
-//    - Ajuster TP/SL selon la volatilité
-//    - Tester différentes sessions horaires
+// 3. OPTIMISATION PAR SYMBOLE:
+//    - Backtester XAUUSD spécifiquement
+//    - Ajuster TP/SL selon la volatilité de l'or
+//    - Tester différentes sessions horaires (10-17h configuré)
 //
 // 4. STRATÉGIE BREAKOUT vs REVERSION:
 //    - BREAKOUT: Marchés trending (forte volatilité)
 //    - REVERSION: Marchés ranging (basse volatilité)
 //
 // 5. TRAILING TP RECOMMANDÉ:
-//    - STEPPED: Simple et efficace (défaut)
+//    - STEPPED: Simple et efficace (configuré)
 //    - CUSTOM: Pour stratégies avancées
 //
 // 6. FICHIERS À DUPLIQUER POUR CRÉER VARIANTES:
