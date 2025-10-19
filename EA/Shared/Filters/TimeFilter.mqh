@@ -8,7 +8,7 @@
 //|    input int SHInput = 7;  // Start Hour (0-23)                  |
 //|    input int EHInput = 19; // End Hour (0-23)                     |
 //|                                                                   |
-//| 2. Incluez ce fichier : #include "../CommonUtils/TimeFilter.mqh"  |
+//| 2. Incluez ce fichier : #include "../Shared/TimeFilter.mqh"       |
 //|                                                                   |
 //| 3. Utilisez les fonctions :                                       |
 //|    - IsTradingAllowed() : utilise SHInput/EHInput automatiquement |
@@ -36,7 +36,7 @@
 //
 // Exemple d'utilisation dans votre EA :
 // 1. Ajoutez les inputs ci-dessus dans votre .mq5
-// 2. Incluez ce fichier : #include "../CommonUtils/TimeFilter.mqh"
+// 2. Incluez ce fichier : #include "../Shared/TimeFilter.mqh"
 // 3. Utilisez les fonctions : IsTradingAllowed(), CurrentHour(), etc.
 //
 // Ces variables sont commentées ici car elles causeraient des erreurs de compilation

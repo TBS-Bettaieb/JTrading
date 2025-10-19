@@ -13,7 +13,7 @@
 //|    input int DaysNewsLookup = 7;                                 |
 //|    input ENUM_NEWS_SEPARATOR NewsSeparator = NEWS_COMMA;         |
 //|                                                                   |
-//| 2. Incluez ce fichier : #include "../CommonUtils/NewsFilter.mqh" |
+//| 2. Incluez ce fichier : #include "../Shared/NewsFilter.mqh"       |
 //|                                                                   |
 //| 3. Utilisez les fonctions :                                       |
 //|    - IsNewsAllowed() : utilise NewsFilterOn/NewsCurrencies/KeyNews/etc |
@@ -55,7 +55,7 @@ enum ENUM_NEWS_SEPARATOR
 //
 // Exemple d'utilisation dans votre EA :
 // 1. Ajoutez les inputs ci-dessus dans votre .mq5
-// 2. Incluez ce fichier : #include "../CommonUtils/NewsFilter.mqh"
+// 2. Incluez ce fichier : #include "../Shared/NewsFilter.mqh"
 // 3. Utilisez les fonctions : IsNewsAllowed(), CheckUpcomingNews(), etc.
 //
 // Ces variables sont commentées ici car elles causeraient des erreurs de compilation

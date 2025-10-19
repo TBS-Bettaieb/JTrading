@@ -9,9 +9,9 @@
 
 // Include required enums and types BEFORE input declarations
 #include <Trade\Trade.mqh>
-#include "../../CommonUtils/TradingEnums.mqh"
-#include "../../CommonUtils/TrailingTP_System.mqh"
-#include "../../CommonUtils/TradingUtils.mqh"
+#include "../../EA/Shared/TradingEnums.mqh"
+#include "../../EA/Shared/TrailingTP_System.mqh"
+#include "../../EA/Shared/TradingUtils.mqh"
 
 //+------------------------------------------------------------------+
 //| INPUT PARAMETERS FOR TESTING                                     |

@@ -9,7 +9,7 @@
 //|    input ENUM_TRADING_SESSION AllowedSession = SESSION_OVERLAP;  |
 //|    input int AvoidOpeningMinutes = 30;                           |
 //|                                                                   |
-//| 2. Incluez ce fichier : #include "../CommonUtils/SessionFilter.mqh" |
+//| 2. Incluez ce fichier : #include "../Shared/SessionFilter.mqh"      |
 //|                                                                   |
 //| 3. Utilisez les fonctions :                                       |
 //|    - IsSessionAllowed() : utilise UseSessionFilter/AllowedSession/AvoidOpeningMinutes |
@@ -51,7 +51,7 @@ enum ENUM_TRADING_SESSION
 //
 // Exemple d'utilisation dans votre EA :
 // 1. Ajoutez les inputs ci-dessus dans votre .mq5
-// 2. Incluez ce fichier : #include "../CommonUtils/SessionFilter.mqh"
+// 2. Incluez ce fichier : #include "../Shared/SessionFilter.mqh"
 // 3. Utilisez les fonctions : IsSessionAllowed(), GetCurrentSession(), etc.
 //
 // Ces variables sont commentées ici car elles causeraient des erreurs de compilation

@@ -17,7 +17,7 @@ file 'C:\Users\taieb\AppData\Roaming\MetaQuotes\Terminal\81A933A9AFC5DE3C23B15CA
 #### 1. Suppression de l'Include Direct
 ```cpp
 // Avant (problématique)
-#include "../../CommonUtils/SessionFilter.mqh"  // ❌ Fichier déplacé
+#include "../../Shared/SessionFilter.mqh"     // ✅ Fichier mis à jour
 
 // Après (corrigé)
 // Include supprimé - géré par TradingTimeManager

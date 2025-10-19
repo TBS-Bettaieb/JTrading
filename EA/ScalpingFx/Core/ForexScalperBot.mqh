@@ -5,11 +5,11 @@
 #property strict
 
 #include <Trade\Trade.mqh>
-#include "../../../CommonUtils/TradingEnums.mqh"
-#include "../../../CommonUtils/TradingUtils.mqh"
-#include "../../../CommonUtils/TradingTimeManager.mqh"
-#include "../../../CommonUtils/ChartManager.mqh"
-#include "../../../CommonUtils/NewsFilterManager.mqh"
+#include "../../../EA/Shared/TradingEnums.mqh"
+#include "../../../EA/Shared/TradingUtils.mqh"
+#include "../../../EA/Shared/TradingTimeManager.mqh"
+#include "../../../EA/Shared/ChartManager.mqh"
+#include "../../../EA/Shared/NewsFilterManager.mqh"
 #include "../common/ForexSymbolTrader.mqh"
 #include "../common/ForexSymbolManager.mqh"
 #include "../common/RiskMultiplierManager.mqh"

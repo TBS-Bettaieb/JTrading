@@ -59,7 +59,7 @@
 
 
 // Include bot engine
-#include "../Core/ForexScalperBot.mqh"
+#include "../ScalpingFx/Core/ForexScalperBot.mqh"
 
 // Global bot instance
 ForexScalperBot* bot = NULL;

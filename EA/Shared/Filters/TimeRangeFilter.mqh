@@ -8,7 +8,7 @@
 //|    input bool UseTimeFilter = true;                               |
 //|    input string HourRanges = "8-10;16";                          |
 //|                                                                   |
-//| 2. Incluez ce fichier : #include "../CommonUtils/TimeRangeFilter.mqh" |
+//| 2. Incluez ce fichier : #include "../Shared/TimeRangeFilter.mqh"     |
 //|                                                                   |
 //| 3. Utilisez les fonctions :                                       |
 //|    - IsTimeRangeAllowed() : utilise UseTimeFilter/HourRanges      |
@@ -35,7 +35,7 @@
 //
 // Exemple d'utilisation dans votre EA :
 // 1. Ajoutez les inputs ci-dessus dans votre .mq5
-// 2. Incluez ce fichier : #include "../CommonUtils/TimeRangeFilter.mqh"
+// 2. Incluez ce fichier : #include "../Shared/TimeRangeFilter.mqh"
 // 3. Utilisez les fonctions : IsTimeRangeAllowed(), CurrentHour(), etc.
 //
 // Ces variables sont commentées ici car elles causeraient des erreurs de compilation

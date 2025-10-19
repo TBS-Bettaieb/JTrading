@@ -8,7 +8,7 @@
 //|    input bool UseDayFilter = false;                              |
 //|    input string DayRanges = "1-5";                               |
 //|                                                                   |
-//| 2. Incluez ce fichier : #include "../CommonUtils/DayRangeFilter.mqh" |
+//| 2. Incluez ce fichier : #include "../Shared/DayRangeFilter.mqh"     |
 //|                                                                   |
 //| 3. Utilisez les fonctions :                                       |
 //|    - IsDayRangeAllowed() : utilise UseDayFilter/DayRanges        |
@@ -36,7 +36,7 @@
 //
 // Exemple d'utilisation dans votre EA :
 // 1. Ajoutez les inputs ci-dessus dans votre .mq5
-// 2. Incluez ce fichier : #include "../CommonUtils/DayRangeFilter.mqh"
+// 2. Incluez ce fichier : #include "../Shared/DayRangeFilter.mqh"
 // 3. Utilisez les fonctions : IsDayRangeAllowed(), CurrentWeekDay(), etc.
 //
 // Ces variables sont commentées ici car elles causeraient des erreurs de compilation

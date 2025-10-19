@@ -1,4 +1,4 @@
-# 🕒 Filtres de Trading - CommonUtils
+# 🕒 Filtres de Trading - Shared
 
 Ce dossier contient plusieurs filtres de trading réutilisables pour vos Expert Advisors MQL5.
 
@@ -38,8 +38,8 @@ input string DayRanges = "1-5";              // Jours autorisés (0=Dim,1=Lun...
 ### Étape 2 : Inclure les fichiers
 
 ```mq5
-#include "../CommonUtils/TimeRangeFilter.mqh"
-#include "../CommonUtils/DayRangeFilter.mqh"
+#include "../Shared/TimeRangeFilter.mqh"
+#include "../Shared/DayRangeFilter.mqh"
 ```
 
 ### Étape 3 : Utiliser dans votre code

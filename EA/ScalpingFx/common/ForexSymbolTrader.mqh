@@ -8,11 +8,11 @@
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
 #include <Trade\OrderInfo.mqh>
-#include "../../../CommonUtils/TradingEnums.mqh"
+#include "../../../EA/Shared/TradingEnums.mqh"
 #include "ForexCommissionManager.mqh"
 #include "ForexSwingAnalyzer.mqh"
 #include "ForexTrendlineManager.mqh"
-#include "../../../CommonUtils/TrailingTP_System.mqh"
+#include "../../../EA/Shared/TrailingTP_System.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe ForexSymbolTrader - Gestion d'un symbole spécifique       |
