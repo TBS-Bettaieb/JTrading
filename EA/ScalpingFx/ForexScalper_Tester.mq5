@@ -271,8 +271,8 @@ void SaveConfigurationTemplate()
    // Use COMMON_FILES directory with ForexScalperConfigs folder
    string filename = "ForexScalperConfigs\\ForexScalperConfig_" + timestamp + ".mqh";
    
-   // Create header file content
-   string headerContent = CreateHeaderTemplate();
+   // Create configuration group class content
+   string headerContent = CreateConfigGroupTemplate();
    
    // Check if file already exists (like JT_TradeTracker)
    int fileHandle = FileOpen(filename, FILE_READ|FILE_COMMON|FILE_TXT);
@@ -416,6 +416,122 @@ string CreateHeaderTemplate()
    content += "//═══════════════════════════════════════════════════════════════════\n";
    content += "//   FIN DU CONFIG BLOCK - NE PAS MODIFIER CI-DESSOUS\n";
    content += "//═══════════════════════════════════════════════════════════════════\n";
+   
+   return content;
+}
+
+//+------------------------------------------------------------------+
+//| Create configuration group class template                         |
+//+------------------------------------------------------------------+
+string CreateConfigGroupTemplate()
+{
+   string strategyTypeStr = "";
+   switch(InpStrategyType)
+   {
+      case STRATEGY_BREAKOUT: strategyTypeStr = "STRATEGY_BREAKOUT"; break;
+      case STRATEGY_REVERSION: strategyTypeStr = "STRATEGY_REVERSION"; break;
+      default: strategyTypeStr = "STRATEGY_BREAKOUT"; break;
+   }
+   
+   string trailingTPModeStr = "";
+   switch((int)InpTrailingTPMode)
+   {
+      case TRAILING_TP_LINEAR: trailingTPModeStr = "TRAILING_TP_LINEAR"; break;
+      case TRAILING_TP_STEPPED: trailingTPModeStr = "TRAILING_TP_STEPPED"; break;
+      case TRAILING_TP_EXPONENTIAL: trailingTPModeStr = "TRAILING_TP_EXPONENTIAL"; break;
+      case TRAILING_TP_CUSTOM: trailingTPModeStr = "TRAILING_TP_CUSTOM"; break;
+      default: trailingTPModeStr = "TRAILING_TP_STEPPED"; break;
+   }
+   
+   string timeframeStr = "";
+   switch(InpTradingTimeframe)
+   {
+      case PERIOD_M1: timeframeStr = "PERIOD_M1"; break;
+      case PERIOD_M5: timeframeStr = "PERIOD_M5"; break;
+      case PERIOD_M15: timeframeStr = "PERIOD_M15"; break;
+      case PERIOD_M30: timeframeStr = "PERIOD_M30"; break;
+      case PERIOD_H1: timeframeStr = "PERIOD_H1"; break;
+      case PERIOD_H4: timeframeStr = "PERIOD_H4"; break;
+      case PERIOD_D1: timeframeStr = "PERIOD_D1"; break;
+      default: timeframeStr = "PERIOD_M5"; break;
+   }
+   
+   string newsSeparatorStr = "";
+   switch((int)InpNewsSeparator)
+   {
+      case COMMA: newsSeparatorStr = "COMMA"; break;
+      case SEMICOLON: newsSeparatorStr = "SEMICOLON"; break;
+      default: newsSeparatorStr = "COMMA"; break;
+   }
+   
+   // Generate group name from strategy name
+   string groupClassName = InpStrategyName;
+   StringReplace(groupClassName, " ", "_");
+   StringReplace(groupClassName, ".", "_");
+   StringReplace(groupClassName, "V1_0", "");
+   StringReplace(groupClassName, "V1.0", "");
+   StringTrimRight(groupClassName);
+   
+   string content = "//+------------------------------------------------------------------+\n";
+   content += "//|                                    " + groupClassName + "Group.mqh\n";
+   content += "//|                                    Configuration Group Class\n";
+   content += "//|                                                     Version 3.00\n";
+   content += "//+------------------------------------------------------------------+\n";
+   content += "#property strict\n\n";
+   content += "#include \"../../ScalpingFx/common/ConfigLoader.mqh\"\n\n";
+   
+   content += "//+------------------------------------------------------------------+\n";
+   content += "//| " + groupClassName + " Group Configuration                     |\n";
+   content += "//+------------------------------------------------------------------+\n";
+   content += "class C" + groupClassName + "Group : public CConfigGroup\n";
+   content += "{\n";
+   content += "public:\n";
+   content += "   bool Initialize() override\n";
+   content += "   {\n";
+   content += "      m_groupName = \"" + groupClassName + "\";\n";
+   content += "      AddSymbols(\"" + InpDefaultSymbols + "\");\n\n";
+   content += "      // Generated configuration from tester\n";
+   content += "      m_config.strategyName = \"" + InpStrategyName + "\";\n";
+   content += "      m_config.strategyComment = \"" + InpStrategyComment + "\";\n";
+   content += "      m_config.baseMagic = " + IntegerToString(InpBaseMagicNumber) + ";\n";
+   content += "      m_config.useAllSymbols = " + (InpUseAllMarketWatch ? "true" : "false") + ";\n";
+   content += "      m_config.timeframe = " + timeframeStr + ";\n";
+   content += "      m_config.riskPercent = " + DoubleToString(InpRiskPercent, 1) + ";\n";
+   content += "      m_config.tpPoints = " + IntegerToString(InpTpPoints) + ";\n";
+   content += "      m_config.slPoints = " + IntegerToString(InpSlPoints) + ";\n";
+   content += "      m_config.tslTriggerPoints = " + IntegerToString(InpTslTriggerPoints) + ";\n";
+   content += "      m_config.tslPoints = " + IntegerToString(InpTslPoints) + ";\n";
+   content += "      m_config.startHour = " + IntegerToString(InpStartHour) + ";\n";
+   content += "      m_config.endHour = " + IntegerToString(InpEndHour) + ";\n";
+   content += "      m_config.strategyMode = " + strategyTypeStr + ";\n";
+   content += "      m_config.barsN = " + IntegerToString(InpBarsAnalysis) + ";\n";
+   content += "      m_config.expirationBars = " + IntegerToString(InpExpirationBars) + ";\n";
+   content += "      m_config.orderDistPoints = " + IntegerToString(InpOrderDistancePoints) + ";\n";
+   content += "      m_config.useTrailingTP = " + (InpUseTrailingTP ? "true" : "false") + ";\n";
+   content += "      m_config.trailingTPMode = " + trailingTPModeStr + ";\n";
+   content += "      m_config.customTPLevels = \"" + InpCustomTPLevels + "\";\n";
+   content += "      m_config.useRiskMultiplier = " + (InpUseRiskMultiplier ? "true" : "false") + ";\n";
+   content += "      m_config.riskMultStartHour = " + IntegerToString(InpRiskMultStartHour) + ";\n";
+   content += "      m_config.riskMultStartMinute = " + IntegerToString(InpRiskMultStartMinute) + ";\n";
+   content += "      m_config.riskMultEndHour = " + IntegerToString(InpRiskMultEndHour) + ";\n";
+   content += "      m_config.riskMultEndMinute = " + IntegerToString(InpRiskMultEndMinute) + ";\n";
+   content += "      m_config.riskMultiplier = " + DoubleToString(InpRiskMultiplier, 1) + ";\n";
+   content += "      m_config.riskMultDescription = \"" + InpRiskMultDescription + "\";\n";
+   content += "      m_config.useNewsFilter = " + (InpUseNewsFilter ? "true" : "false") + ";\n";
+   content += "      m_config.newsCurrencies = \"" + InpNewsCurrencies + "\";\n";
+   content += "      m_config.keyNewsEvents = \"" + InpKeyNewsEvents + "\";\n";
+   content += "      m_config.stopBeforeNewsMin = " + IntegerToString(InpStopBeforeNewsMin) + ";\n";
+   content += "      m_config.startAfterNewsMin = " + IntegerToString(InpStartAfterNewsMin) + ";\n";
+   content += "      m_config.newsLookupDays = " + IntegerToString(InpNewsLookupDays) + ";\n";
+   content += "      m_config.newsSeparator = " + newsSeparatorStr + ";\n";
+   content += "      m_config.newsBlockMsg = \"" + InpNewsBlockMsg + "\";\n";
+   content += "      m_config.hourBlockMsg = \"" + InpHourBlockMsg + "\";\n";
+   content += "      m_config.dayBlockMsg = \"" + InpDayBlockMsg + "\";\n";
+   content += "      m_config.bothBlockMsg = \"" + InpBothBlockMsg + "\";\n\n";
+   content += "      return true;\n";
+   content += "   }\n";
+   content += "};\n\n";
+   content += "//+------------------------------------------------------------------+\n";
    
    return content;
 }

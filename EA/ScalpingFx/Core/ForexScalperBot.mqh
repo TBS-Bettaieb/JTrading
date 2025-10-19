@@ -10,58 +10,10 @@
 #include "../../../EA/Shared/TradingTimeManager.mqh"
 #include "../../../EA/Shared/ChartManager.mqh"
 #include "../../../EA/Shared/NewsFilterManager.mqh"
+#include "../common/BotConfig.mqh"
 #include "../common/ForexSymbolTrader.mqh"
 #include "../common/ForexSymbolManager.mqh"
 #include "../common/RiskMultiplierManager.mqh"
-
-//+------------------------------------------------------------------+
-//| Configuration structure                                          |
-//+------------------------------------------------------------------+
-struct BotConfig
-{
-   string            strategyName;
-   string            strategyComment;
-   int               baseMagic;
-   string            symbolsList;
-   bool              useAllSymbols;
-   ENUM_TIMEFRAMES   timeframe;
-   double            riskPercent;
-   int               tpPoints;
-   int               slPoints;
-   int               tslTriggerPoints;
-   int               tslPoints;
-   int               startHour;
-   int               endHour;
-   ENUM_STRATEGY_MODE strategyMode;
-   int               barsN;
-   int               expirationBars;
-   int               orderDistPoints;
-   bool              useTrailingTP;
-   ENUM_TRAILING_TP_MODE trailingTPMode;
-   string            customTPLevels;
-   string            hourBlockMsg;
-   string            dayBlockMsg;
-   string            bothBlockMsg;
-   
-   // 🆕 RISK MULTIPLIER
-   bool              useRiskMultiplier;
-   int               riskMultStartHour;
-   int               riskMultStartMinute;
-   int               riskMultEndHour;
-   int               riskMultEndMinute;
-   double            riskMultiplier;
-   string            riskMultDescription;
-   
-   // 📰 NEWS FILTER
-   bool              useNewsFilter;
-   string            newsCurrencies;
-   string            keyNewsEvents;
-   int               stopBeforeNewsMin;
-   int               startAfterNewsMin;
-   int               newsLookupDays;
-   ENUM_SEPARATOR    newsSeparator;
-   string            newsBlockMsg;
-};
 
 //+------------------------------------------------------------------+
 //| Main Bot Class                                                   |
