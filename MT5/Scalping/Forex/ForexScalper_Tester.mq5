@@ -60,6 +60,16 @@ input int      InpRiskMultEndMinute = 0;                    // Risk Multiplier E
 input double   InpRiskMultiplier = 1.5;                     // Risk Multiplier Value
 input string   InpRiskMultDescription = "London-NY Overlap"; // Risk Multiplier Description
 
+input group "📰 NEWS FILTER"
+input bool     InpUseNewsFilter = false;                        // Use News Filter
+input string   InpNewsCurrencies = "USD,EUR,GBP";               // Affected Currencies (comma separated)
+input string   InpKeyNewsEvents = "NFP,JOLTS,Nonfarm,PMI,Interest Rate,CPI,GDP"; // High Impact Events
+input int      InpStopBeforeNewsMin = 30;                       // Minutes Before News to Stop Trading
+input int      InpStartAfterNewsMin = 10;                       // Minutes After News to Resume Trading
+input int      InpNewsLookupDays = 7;                           // Days Ahead to Check News
+input ENUM_SEPARATOR InpNewsSeparator = COMMA;                  // List Separator (COMMA or SEMICOLON)
+input string   InpNewsBlockMsg = "📰 TRADING PAUSED - High Impact News Event"; // News Block Message
+
 input group "🚨 ALERT MESSAGES"
 input string   InpHourBlockMsg = "⏰ TRADING PAUSED - Outside Trading Hours";     // Hour Block Message
 input string   InpDayBlockMsg = "📅 TRADING PAUSED - Outside Trading Days";      // Day Block Message
@@ -112,6 +122,16 @@ int OnInit()
    config.riskMultEndMinute = InpRiskMultEndMinute;
    config.riskMultiplier = InpRiskMultiplier;
    config.riskMultDescription = InpRiskMultDescription;
+   
+   // News Filter Configuration
+   config.useNewsFilter = InpUseNewsFilter;
+   config.newsCurrencies = InpNewsCurrencies;
+   config.keyNewsEvents = InpKeyNewsEvents;
+   config.stopBeforeNewsMin = InpStopBeforeNewsMin;
+   config.startAfterNewsMin = InpStartAfterNewsMin;
+   config.newsLookupDays = InpNewsLookupDays;
+   config.newsSeparator = InpNewsSeparator;
+   config.newsBlockMsg = InpNewsBlockMsg;
    
    // Initialize bot
    bot = new ForexScalperBot(config);
@@ -193,6 +213,12 @@ void DisplayInputParameters()
                                 InpRiskMultEndHour, InpRiskMultEndMinute);
    }
    
+   string newsFilterStr = "OFF";
+   if(InpUseNewsFilter) {
+      newsFilterStr = StringFormat("ON (%dmin/%dmin) - %s", 
+                                  InpStopBeforeNewsMin, InpStartAfterNewsMin, InpNewsCurrencies);
+   }
+   
    string inputs = StringFormat(
       "=== %s TESTER ===\n" +
       "Magic: %d\n" +
@@ -204,7 +230,8 @@ void DisplayInputParameters()
       "Bars Analysis: %d\n" +
       "Trading Hours: %02d:00-%02d:00\n" +
       "Trailing TP: %s\n" +
-      "Risk Multiplier: %s",
+      "Risk Multiplier: %s\n" +
+      "News Filter: %s",
       InpStrategyName,
       InpBaseMagicNumber,
       InpUseAllMarketWatch ? "All Market Watch" : InpDefaultSymbols,
@@ -215,7 +242,8 @@ void DisplayInputParameters()
       InpBarsAnalysis,
       InpStartHour, InpEndHour,
       trailingTPStr,
-      riskMultStr
+      riskMultStr,
+      newsFilterStr
    );
    
    Comment(inputs);
@@ -306,6 +334,14 @@ string CreateHeaderTemplate()
       default: timeframeStr = "PERIOD_M5"; break;
    }
    
+   string newsSeparatorStr = "";
+   switch((int)InpNewsSeparator)
+   {
+      case COMMA: newsSeparatorStr = "COMMA"; break;
+      case SEMICOLON: newsSeparatorStr = "SEMICOLON"; break;
+      default: newsSeparatorStr = "COMMA"; break;
+   }
+   
    
    string content = "//+------------------------------------------------------------------+\n";
    content += "//|                                    ForexScalperConfig.mqh\n";
@@ -361,6 +397,16 @@ string CreateHeaderTemplate()
    content += "#define RISK_MULT_END_MINUTE   " + IntegerToString(InpRiskMultEndMinute) + "\n";
    content += "#define RISK_MULTIPLIER        " + DoubleToString(InpRiskMultiplier, 1) + "\n";
    content += "#define RISK_MULT_DESCRIPTION  \"" + InpRiskMultDescription + "\"\n";
+   content += "\n";
+   content += "// NEWS FILTER\n";
+   content += "#define USE_NEWS_FILTER        " + (InpUseNewsFilter ? "true" : "false") + "\n";
+   content += "#define NEWS_CURRENCIES        \"" + InpNewsCurrencies + "\"\n";
+   content += "#define KEY_NEWS_EVENTS        \"" + InpKeyNewsEvents + "\"\n";
+   content += "#define STOP_BEFORE_NEWS_MIN   " + IntegerToString(InpStopBeforeNewsMin) + "\n";
+   content += "#define START_AFTER_NEWS_MIN   " + IntegerToString(InpStartAfterNewsMin) + "\n";
+   content += "#define NEWS_LOOKUP_DAYS       " + IntegerToString(InpNewsLookupDays) + "\n";
+   content += "#define NEWS_SEPARATOR         " + newsSeparatorStr + "\n";
+   content += "#define NEWS_BLOCK_MSG         \"" + InpNewsBlockMsg + "\"\n";
    content += "\n";
    content += "// MESSAGES D'ALERTE\n";
    content += "#define HOUR_BLOCK_MSG         \"" + InpHourBlockMsg + "\"\n";

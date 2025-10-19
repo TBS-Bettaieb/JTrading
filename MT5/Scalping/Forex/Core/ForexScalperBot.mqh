@@ -9,6 +9,7 @@
 #include "../../../CommonUtils/TradingUtils.mqh"
 #include "../../../CommonUtils/TradingTimeManager.mqh"
 #include "../../../CommonUtils/ChartManager.mqh"
+#include "../../../CommonUtils/NewsFilterManager.mqh"
 #include "../common/ForexSymbolTrader.mqh"
 #include "../common/ForexSymbolManager.mqh"
 #include "../common/RiskMultiplierManager.mqh"
@@ -50,6 +51,16 @@ struct BotConfig
    int               riskMultEndMinute;
    double            riskMultiplier;
    string            riskMultDescription;
+   
+   // 📰 NEWS FILTER
+   bool              useNewsFilter;
+   string            newsCurrencies;
+   string            keyNewsEvents;
+   int               stopBeforeNewsMin;
+   int               startAfterNewsMin;
+   int               newsLookupDays;
+   ENUM_SEPARATOR    newsSeparator;
+   string            newsBlockMsg;
 };
 
 //+------------------------------------------------------------------+
@@ -62,6 +73,7 @@ private:
    ChartManager*     m_chartManager;
    TradingTimeManager* m_timeManager;
    RiskMultiplierManager* m_riskMultiplierManager;
+   NewsFilterManager* m_newsFilterManager;
    ForexSymbolTrader* m_symbolTraders[];
    string            m_symbols[];
    int               m_totalSymbols;
@@ -76,6 +88,7 @@ public:
       m_chartManager = NULL;
       m_timeManager = NULL;
       m_riskMultiplierManager = NULL;
+      m_newsFilterManager = NULL;
       m_totalSymbols = 0;
       m_tickCount = 0;
       m_detailUpdateCount = 0;
@@ -127,6 +140,10 @@ public:
       if(!InitializeRiskMultiplier())
          return false;
       
+      // Step 9: Initialize News Filter Manager
+      if(!InitializeNewsFilter())
+         return false;
+      
       // Final summary
       PrintInitializationSummary();
       
@@ -162,6 +179,14 @@ public:
          delete m_riskMultiplierManager;
          m_riskMultiplierManager = NULL;
          Print("✅ Risk Multiplier Manager cleaned up");
+      }
+      
+      // Cleanup News Filter Manager
+      if(m_newsFilterManager != NULL)
+      {
+         delete m_newsFilterManager;
+         m_newsFilterManager = NULL;
+         Print("✅ News Filter Manager cleaned up");
       }
       
       // Cleanup Time Manager
@@ -200,7 +225,20 @@ public:
       }
       
       // Check trading permissions
-      bool tradingAllowed = m_timeManager.IsTradingAllowed();
+      bool timeAllowed = m_timeManager.IsTradingAllowed();
+      bool newsAllowed = !m_config.useNewsFilter || 
+                         (m_newsFilterManager != NULL && 
+                          !m_newsFilterManager.IsNewsBlocking());
+      
+      bool tradingAllowed = timeAllowed && newsAllowed;
+      
+      // 🆕 Vérifier changement de statut news
+      if(m_newsFilterManager != NULL && m_newsFilterManager.HasStatusChanged())
+      {
+         string newsStatus = m_newsFilterManager.GetStatusMessage();
+         if(newsStatus != "")
+            Print("📰 NEWS ALERT: ", newsStatus);
+      }
       
       // 🆕 Obtenir multiplicateur actuel
       double currentRiskMultiplier = 1.0;
@@ -395,6 +433,38 @@ private:
       return true;
    }
    
+   //--- Initialize News Filter Manager
+   bool InitializeNewsFilter()
+   {
+      m_newsFilterManager = new NewsFilterManager();
+      if(m_newsFilterManager == NULL)
+      {
+         Print("⚠️ Warning: News Filter Manager creation failed");
+         return true; // Non-critical
+      }
+      
+      m_newsFilterManager.Initialize(
+         m_config.useNewsFilter,
+         m_config.newsCurrencies,
+         m_config.keyNewsEvents,
+         m_config.stopBeforeNewsMin,
+         m_config.startAfterNewsMin,
+         m_config.newsLookupDays,
+         m_config.newsSeparator
+      );
+      
+      if(m_config.useNewsFilter)
+      {
+         Print("📰 NEWS FILTER ENABLED");
+         Print("   Currencies: ", m_config.newsCurrencies);
+         Print("   Events: ", m_config.keyNewsEvents);
+         Print("   Stop Before: ", m_config.stopBeforeNewsMin, " min");
+         Print("   Resume After: ", m_config.startAfterNewsMin, " min");
+      }
+      
+      return true;
+   }
+   
    //--- Print initialization summary
    void PrintInitializationSummary()
    {
@@ -412,6 +482,11 @@ private:
       if(m_config.useRiskMultiplier && m_riskMultiplierManager != NULL)
       {
          Print("🚀 RISK MULTIPLIER: ", m_riskMultiplierManager.GetDetailedInfo());
+      }
+      
+      if(m_config.useNewsFilter && m_newsFilterManager != NULL)
+      {
+         Print("📰 NEWS FILTER: ", m_newsFilterManager.GetDetailedInfo());
       }
       
       Print("═══════════════════════════════════════");
@@ -455,18 +530,36 @@ private:
       // Build global status
       string globalStatus = GetGlobalSymbolsStatus(m_symbols, m_symbolTraders);
       string timeStatus = m_timeManager.GetStatusDescription();
-      globalStatus = timeStatus + " | " + globalStatus;
+      
+      // Determine color and build status
+      color statusColor = clrGreen;
+      
+      // 🆕 Ajouter status News
+      string newsStatus = "";
+      if(m_newsFilterManager != NULL && m_config.useNewsFilter)
+      {
+         if(m_newsFilterManager.IsNewsBlocking())
+         {
+            newsStatus = m_newsFilterManager.GetStatusMessage();
+            statusColor = clrRed;
+         }
+      }
       
       // 🆕 Ajouter status Risk Multiplier
       string riskMultStatus = "";
       if(m_riskMultiplierManager != NULL && m_config.useRiskMultiplier)
       {
          riskMultStatus = m_riskMultiplierManager.GetStatusDescription();
-         globalStatus = riskMultStatus + " | " + globalStatus;
       }
       
-      // Determine color
-      color statusColor = clrGreen;
+      // Build combined status
+      if(newsStatus != "")
+         globalStatus = newsStatus + " | " + timeStatus + " | " + globalStatus;
+      else
+         globalStatus = timeStatus + " | " + globalStatus;
+      
+      if(riskMultStatus != "")
+         globalStatus = riskMultStatus + " | " + globalStatus;
       ENUM_TRADING_STATUS status = m_timeManager.GetCurrentStatus();
       
       if(status != TRADING_ACTIVE)

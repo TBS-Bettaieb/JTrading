@@ -54,6 +54,16 @@
 #define RISK_MULTIPLIER        2.0
 #define RISK_MULT_DESCRIPTION  "London-NY Overlap Boost"
 
+// 📰 NEWS FILTER CONFIGURATION
+#define USE_NEWS_FILTER        false
+#define NEWS_CURRENCIES        "USD,EUR,GBP"
+#define KEY_NEWS_EVENTS        "NFP,JOLTS,Nonfarm,PMI,Interest Rate,CPI,GDP"
+#define STOP_BEFORE_NEWS_MIN   30
+#define START_AFTER_NEWS_MIN   10
+#define NEWS_LOOKUP_DAYS       7
+#define NEWS_SEPARATOR         COMMA    // COMMA ou SEMICOLON
+#define NEWS_BLOCK_MSG         "📰 TRADING PAUSED - High Impact News Event"
+
 // 🚨 ALERT MESSAGES
 #define HOUR_BLOCK_MSG         "⏰ TRADING PAUSED - Outside Trading Hours"
 #define DAY_BLOCK_MSG          "📅 TRADING PAUSED - Outside Trading Days"
@@ -108,6 +118,16 @@ int OnInit()
    config.riskMultEndMinute = RISK_MULT_END_MINUTE;
    config.riskMultiplier = RISK_MULTIPLIER;
    config.riskMultDescription = RISK_MULT_DESCRIPTION;
+   
+   // News Filter Configuration
+   config.useNewsFilter = USE_NEWS_FILTER;
+   config.newsCurrencies = NEWS_CURRENCIES;
+   config.keyNewsEvents = KEY_NEWS_EVENTS;
+   config.stopBeforeNewsMin = STOP_BEFORE_NEWS_MIN;
+   config.startAfterNewsMin = START_AFTER_NEWS_MIN;
+   config.newsLookupDays = NEWS_LOOKUP_DAYS;
+   config.newsSeparator = NEWS_SEPARATOR;
+   config.newsBlockMsg = NEWS_BLOCK_MSG;
    
    // Initialize bot
    bot = new ForexScalperBot(config);

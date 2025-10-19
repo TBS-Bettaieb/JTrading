@@ -43,3 +43,11 @@ enum ENUM_RISK_MODE
    RISK_PERCENTAGE,     // Pourcentage du capital
    RISK_POINTS          // Basé sur les points de risque
 };
+
+//+------------------------------------------------------------------+
+//| Separator Enumeration                                            |
+//+------------------------------------------------------------------+
+enum ENUM_SEPARATOR {
+   COMMA=0,            // Comma (,)
+   SEMICOLON=1         // Semicolon (;)
+};
