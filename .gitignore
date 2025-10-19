@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
+# Python build directory  
 develop-eggs/
 dist/
 downloads/
@@ -27,7 +27,11 @@ env/
 .venv
 
 # IDE
-.vscode/
+# Allow VS Code configuration for MQL5 compilation
+!.vscode/
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
 .idea/
 *.swp
 *.swo
@@ -61,3 +65,9 @@ desktop.ini
 *.ex4
 MQL5/Logs/
 MQL5/Files/
+
+# MQL5 Build directory (allow compilation logs and docs)
+!build/
+build/*
+!build/README_COMPILATION.md
+!build/mql5-compile.log
