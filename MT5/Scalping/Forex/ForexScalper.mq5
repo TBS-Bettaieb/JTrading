@@ -45,6 +45,15 @@
 #define TRAILING_TP_MODE       TRAILING_TP_STEPPED  // TRAILING_TP_STEPPED or TRAILING_TP_CUSTOM
 #define CUSTOM_TP_LEVELS       "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150"
 
+// 🚀 RISK MULTIPLIER (BOOST PERIOD)
+#define USE_RISK_MULTIPLIER    true
+#define RISK_MULT_START_HOUR   13
+#define RISK_MULT_START_MINUTE 0
+#define RISK_MULT_END_HOUR     17
+#define RISK_MULT_END_MINUTE   0
+#define RISK_MULTIPLIER        2.0
+#define RISK_MULT_DESCRIPTION  "London-NY Overlap Boost"
+
 // 🚨 ALERT MESSAGES
 #define HOUR_BLOCK_MSG         "⏰ TRADING PAUSED - Outside Trading Hours"
 #define DAY_BLOCK_MSG          "📅 TRADING PAUSED - Outside Trading Days"
@@ -90,6 +99,15 @@ int OnInit()
    config.hourBlockMsg = HOUR_BLOCK_MSG;
    config.dayBlockMsg = DAY_BLOCK_MSG;
    config.bothBlockMsg = BOTH_BLOCK_MSG;
+   
+   // Risk Multiplier Configuration
+   config.useRiskMultiplier = USE_RISK_MULTIPLIER;
+   config.riskMultStartHour = RISK_MULT_START_HOUR;
+   config.riskMultStartMinute = RISK_MULT_START_MINUTE;
+   config.riskMultEndHour = RISK_MULT_END_HOUR;
+   config.riskMultEndMinute = RISK_MULT_END_MINUTE;
+   config.riskMultiplier = RISK_MULTIPLIER;
+   config.riskMultDescription = RISK_MULT_DESCRIPTION;
    
    // Initialize bot
    bot = new ForexScalperBot(config);

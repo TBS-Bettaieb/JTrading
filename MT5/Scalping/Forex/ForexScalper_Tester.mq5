@@ -28,9 +28,9 @@ input bool     InpUseAllMarketWatch = false;                 // Use All Market W
 input ENUM_TIMEFRAMES InpTradingTimeframe = PERIOD_M5;       // Trading Timeframe
 
 input group "💰 RISK MANAGEMENT"
-input double   InpRiskPercent = 2.0;                        // Risk Percent (% of capital divided by symbol count)
+input double   InpRiskPercent = 4.0;                        // Risk Percent (% of capital divided by symbol count)
 input int      InpTpPoints = 200;                           // Take Profit Points (10 points = 1 pip)
-input int      InpSlPoints = 200;                           // Stop Loss Points (10 points = 1 pip)
+input int      InpSlPoints = 180;                           // Stop Loss Points (10 points = 1 pip)
 
 input group "🎯 TRAILING STOP CONFIGURATION"
 input int      InpTslTriggerPoints = 10;                    // TSL Trigger Points (profit before TSL activates)
@@ -38,18 +38,27 @@ input int      InpTslPoints = 10;                           // TSL Points (trail
 
 input group "⏰ TRADING HOURS (0 = Inactive)"
 input int      InpStartHour = 7;                            // Start Hour
-input int      InpEndHour = 19;                             // End Hour
+input int      InpEndHour = 20;                             // End Hour
 
 input group "📈 STRATEGY PARAMETERS"
 input ENUM_STRATEGY_MODE InpStrategyType = STRATEGY_BREAKOUT; // Strategy Type: BREAKOUT or REVERSION
 input int      InpBarsAnalysis = 5;                         // Bars Analysis
 input int      InpExpirationBars = 50;                      // Expiration Bars
-input int      InpOrderDistancePoints = 100;                // Order Distance (Points)
+input int      InpOrderDistancePoints = 80;                // Order Distance (Points)
 
 input group "🎯 TRAILING TAKE PROFIT"
 input bool     InpUseTrailingTP = true;                     // Use Trailing TP
 input ENUM_TRAILING_TP_MODE InpTrailingTPMode = TRAILING_TP_STEPPED; // Trailing TP Mode
 input string   InpCustomTPLevels = "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150"; // Custom TP Levels
+
+input group "🚀 RISK MULTIPLIER (BOOST PERIOD)"
+input bool     InpUseRiskMultiplier = false;                 // Use Risk Multiplier
+input int      InpRiskMultStartHour = 13;                   // Risk Multiplier Start Hour
+input int      InpRiskMultStartMinute = 0;                  // Risk Multiplier Start Minute
+input int      InpRiskMultEndHour = 17;                     // Risk Multiplier End Hour
+input int      InpRiskMultEndMinute = 0;                    // Risk Multiplier End Minute
+input double   InpRiskMultiplier = 1.5;                     // Risk Multiplier Value
+input string   InpRiskMultDescription = "London-NY Overlap"; // Risk Multiplier Description
 
 input group "🚨 ALERT MESSAGES"
 input string   InpHourBlockMsg = "⏰ TRADING PAUSED - Outside Trading Hours";     // Hour Block Message
@@ -94,6 +103,15 @@ int OnInit()
    config.hourBlockMsg = InpHourBlockMsg;
    config.dayBlockMsg = InpDayBlockMsg;
    config.bothBlockMsg = InpBothBlockMsg;
+   
+   // Risk Multiplier Configuration
+   config.useRiskMultiplier = InpUseRiskMultiplier;
+   config.riskMultStartHour = InpRiskMultStartHour;
+   config.riskMultStartMinute = InpRiskMultStartMinute;
+   config.riskMultEndHour = InpRiskMultEndHour;
+   config.riskMultEndMinute = InpRiskMultEndMinute;
+   config.riskMultiplier = InpRiskMultiplier;
+   config.riskMultDescription = InpRiskMultDescription;
    
    // Initialize bot
    bot = new ForexScalperBot(config);
@@ -167,6 +185,14 @@ void DisplayInputParameters()
       }
    }
    
+   string riskMultStr = "OFF";
+   if(InpUseRiskMultiplier) {
+      riskMultStr = StringFormat("x%.1f (%02d:%02d-%02d:%02d)", 
+                                InpRiskMultiplier,
+                                InpRiskMultStartHour, InpRiskMultStartMinute,
+                                InpRiskMultEndHour, InpRiskMultEndMinute);
+   }
+   
    string inputs = StringFormat(
       "=== %s TESTER ===\n" +
       "Magic: %d\n" +
@@ -177,7 +203,8 @@ void DisplayInputParameters()
       "Strategy: %s\n" +
       "Bars Analysis: %d\n" +
       "Trading Hours: %02d:00-%02d:00\n" +
-      "Trailing TP: %s",
+      "Trailing TP: %s\n" +
+      "Risk Multiplier: %s",
       InpStrategyName,
       InpBaseMagicNumber,
       InpUseAllMarketWatch ? "All Market Watch" : InpDefaultSymbols,
@@ -187,7 +214,8 @@ void DisplayInputParameters()
       strategyTypeStr,
       InpBarsAnalysis,
       InpStartHour, InpEndHour,
-      trailingTPStr
+      trailingTPStr,
+      riskMultStr
    );
    
    Comment(inputs);
@@ -324,6 +352,15 @@ string CreateHeaderTemplate()
    content += "#define USE_TRAILING_TP        " + (InpUseTrailingTP ? "true" : "false") + "\n";
    content += "#define TRAILING_TP_MODE       " + trailingTPModeStr + "\n";
    content += "#define CUSTOM_TP_LEVELS       \"" + InpCustomTPLevels + "\"\n";
+   content += "\n";
+   content += "// RISK MULTIPLIER (BOOST PERIOD)\n";
+   content += "#define USE_RISK_MULTIPLIER    " + (InpUseRiskMultiplier ? "true" : "false") + "\n";
+   content += "#define RISK_MULT_START_HOUR   " + IntegerToString(InpRiskMultStartHour) + "\n";
+   content += "#define RISK_MULT_START_MINUTE " + IntegerToString(InpRiskMultStartMinute) + "\n";
+   content += "#define RISK_MULT_END_HOUR     " + IntegerToString(InpRiskMultEndHour) + "\n";
+   content += "#define RISK_MULT_END_MINUTE   " + IntegerToString(InpRiskMultEndMinute) + "\n";
+   content += "#define RISK_MULTIPLIER        " + DoubleToString(InpRiskMultiplier, 1) + "\n";
+   content += "#define RISK_MULT_DESCRIPTION  \"" + InpRiskMultDescription + "\"\n";
    content += "\n";
    content += "// MESSAGES D'ALERTE\n";
    content += "#define HOUR_BLOCK_MSG         \"" + InpHourBlockMsg + "\"\n";

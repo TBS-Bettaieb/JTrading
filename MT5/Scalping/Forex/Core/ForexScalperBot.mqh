@@ -11,6 +11,7 @@
 #include "../../../CommonUtils/ChartManager.mqh"
 #include "../common/ForexSymbolTrader.mqh"
 #include "../common/ForexSymbolManager.mqh"
+#include "../common/RiskMultiplierManager.mqh"
 
 //+------------------------------------------------------------------+
 //| Configuration structure                                          |
@@ -40,6 +41,15 @@ struct BotConfig
    string            hourBlockMsg;
    string            dayBlockMsg;
    string            bothBlockMsg;
+   
+   // 🆕 RISK MULTIPLIER
+   bool              useRiskMultiplier;
+   int               riskMultStartHour;
+   int               riskMultStartMinute;
+   int               riskMultEndHour;
+   int               riskMultEndMinute;
+   double            riskMultiplier;
+   string            riskMultDescription;
 };
 
 //+------------------------------------------------------------------+
@@ -51,6 +61,7 @@ private:
    BotConfig         m_config;
    ChartManager*     m_chartManager;
    TradingTimeManager* m_timeManager;
+   RiskMultiplierManager* m_riskMultiplierManager;
    ForexSymbolTrader* m_symbolTraders[];
    string            m_symbols[];
    int               m_totalSymbols;
@@ -64,6 +75,7 @@ public:
       m_config = config;
       m_chartManager = NULL;
       m_timeManager = NULL;
+      m_riskMultiplierManager = NULL;
       m_totalSymbols = 0;
       m_tickCount = 0;
       m_detailUpdateCount = 0;
@@ -111,6 +123,10 @@ public:
       if(!InitializeTimeManager())
          return false;
       
+      // Step 8: Initialize Risk Multiplier Manager
+      if(!InitializeRiskMultiplier())
+         return false;
+      
       // Final summary
       PrintInitializationSummary();
       
@@ -138,6 +154,14 @@ public:
          }
          ArrayFree(m_symbolTraders);
          Print("✅ Symbol Traders cleaned up");
+      }
+      
+      // Cleanup Risk Multiplier Manager
+      if(m_riskMultiplierManager != NULL)
+      {
+         delete m_riskMultiplierManager;
+         m_riskMultiplierManager = NULL;
+         Print("✅ Risk Multiplier Manager cleaned up");
       }
       
       // Cleanup Time Manager
@@ -168,14 +192,29 @@ public:
       if(m_chartManager == NULL || m_timeManager == NULL || ArraySize(m_symbolTraders) == 0)
          return;
       
+      // 🆕 Vérifier changement de Risk Multiplier
+      if(m_riskMultiplierManager != NULL && m_riskMultiplierManager.HasStatusChanged())
+      {
+         double currentMultiplier = m_riskMultiplierManager.GetCurrentMultiplier();
+         AdjustAllPositionSizes(currentMultiplier);
+      }
+      
       // Check trading permissions
       bool tradingAllowed = m_timeManager.IsTradingAllowed();
+      
+      // 🆕 Obtenir multiplicateur actuel
+      double currentRiskMultiplier = 1.0;
+      if(m_riskMultiplierManager != NULL)
+         currentRiskMultiplier = m_riskMultiplierManager.GetCurrentMultiplier();
       
       // Process all symbols
       for(int i = 0; i < m_totalSymbols; i++)
       {
          if(m_symbolTraders[i] != NULL)
          {
+            // 🆕 Mettre à jour le multiplicateur
+            m_symbolTraders[i].SetRiskMultiplier(currentRiskMultiplier);
+            
             if(tradingAllowed)
             {
                m_symbolTraders[i].OnTick();
@@ -333,6 +372,29 @@ private:
       return true;
    }
    
+   //--- Initialize Risk Multiplier Manager
+   bool InitializeRiskMultiplier()
+   {
+      m_riskMultiplierManager = new RiskMultiplierManager();
+      if(m_riskMultiplierManager == NULL)
+      {
+         Print("⚠️ Warning: Risk Multiplier Manager creation failed");
+         return true; // Non-critical
+      }
+      
+      m_riskMultiplierManager.Initialize(
+         m_config.useRiskMultiplier,
+         m_config.riskMultStartHour,
+         m_config.riskMultStartMinute,
+         m_config.riskMultEndHour,
+         m_config.riskMultEndMinute,
+         m_config.riskMultiplier,
+         m_config.riskMultDescription
+      );
+      
+      return true;
+   }
+   
    //--- Print initialization summary
    void PrintInitializationSummary()
    {
@@ -346,6 +408,36 @@ private:
          if(m_config.trailingTPMode == TRAILING_TP_CUSTOM)
             Print("   Niveaux: ", m_config.customTPLevels);
       }
+      
+      if(m_config.useRiskMultiplier && m_riskMultiplierManager != NULL)
+      {
+         Print("🚀 RISK MULTIPLIER: ", m_riskMultiplierManager.GetDetailedInfo());
+      }
+      
+      Print("═══════════════════════════════════════");
+   }
+   
+   //--- Ajuster toutes les positions
+   void AdjustAllPositionSizes(double multiplier)
+   {
+      Print("═══════════════════════════════════════");
+      Print("🔄 AJUSTEMENT DES POSITIONS - Multiplier: x", DoubleToString(multiplier, 2));
+      Print("═══════════════════════════════════════");
+      
+      int adjustedCount = 0;
+      for(int i = 0; i < m_totalSymbols; i++)
+      {
+         if(m_symbolTraders[i] != NULL)
+         {
+            int adjusted = m_symbolTraders[i].AdjustPositionSizes(multiplier);
+            adjustedCount += adjusted;
+         }
+      }
+      
+      if(adjustedCount > 0)
+         Print("✅ ", adjustedCount, " position(s) ajustée(s)");
+      else
+         Print("ℹ️ Aucune position à ajuster");
       
       Print("═══════════════════════════════════════");
    }
@@ -365,12 +457,22 @@ private:
       string timeStatus = m_timeManager.GetStatusDescription();
       globalStatus = timeStatus + " | " + globalStatus;
       
+      // 🆕 Ajouter status Risk Multiplier
+      string riskMultStatus = "";
+      if(m_riskMultiplierManager != NULL && m_config.useRiskMultiplier)
+      {
+         riskMultStatus = m_riskMultiplierManager.GetStatusDescription();
+         globalStatus = riskMultStatus + " | " + globalStatus;
+      }
+      
       // Determine color
       color statusColor = clrGreen;
       ENUM_TRADING_STATUS status = m_timeManager.GetCurrentStatus();
       
       if(status != TRADING_ACTIVE)
          statusColor = clrOrange;
+      else if(m_riskMultiplierManager != NULL && m_riskMultiplierManager.IsInActivePeriod())
+         statusColor = clrYellow;
       else if(StringFind(globalStatus, "P/L: -") >= 0)
          statusColor = clrRed;
       else if(StringFind(globalStatus, "P/L: ") >= 0)

@@ -69,6 +69,9 @@ private:
    // Statistiques
    double            m_totalProfit;         // Profit total pour ce symbole
    
+   // 🆕 Risk Multiplier
+   double            m_currentRiskMultiplier; // Multiplicateur de risque actuel
+   
 public:
    //+------------------------------------------------------------------+
    //| Constructor                                                      |
@@ -112,6 +115,7 @@ public:
       m_buyTotal = 0;
       m_sellTotal = 0;
       m_totalProfit = 0;
+      m_currentRiskMultiplier = 1.0;
       // Configurer l'objet de trading
       m_trade.SetExpertMagicNumber(magicNumber);
       m_trade.SetDeviationInPoints(10);
@@ -477,6 +481,97 @@ public:
    }
    
    //+------------------------------------------------------------------+
+   //| 🆕 Définir le multiplicateur actuel                              |
+   //+------------------------------------------------------------------+
+   void SetRiskMultiplier(double multiplier)
+   {
+      m_currentRiskMultiplier = MathMax(0.1, MathMin(10.0, multiplier));
+   }
+   
+   //+------------------------------------------------------------------+
+   //| 🆕 Obtenir le multiplicateur actuel                              |
+   //+------------------------------------------------------------------+
+   double GetRiskMultiplier()
+   {
+      return m_currentRiskMultiplier;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| 🆕 Ajuster toutes les positions existantes                       |
+   //+------------------------------------------------------------------+
+   int AdjustPositionSizes(double newMultiplier)
+   {
+      int adjustedCount = 0;
+      CTrade trade;
+      trade.SetExpertMagicNumber(m_magicNumber);
+      
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
+      {
+         if(!m_position.SelectByIndex(i)) continue;
+         if(m_position.Magic() != m_magicNumber) continue;
+         if(m_position.Symbol() != m_symbol) continue;
+         
+         ulong ticket = m_position.Ticket();
+         double currentVolume = m_position.Volume();
+         double currentTP = m_position.TakeProfit();
+         double currentSL = m_position.StopLoss();
+         ENUM_POSITION_TYPE posType = m_position.PositionType();
+         
+         // Calculer nouveau volume
+         double baseVolume = currentVolume / m_currentRiskMultiplier;
+         double newVolume = baseVolume * newMultiplier;
+         
+         // Normaliser
+         double minLot = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MIN);
+         double maxLot = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MAX);
+         double lotStep = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_STEP);
+         newVolume = MathMax(minLot, MathMin(maxLot, newVolume));
+         newVolume = MathFloor(newVolume / lotStep) * lotStep;
+         newVolume = NormalizeDouble(newVolume, 2);
+         
+         if(MathAbs(newVolume - currentVolume) < lotStep) continue;
+         
+         // Ajuster
+         if(newVolume > currentVolume)
+         {
+            // Augmenter
+            double additionalVolume = newVolume - currentVolume;
+            if(posType == POSITION_TYPE_BUY)
+            {
+               if(trade.Buy(additionalVolume, m_symbol, 0, currentSL, currentTP, m_tradeComment + "_Boost"))
+               {
+                  Print("📈 Position #", ticket, " [", m_symbol, "] augmentée: ", 
+                        DoubleToString(currentVolume, 2), " → ", DoubleToString(newVolume, 2), " lots");
+                  adjustedCount++;
+               }
+            }
+            else if(posType == POSITION_TYPE_SELL)
+            {
+               if(trade.Sell(additionalVolume, m_symbol, 0, currentSL, currentTP, m_tradeComment + "_Boost"))
+               {
+                  Print("📉 Position #", ticket, " [", m_symbol, "] augmentée: ", 
+                        DoubleToString(currentVolume, 2), " → ", DoubleToString(newVolume, 2), " lots");
+                  adjustedCount++;
+               }
+            }
+         }
+         else if(newVolume < currentVolume)
+         {
+            // Réduire
+            double volumeToClose = currentVolume - newVolume;
+            if(trade.PositionClosePartial(ticket, volumeToClose))
+            {
+               Print("📉 Position #", ticket, " [", m_symbol, "] réduite: ", 
+                     DoubleToString(currentVolume, 2), " → ", DoubleToString(newVolume, 2), " lots");
+               adjustedCount++;
+            }
+         }
+      }
+      
+      return adjustedCount;
+   }
+   
+   //+------------------------------------------------------------------+
    //| Appelé quand une position est ouverte                           |
    //+------------------------------------------------------------------+
    void OnPositionOpened(ulong ticket)
@@ -633,7 +728,8 @@ private:
    //+------------------------------------------------------------------+
    double CalcLots(double slPoints)
    {
-      double risk = AccountInfoDouble(ACCOUNT_BALANCE) * m_riskPercent / 100;
+      double effectiveRisk = m_riskPercent * m_currentRiskMultiplier; // 🆕
+      double risk = AccountInfoDouble(ACCOUNT_BALANCE) * effectiveRisk / 100;
       
       double ticksize = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_SIZE);
       double tickvalue = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_VALUE);
