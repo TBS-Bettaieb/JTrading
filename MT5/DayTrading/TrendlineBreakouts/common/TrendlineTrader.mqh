@@ -8,6 +8,7 @@
 
 #include <Trade\Trade.mqh>
 #include "utils/Logger.mqh"
+#include "utils/TradingTimeFilter.mqh"
 #include "../../../CommonUtils/TradingUtils.mqh"
 #include "../../../CommonUtils/TrailingTP_System.mqh"
 #include "utils/SymbolClassifier.mqh"
@@ -97,6 +98,14 @@ private:
       CTrailingTP* trailing;
    };
    PositionTrailing m_positionTrailings[];
+   
+   // Time filter
+   bool m_enableTimeFilter;
+   string m_tradingStartTime;
+   string m_tradingEndTime;
+   bool m_closePositionsOutsideHours;
+   TradingTimeFilter* m_timeFilter;
+   bool m_lastTimeFilterStatus;  // Track previous status
 
 public:
    //+------------------------------------------------------------------+
@@ -126,7 +135,12 @@ public:
       // Trailing TP Parameters
       bool enableTrailingTP = false,
       ENUM_TRAILING_TP_MODE trailingTPMode = TRAILING_TP_STEPPED,
-      string customLevels = ""
+      string customLevels = "",
+      // Time Filter Parameters
+      bool enableTimeFilter = false,
+      string tradingStartTime = "08:30",
+      string tradingEndTime = "17:45",
+      bool closePositionsOutsideHours = true
    )
    {
       // ═══ INITIALIZE LOGGER FIRST ═══
@@ -256,6 +270,14 @@ public:
       m_trailingTPMode = trailingTPMode;
       m_customLevels = customLevels;
       
+      // Assign Time Filter settings
+      m_enableTimeFilter = enableTimeFilter;
+      m_tradingStartTime = tradingStartTime;
+      m_tradingEndTime = tradingEndTime;
+      m_closePositionsOutsideHours = closePositionsOutsideHours;
+      m_timeFilter = NULL;
+      m_lastTimeFilterStatus = true;  // Initialize as true (assuming we start within hours)
+      
       // Initialize trailing TP template instance
       if(m_enableTrailingTP) {
          m_trailingTP = new CTrailingTP(m_trailingTPMode, m_customLevels);
@@ -291,6 +313,24 @@ public:
       m_eventManager = new EventManager();
       m_perfTracker = new PerformanceTracker();
       m_eventManager.RegisterListener(m_perfTracker);
+      
+      // Initialize Time Filter if enabled
+      if(m_enableTimeFilter)
+      {
+         m_timeFilter = new TradingTimeFilter();
+         if(!m_timeFilter.Initialize(m_tradingStartTime, m_tradingEndTime))
+         {
+            Logger::Warning("Failed to initialize Time Filter - disabling");
+            delete m_timeFilter;
+            m_timeFilter = NULL;
+            m_enableTimeFilter = false;
+         }
+         else
+         {
+            // Initialize status based on current time
+            m_lastTimeFilterStatus = m_timeFilter.IsWithinTradingHours();
+         }
+      }
    }
 
    //+------------------------------------------------------------------+
@@ -321,6 +361,12 @@ public:
          }
       }
       if(m_trailingTP != NULL) delete m_trailingTP;
+      
+      // Cleanup Time Filter
+      if(m_timeFilter != NULL) {
+         delete m_timeFilter;
+         m_timeFilter = NULL;
+      }
    }
 
    //+------------------------------------------------------------------+
@@ -395,6 +441,14 @@ public:
       Print("Symbol: ", m_symbol);
       Print("Magic Number: ", m_magicNumber);
       Print("Lot Size: ", m_lotSize);
+      
+      // Initialize time filter if enabled
+      if(m_enableTimeFilter && m_timeFilter != NULL)
+      {
+         string closePosInfo = m_closePositionsOutsideHours ? " (will close positions)" : " (positions remain open)";
+         Logger::Info("Time Filter ENABLED: " + m_tradingStartTime + " - " + m_tradingEndTime + closePosInfo);
+      }
+      
       Print("═══════════════════════════════════════");
       
       return true;
@@ -435,6 +489,45 @@ public:
             }
          }
          return;
+      }
+      
+      // Check time filter FIRST
+      if(m_enableTimeFilter && m_timeFilter != NULL)
+      {
+         bool withinHours = m_timeFilter.IsWithinTradingHours();
+         
+         // If outside hours and status changed
+         if(!withinHours && m_lastTimeFilterStatus)
+         {
+            if(m_closePositionsOutsideHours)
+            {
+               Logger::Warning("Outside trading hours - closing all positions");
+               m_tradeManager.CloseAllPositions("Outside Trading Hours");
+               m_timeFilter.ShowAlert("⏰ TRADING PAUSED - Closed Positions (Outside Hours)");
+            }
+            else
+            {
+               Logger::Info("Outside trading hours - pausing new trades (positions remain open)");
+               m_timeFilter.ShowAlert("⏰ TRADING PAUSED - Outside Trading Hours");
+            }
+            m_lastTimeFilterStatus = false;
+            return;
+         }
+         
+         // If back within hours
+         if(withinHours && !m_lastTimeFilterStatus)
+         {
+            Logger::Info("Back within trading hours - resuming");
+            m_timeFilter.HideAlert();
+            m_lastTimeFilterStatus = true;
+         }
+         
+         // Block trading if outside hours
+         if(!withinHours)
+         {
+            m_timeFilter.UpdateAlert();  // Refresh alert display
+            return;
+         }
       }
       
       // Update volatility filter BEFORE new bar check (always up to date)

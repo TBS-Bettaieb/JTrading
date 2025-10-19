@@ -39,6 +39,12 @@ input bool     InpEnableTrailingTP = true;       // Enable Trailing TP
 input ENUM_TRAILING_TP_MODE InpTrailingTPMode = TRAILING_TP_CUSTOM;  // Trailing TP Mode
 input string   InpCustomLevels = "25:0:0, 50:25:25, 75:40:50, 100:60:100";   // Custom Levels (profit:slMove:tpExtend)
 
+input group "➞ Trading Hours Filter 🔸"
+input bool     InpEnableTimeFilter = false;      // Enable Time Filter
+input string   InpTradingStartTime = "08:30";    // Start Time (HH:MM)
+input string   InpTradingEndTime = "17:45";      // End Time (HH:MM)
+input bool     InpClosePositionsOutsideHours = true;  // Close Positions Outside Hours
+
 input group "➞ System Settings 🔸"
 input ENUM_LOG_LEVEL InpLogLevel = LOG_INFO;     // Log Level
 
@@ -78,7 +84,12 @@ int OnInit()
       // Trailing TP Parameters
       InpEnableTrailingTP,
       InpTrailingTPMode,
-      InpCustomLevels
+      InpCustomLevels,
+      // Time Filter Parameters
+      InpEnableTimeFilter,
+      InpTradingStartTime,
+      InpTradingEndTime,
+      InpClosePositionsOutsideHours
    );
    
    if(!g_trader.Initialize())
