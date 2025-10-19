@@ -1,313 +1,534 @@
 //+------------------------------------------------------------------+
-//|                                      JT_FreeCandleStrategy.mqh   |
-//|                    Implémentation de la stratégie Free Candle    |
-//|                                      (c) 2025 - Public Domain    |
+//|                                     JT_FreeCandleStrategy.mqh    |
+//|                   Stratégie basée sur les Free Candles (BB)      |
 //+------------------------------------------------------------------+
-#property strict
+#property copyright "(c) 2025"
+#property version   "1.0"
 
 #include "../common/JT_BaseStrategy.mqh"
-#include "../common/JT_Utils.mqh"
-
-// Configuration spécifique à la stratégie Free Candle
-struct FreeCandleConfig {
-   int bbPeriod;
-   double bbDeviation;
-   int bbShift;
-   int rsiPeriod;
-   int outsidePaddingPoints;
-   bool bodyMustBeOutside;
-   bool markCandles;         // Marquage visuel
-   bool drawVLine;
-   bool drawArrow;
-   bool drawBox;
-   bool drawText;
-};
+#include "../common/JT_DivergenceValidator.mqh"
+#include "../common/JT_TradeFilters.mqh"
 
 //+------------------------------------------------------------------+
-//| Stratégie Free Candle                                            |
+//| Stratégie Free Candle - Bougies hors bandes de Bollinger        |
 //+------------------------------------------------------------------+
 class JTFreeCandleStrategy : public JTBaseStrategy
 {
-private:
-   FreeCandleConfig m_config;
+protected:
+   // Paramètres Bollinger Bands
+   int               m_bbPeriod;
+   double            m_bbDeviation;
+   int               m_bbShift;
+   int               m_outsidePadding;
+   bool              m_bodyMustBeOutside;
    
-   // Gestion des marqueurs visuels
-   void MarkSignal(datetime time, double high, double low, double price, int direction) {
-      if(!m_config.markCandles) return;
-      
-      MarkFreeCandle(time, high, low, price, direction, m_params.timeframe,
-                    m_config.drawVLine, m_config.drawArrow, 
-                    m_config.drawBox, m_config.drawText, "FreeCandle");
-   }
+   // Mode d'entrée
+   ENUM_ENTRY_MODE   m_entryMode;
    
-   // Marquer un signal de divergence
-   void MarkDivergenceSignal(datetime time, double high, double low, double price, int direction) {
-      if(!m_config.markCandles) return;
-      
-      MarkFreeCandle(time, high, low, price, direction, m_params.timeframe,
-                    true, true, m_config.drawBox, true, "FreeCandleDIV");
-   }
+   // EMAs pour filtre de tendance
+   int               m_emaFastHandle;
+   int               m_emaSlowHandle;
+   int               m_emaFastPeriod;
+   int               m_emaSlowPeriod;
+   ENUM_EMA_FILTER_MODE m_emaMode;
+   double            m_emaZoneDistance;
    
-   // Détecte si une bougie est un "Free Candle"
-   bool IsFreeCandleDetected(
-      double open, double high, double low, double close,
-      double upperBand, double lowerBand,
-      bool &isAbove, bool &isBelow
-   ) {
-      // Vérifier si la bougie est hors bandes
-      if(!IsFreeCandle(open, high, low, close, upperBand, lowerBand, 
-                       m_config.outsidePaddingPoints, m_config.bodyMustBeOutside)) {
-         return false;
-      }
-      
-      // Déterminer si au-dessus ou en-dessous
-      double point = SymbolInfoDouble(m_params.symbol, SYMBOL_POINT);
-      double padding = m_config.outsidePaddingPoints * point;
-      
-      if(m_config.bodyMustBeOutside) {
-         double bodyHigh = MathMax(open, close);
-         double bodyLow = MathMin(open, close);
-         isAbove = (bodyLow > upperBand + padding);
-         isBelow = (bodyHigh < lowerBand - padding);
-      } else {
-         isAbove = (low > upperBand + padding);
-         isBelow = (high < lowerBand - padding);
-      }
-      
-      return (isAbove || isBelow);
-   }
-
+   // RSI
+   int               m_rsiPeriod;
+   double            m_rsiOversold;
+   double            m_rsiOverbought;
+   
+   // Divergence Validator
+   JTDivergenceValidator* m_divValidator;
+   double            m_divRsiBuyLevel;
+   double            m_divRsiSellLevel;
+   int               m_divSwingLength;
+   
+   // Trade Filters Manager
+   JTTradeFilters*   m_filters;
+   
+   // Marqueurs visuels
+   bool              m_markFreeCandles;
+   bool              m_markDrawVLine;
+   bool              m_markDrawArrow;
+   bool              m_markDrawBox;
+   bool              m_markDrawText;
+   
 public:
-   JTFreeCandleStrategy() {
-      // Configuration par défaut
-      m_config.bbPeriod = 20;
-      m_config.bbDeviation = 2.0;
-      m_config.bbShift = 0;
-      m_config.rsiPeriod = 14;
-      m_config.outsidePaddingPoints = 5;
-      m_config.bodyMustBeOutside = true;
-      m_config.markCandles = true;
-      m_config.drawVLine = true;
-      m_config.drawArrow = true;
-      m_config.drawBox = false;
-      m_config.drawText = false;
-   }
-   
-   ~JTFreeCandleStrategy() {
-      // Optionnel: nettoyer les marqueurs
-      // DeleteAllFreeCandleMarkers("FreeCandle");
+   //+------------------------------------------------------------------+
+   //| Constructor                                                       |
+   //+------------------------------------------------------------------+
+   JTFreeCandleStrategy(string symbol, ENUM_TIMEFRAMES tf, ulong magic) 
+      : JTBaseStrategy(symbol, tf, magic)
+   {
+      // Valeurs par défaut BB
+      m_bbPeriod = 20;
+      m_bbDeviation = 2.0;
+      m_bbShift = 0;
+      m_outsidePadding = 5;
+      m_bodyMustBeOutside = true;
+      
+      // Mode par défaut
+      m_entryMode = ENTRY_REVERSION;
+      
+      // EMAs
+      m_emaFastHandle = INVALID_HANDLE;
+      m_emaSlowHandle = INVALID_HANDLE;
+      m_emaFastPeriod = 50;
+      m_emaSlowPeriod = 100;
+      m_emaMode = EMA_TREND;
+      m_emaZoneDistance = 20.0;
+      
+      // RSI
+      m_rsiPeriod = 14;
+      m_rsiOversold = 29.0;
+      m_rsiOverbought = 71.0;
+      
+      // Divergence
+      m_divValidator = NULL;
+      m_divRsiBuyLevel = 35.0;
+      m_divRsiSellLevel = 65.0;
+      m_divSwingLength = 5;
+      
+      // Filters
+      m_filters = new JTTradeFilters();
+      m_filters.SetSymbolAndTimeframe(symbol, tf);
+      
+      // Marqueurs
+      m_markFreeCandles = false;
+      m_markDrawVLine = false;
+      m_markDrawArrow = false;
+      m_markDrawBox = false;
+      m_markDrawText = false;
    }
    
    //+------------------------------------------------------------------+
-   //| Configuration de la stratégie                                    |
+   //| Destructor                                                        |
    //+------------------------------------------------------------------+
-   void Configure(FreeCandleConfig &fcConfig) {
-      m_config = fcConfig;
+   ~JTFreeCandleStrategy()
+   {
+      // Libérer les handles
+      if(m_emaFastHandle != INVALID_HANDLE) {
+         IndicatorRelease(m_emaFastHandle);
+         m_emaFastHandle = INVALID_HANDLE;
+      }
+      if(m_emaSlowHandle != INVALID_HANDLE) {
+         IndicatorRelease(m_emaSlowHandle);
+         m_emaSlowHandle = INVALID_HANDLE;
+      }
+      
+      // Libérer le validateur de divergence
+      if(m_divValidator != NULL) {
+         delete m_divValidator;
+         m_divValidator = NULL;
+      }
+      
+      // Libérer les filtres
+      if(m_filters != NULL) {
+         delete m_filters;
+         m_filters = NULL;
+      }
    }
    
-   FreeCandleConfig GetConfig() { return m_config; }
-   
    //+------------------------------------------------------------------+
-   //| Implémentation des méthodes virtuelles                          |
+   //| Configuration des paramètres                                     |
    //+------------------------------------------------------------------+
    
-   virtual string GetStrategyName() override {
-      return "Free Candle Strategy";
+   void SetBBParameters(int period, double deviation, int padding, bool bodyOnly, int shift = 0)
+   {
+      m_bbPeriod = period;
+      m_bbDeviation = deviation;
+      m_outsidePadding = padding;
+      m_bodyMustBeOutside = bodyOnly;
+      m_bbShift = shift;
    }
    
-   virtual bool InitializeIndicators() override {
-      // Initialiser Bollinger Bands et RSI
-      if(!InitIndicators(m_indicators, m_params.symbol, m_params.timeframe,
-                        m_config.bbPeriod, m_config.bbDeviation, m_config.bbShift,
-                        m_config.rsiPeriod)) {
+   void SetRSIParameters(int period, double oversold, double overbought)
+   {
+      m_rsiPeriod = period;
+      m_rsiOversold = oversold;
+      m_rsiOverbought = overbought;
+   }
+   
+   void SetEMAParameters(int fast, int slow, ENUM_EMA_FILTER_MODE mode, double zoneDistance = 20.0)
+   {
+      m_emaFastPeriod = fast;
+      m_emaSlowPeriod = slow;
+      m_emaMode = mode;
+      m_emaZoneDistance = zoneDistance;
+   }
+   
+   void SetDivergenceParameters(double rsiBuy, double rsiSell, int swingLength)
+   {
+      m_divRsiBuyLevel = rsiBuy;
+      m_divRsiSellLevel = rsiSell;
+      m_divSwingLength = swingLength;
+   }
+   
+   void SetEntryMode(ENUM_ENTRY_MODE mode)
+   {
+      m_entryMode = mode;
+   }
+   
+   void SetVisualMarkers(bool markCandles, bool vline, bool arrow, bool box, bool text)
+   {
+      m_markFreeCandles = markCandles;
+      m_markDrawVLine = vline;
+      m_markDrawArrow = arrow;
+      m_markDrawBox = box;
+      m_markDrawText = text;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Override: Nom de la stratégie                                   |
+   //+------------------------------------------------------------------+
+   virtual string GetStrategyName() override
+   {
+      return "FreeCandle";
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Override: Initialisation spécifique                             |
+   //+------------------------------------------------------------------+
+   virtual bool InitStrategy() override
+   {
+      // Initialiser les indicateurs BB et RSI
+      if(!InitIndicators(m_indicators, m_symbol, m_timeframe, 
+                        m_bbPeriod, m_bbDeviation, m_bbShift, m_rsiPeriod)) {
+         LogError("Erreur d'initialisation des indicateurs BB/RSI");
          return false;
       }
       
-      // Afficher les indicateurs sur le graphique
-      ChartIndicatorAdd(0, 0, m_indicators.BB);
-      ChartIndicatorAdd(0, ChartWindowFind(), m_indicators.RSI);
+      // Afficher les Bollinger Bands sur le graphe
+      if(!ChartIndicatorAdd(0, 0, m_indicators.BB)) {
+         Print("Attention: impossible d'afficher les Bollinger Bands sur le graphe");
+      }
       
-      // Nettoyer les anciens marqueurs
-      if(m_config.markCandles) {
+      // Afficher le RSI dans une sous-fenêtre
+      if(!ChartIndicatorAdd(0, ChartWindowFind(), m_indicators.RSI)) {
+         Print("Attention: impossible d'afficher le RSI sur le graphe");
+      }
+      
+      // Initialiser les EMAs si le filtre est activé
+      if(m_useEMAFilter) {
+         m_emaFastHandle = iMA(m_symbol, m_timeframe, m_emaFastPeriod, 0, MODE_EMA, PRICE_CLOSE);
+         m_emaSlowHandle = iMA(m_symbol, m_timeframe, m_emaSlowPeriod, 0, MODE_EMA, PRICE_CLOSE);
+         
+         if(m_emaFastHandle == INVALID_HANDLE || m_emaSlowHandle == INVALID_HANDLE) {
+            LogError("Erreur d'initialisation des EMAs");
+            return false;
+         }
+         
+         // Afficher les EMAs sur le graphe
+         if(!ChartIndicatorAdd(0, 0, m_emaFastHandle)) {
+            Print("Attention: impossible d'afficher EMA" + IntegerToString(m_emaFastPeriod));
+         }
+         if(!ChartIndicatorAdd(0, 0, m_emaSlowHandle)) {
+            Print("Attention: impossible d'afficher EMA" + IntegerToString(m_emaSlowPeriod));
+         }
+         
+         // Configurer le filtre EMA
+         m_filters.ConfigureEMAFilter(true, m_emaFastHandle, m_emaSlowHandle,
+                                     m_emaFastPeriod, m_emaSlowPeriod,
+                                     m_emaMode, m_emaZoneDistance);
+      }
+      
+      // Configurer le filtre RSI
+      if(m_useRSIFilter) {
+         m_filters.ConfigureRSIFilter(true, m_indicators.RSI, m_rsiOversold, m_rsiOverbought);
+      }
+      
+      // Initialiser le validateur de divergence si activé
+      if(m_useDivergence) {
+         m_divValidator = new JTDivergenceValidator();
+         if(!m_divValidator.Init(m_symbol, m_timeframe, m_rsiPeriod, 
+                                m_divRsiBuyLevel, m_divRsiSellLevel, m_divSwingLength)) {
+            LogError("Erreur d'initialisation du validateur de divergence");
+            return false;
+         }
+         
+         m_filters.ConfigureDivergenceFilter(true, m_divValidator);
+         
+         LogMessage("Validateur de divergence activé: RSI Buy<" + DoubleToString(m_divRsiBuyLevel, 1) + 
+                   ", RSI Sell>" + DoubleToString(m_divRsiSellLevel, 1));
+      }
+      
+      // Nettoyer les anciens marqueurs si activés
+      if(m_markFreeCandles) {
          DeleteAllFreeCandleMarkers("FreeCandle");
-         DeleteAllFreeCandleMarkers("FreeCandleDIV");
+         LogMessage("Marqueurs Free Candles activés");
       }
+      
+      // Créer le Trade Tracker
+      m_tracker = new JTTradeTracker(
+         m_symbol,
+         m_magic,
+         m_bbPeriod,
+         m_bbDeviation,
+         m_rsiPeriod,
+         m_useEMAFilter ? m_emaFastPeriod : 50,
+         m_useEMAFilter ? m_emaSlowPeriod : 100
+      );
+      
+      if(m_tracker != NULL) {
+         LogMessage("Trade Tracker activé - Fichier CSV: TradeAnalysis_" + m_symbol + "_" + IntegerToString(m_magic) + ".csv");
+      }
+      
+      LogMessage("Stratégie FreeCandle initialisée:");
+      LogMessage("  BB: " + IntegerToString(m_bbPeriod) + "/" + DoubleToString(m_bbDeviation, 1));
+      LogMessage("  RSI: " + (m_useRSIFilter ? "ON" : "OFF") + " (" + IntegerToString(m_rsiPeriod) + ")");
+      LogMessage("  EMA: " + (m_useEMAFilter ? "ON" : "OFF"));
+      LogMessage("  Mode: " + (m_entryMode == ENTRY_REVERSION ? "REVERSION" : "BREAKOUT"));
       
       return true;
    }
    
-   virtual bool InitializeFilters() override {
-      if(m_filters == NULL) return false;
-      
-      m_filters.SetSymbolAndTimeframe(m_params.symbol, m_params.timeframe);
-      return true;
+   //+------------------------------------------------------------------+
+   //| Override: Deinitialisation spécifique                           |
+   //+------------------------------------------------------------------+
+   virtual void DeinitStrategy() override
+   {
+      ReleaseIndicators(m_indicators);
    }
    
-   virtual SignalResult AnalyzeMarket() override {
-      SignalResult result;
-      result.direction = 0;
-      result.isValid = false;
-      result.confidence = 0.0;
-      result.reason = "";
-      
-      // Copier les données de la bougie fermée (index 1)
-      MqlRates rates[];
-      if(CopyRates(m_params.symbol, m_params.timeframe, 0, 3, rates) < 3) {
-         result.reason = "Erreur copie rates";
-         return result;
-      }
-      ArraySetAsSeries(rates, true);
-      
-      double open = rates[1].open;
-      double high = rates[1].high;
-      double low = rates[1].low;
-      double close = rates[1].close;
-      datetime time = rates[1].time;
-      
-      // Copier les indicateurs
-      if(!GetIndicatorData(m_indicators, m_buffers, 3, false)) {
-         result.reason = "Erreur copie indicateurs";
-         return result;
-      }
-      
-      double upperBand = m_buffers.BBUpper[1];
-      double lowerBand = m_buffers.BBLower[1];
-      double rsiValue = m_buffers.RSI[1];
-      
-      // Vérifier si c'est un Free Candle
-      bool isAbove = false, isBelow = false;
-      if(!IsFreeCandleDetected(open, high, low, close, upperBand, lowerBand, isAbove, isBelow)) {
-         result.reason = "Pas de Free Candle détectée";
-         return result;
-      }
-      
-      LogSignal("FREE CANDLE DÉTECTÉE!");
-      
-      // Déterminer la direction du signal
-      bool isRed = (open > close);
-      bool isGreen = (close > open);
-      
-      if(m_params.entryMode == ENTRY_REVERSION) {
-         // Mode REVERSION: Bear candle au-dessus → SELL, Bull candle en-dessous → BUY
-         if(isAbove && isRed) result.direction = -1;
-         if(isBelow && isGreen) result.direction = +1;
-      } else {
-         // Mode BREAKOUT: Au-dessus → BUY, En-dessous → SELL
-         if(isAbove) result.direction = +1;
-         if(isBelow) result.direction = -1;
-      }
-      
-      if(result.direction == 0) {
-         result.reason = "Pas de signal valide";
-         return result;
-      }
-      
-      // Appliquer le filtre de direction
-      if(!m_filters.CheckTradeDirection(result.direction, m_params.tradeDirection)) {
-         result.reason = "Direction non autorisée";
-         return result;
-      }
-      
-      // Appliquer le filtre EMA
-      if(!m_filters.CheckEMAFilter(result.direction)) {
-         result.reason = "Rejeté par filtre EMA";
-         return result;
-      }
-      
-      // Appliquer le filtre RSI
-      if(!m_filters.CheckRSIFilter(result.direction, rsiValue)) {
-         result.reason = "Rejeté par filtre RSI";
-         return result;
-      }
-      
-      // Si le validateur de divergence est activé, mémoriser au lieu de valider
-      if(m_filters.IsDivergenceEnabled()) {
-         MqlTick tick;
-         if(SymbolInfoTick(m_params.symbol, tick)) {
-            double priceLevel = (result.direction > 0) ? tick.bid : tick.ask;
-            m_filters.RememberFreeCandle(1, priceLevel, result.direction);
-            result.reason = "Free Candle mémorisé pour validation divergence";
-            result.isValid = false;
-            
-            // Marquer le Free Candle
-            double arrowPrice = (result.direction > 0) ? low : high;
-            MarkSignal(time, high, low, arrowPrice, result.direction);
-            
-            return result;
+   //+------------------------------------------------------------------+
+   //| Override: Détection du signal                                   |
+   //+------------------------------------------------------------------+
+   virtual int DetectSignal() override
+   {
+      // Si le validateur de divergence est activé, vérifier d'abord
+      if(m_useDivergence && m_divValidator != NULL) {
+         int divSignal = m_divValidator.ValidateDivergence();
+         if(divSignal != 0) {
+            LogMessage("DIVERGENCE VALIDÉE - Signal: " + (divSignal > 0 ? "BUY" : "SELL"));
+            return divSignal;
          }
       }
       
-      // Signal valide
-      result.isValid = true;
-      result.confidence = 0.8;
-      result.reason = "Signal Free Candle validé";
-      
-      // Marquer le Free Candle
-      double arrowPrice = (result.direction > 0) ? low : high;
-      MarkSignal(time, high, low, arrowPrice, result.direction);
-      
-      return result;
+      // Logique standard de détection de Free Candle
+      return DetectFreeCandleSignal();
    }
    
-   virtual bool CalculateEntryLevels(bool isBuy, double &sl, double &tp) override {
-      return CalculateSwingSLTP(
-         m_params.symbol,
-         m_params.timeframe,
-         isBuy,
-         m_params.slPeriod,
-         m_params.tpPeriod,
-         sl,
-         tp,
-         0.0,
-         m_params.minRR,
-         1000,
-         m_params.atrMultiplier,
-         m_params.atrPeriod
+   //+------------------------------------------------------------------+
+   //| Détection du signal Free Candle                                 |
+   //+------------------------------------------------------------------+
+   int DetectFreeCandleSignal()
+   {
+      // Récupérer les données de la bougie fermée (N-1)
+      MqlRates r[];
+      if(CopyRates(m_symbol, m_timeframe, 0, 3, r) < 3) return 0;
+      ArraySetAsSeries(r, true);
+      
+      double open = r[1].open;
+      double high = r[1].high;
+      double low = r[1].low;
+      double close = r[1].close;
+      
+      // Récupérer les bandes de Bollinger
+      if(!GetIndicatorData(m_indicators, m_buffers, 3, false)) return 0;
+      
+      double upper = m_buffers.BBUpper[1];
+      double lower = m_buffers.BBLower[1];
+      
+      // Vérifier si c'est une Free Candle
+      if(!IsFreeCandle(open, high, low, close, upper, lower)) {
+         return 0;
+      }
+      
+      LogMessage("FREE CANDLE DÉTECTÉE!");
+      
+      // Déterminer la direction
+      bool isAboveBand = false;
+      bool isBelowBand = false;
+      
+      double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+      double padding = m_outsidePadding * point;
+      
+      if(m_bodyMustBeOutside) {
+         double bodyHigh = MathMax(open, close);
+         double bodyLow = MathMin(open, close);
+         isAboveBand = (bodyLow > upper + padding);
+         isBelowBand = (bodyHigh < lower - padding);
+      } else {
+         isAboveBand = (low > upper + padding);
+         isBelowBand = (high < lower - padding);
+      }
+      
+      bool red = (open > close);
+      bool green = (close > open);
+      bool outsideBearAbove = isAboveBand && red;
+      bool outsideBullBelow = isBelowBand && green;
+      
+      // Déterminer le signal selon le mode
+      int signal = 0;
+      if(m_entryMode == ENTRY_REVERSION) {
+         if(outsideBearAbove) signal = -1; // SELL (réversion)
+         if(outsideBullBelow) signal = +1; // BUY (réversion)
+      } else { // BREAKOUT
+         if(isAboveBand) signal = +1;      // BUY (breakout)
+         if(isBelowBand) signal = -1;      // SELL (breakout)
+      }
+      
+      // Si divergence activée, mémoriser le free candle au lieu de retourner le signal
+      if(signal != 0 && m_useDivergence && m_divValidator != NULL) {
+         MqlTick tick;
+         if(SymbolInfoTick(m_symbol, tick)) {
+            double priceLevel = (signal > 0) ? tick.bid : tick.ask;
+            m_divValidator.RememberFreeCandle(1, priceLevel, signal);
+            LogMessage("Free Candle mémorisé pour validation divergence future");
+         }
+         return 0; // Ne pas retourner le signal immédiatement
+      }
+      
+      // Marquer le Free Candle si activé
+      if(m_markFreeCandles && signal != 0) {
+         MarkFreeCandleOnChart(r[1].time, high, low, signal);
+      }
+      
+      return signal;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Vérifier si c'est une Free Candle                               |
+   //+------------------------------------------------------------------+
+   bool IsFreeCandle(double open, double high, double low, double close,
+                     double upper, double lower)
+   {
+      double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+      double padding = m_outsidePadding * point;
+      
+      if(m_bodyMustBeOutside) {
+         // Le corps doit être entièrement hors bande
+         double bodyHigh = MathMax(open, close);
+         double bodyLow = MathMin(open, close);
+         
+         bool bodyAbove = (bodyLow > upper + padding);
+         bool bodyBelow = (bodyHigh < lower - padding);
+         
+         return (bodyAbove || bodyBelow);
+      } else {
+         // Toute la bougie (mèches comprises) doit être hors bande
+         bool candleAbove = (low > upper + padding);
+         bool candleBelow = (high < lower - padding);
+         
+         return (candleAbove || candleBelow);
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Override: Validation du signal avant entrée                     |
+   //+------------------------------------------------------------------+
+   virtual bool ValidateEntry(int signal) override
+   {
+      if(signal == 0) return false;
+      
+      // Vérifier le filtre de direction
+      if(!m_filters.CheckTradeDirection(signal, m_tradeDirection)) {
+         return false;
+      }
+      
+      // Appliquer le filtre EMA
+      if(m_useEMAFilter) {
+         if(!m_filters.CheckEMAFilter(signal)) {
+            LogMessage("Signal rejeté par filtre EMA");
+            return false;
+         }
+      }
+      
+      // Appliquer le filtre RSI
+      if(m_useRSIFilter) {
+         // Récupérer la valeur RSI actuelle
+         if(!GetIndicatorData(m_indicators, m_buffers, 2, false)) {
+            LogError("Erreur lors de la récupération du RSI");
+            return false;
+         }
+         
+         double currentRSI = m_buffers.RSI[1];
+         if(!m_filters.CheckRSIFilter(signal, currentRSI)) {
+            LogMessage("Signal rejeté par filtre RSI");
+            return false;
+         }
+      }
+      
+      return true;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Override: Enregistrer le trade dans le tracker                  |
+   //+------------------------------------------------------------------+
+   virtual void RecordTradeInTracker(ulong ticket, bool isBuy, double rr) override
+   {
+      if(m_tracker == NULL) return;
+      
+      // Déterminer si c'est un trade de divergence
+      bool isDivergence = false;
+      double divAngle = 0.0;
+      double divStrength = 0.0;
+      int divBars = 0;
+      
+      if(m_useDivergence && m_divValidator != NULL) {
+         m_filters.GetLastDivergenceData(divAngle, divStrength, divBars);
+         isDivergence = (divBars > 0); // Si on a des données de divergence
+      }
+      
+      // Mode de trading
+      string tradeMode = (m_entryMode == ENTRY_REVERSION ? "REVERSION" : "BREAKOUT");
+      
+      // Mode EMA
+      string emaMode = "";
+      if(m_useEMAFilter) {
+         switch(m_emaMode) {
+            case EMA_TREND: emaMode = "TREND"; break;
+            case EMA_COUNTER: emaMode = "COUNTER"; break;
+            case EMA_ZONE: emaMode = "ZONE"; break;
+         }
+      }
+      
+      // Enregistrer le trade avec toutes les infos
+      m_tracker.RecordTradeOpen(
+         ticket,
+         tradeMode,
+         isDivergence,
+         emaMode,
+         divAngle,
+         divStrength,
+         divBars,
+         // Config EA
+         m_bbPeriod,
+         m_bbDeviation,
+         m_rsiPeriod,
+         m_rsiOversold,
+         m_rsiOverbought,
+         m_emaFastPeriod,
+         m_emaSlowPeriod,
+         m_emaZoneDistance,
+         m_riskPercent,
+         m_minRR,
+         m_slPeriod,
+         m_tpPeriod,
+         m_atrMultiplier,
+         m_atrPeriod,
+         m_outsidePadding,
+         m_bodyMustBeOutside,
+         m_useRSIFilter,
+         m_useEMAFilter,
+         m_useDivergence
       );
    }
    
+private:
    //+------------------------------------------------------------------+
-   //| Vérifier les signaux de divergence                              |
+   //| Marquer un Free Candle sur le graphique                         |
    //+------------------------------------------------------------------+
-   SignalResult CheckDivergenceSignal() {
-      SignalResult result;
-      result.direction = 0;
-      result.isValid = false;
-      result.confidence = 0.0;
-      result.reason = "";
+   void MarkFreeCandleOnChart(datetime time, double high, double low, int signal)
+   {
+      double arrowPrice = (signal > 0) ? low : high;
       
-      if(!m_filters.IsDivergenceEnabled()) return result;
+      // Utiliser la fonction helper de JT_Utils
+      MarkFreeCandle(time, high, low, arrowPrice, signal, m_timeframe,
+                    m_markDrawVLine, m_markDrawArrow, m_markDrawBox, m_markDrawText,
+                    "FreeCandle");
       
-      int divSignal = m_filters.CheckDivergenceValidator();
-      if(divSignal == 0) return result;
-      
-      // Divergence validée
-      result.direction = divSignal;
-      result.isValid = true;
-      result.confidence = 0.9;  // Plus de confiance avec divergence
-      result.reason = "Divergence validée";
-      
-      // Marquer la divergence
-      MqlRates rates[];
-      if(CopyRates(m_params.symbol, m_params.timeframe, 1, 1, rates) > 0) {
-         double high = rates[0].high;
-         double low = rates[0].low;
-         datetime time = rates[0].time;
-         double arrowPrice = (divSignal > 0) ? low : high;
-         
-         MarkDivergenceSignal(time, high, low, arrowPrice, divSignal);
-      }
-      
-      LogSignal("✓ DIVERGENCE VALIDÉE - Signal " + (divSignal > 0 ? "BUY" : "SELL"));
-      
-      return result;
-   }
-   
-   //+------------------------------------------------------------------+
-   //| Obtenir les métriques de divergence                             |
-   //+------------------------------------------------------------------+
-   void GetDivergenceMetrics(double &angle, double &strength, int &bars) {
-      m_filters.GetLastDivergenceData(angle, strength, bars);
+      LogMessage("Free Candle marqué sur le graphique à " + TimeToString(time));
    }
 };
-

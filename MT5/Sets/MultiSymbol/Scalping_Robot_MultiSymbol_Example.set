@@ -1,0 +1,49 @@
+;+------------------------------------------------------------------+
+;| Scalping Robot v2.0 - Configuration Multi-Symboles Exemple      |
+;|                                                                  |
+;| Ce fichier de configuration montre comment utiliser le robot    |
+;| refactorisé pour trader plusieurs symboles simultanément.       |
+;+------------------------------------------------------------------+
+
+;=== Multi-Symbol Configuration ===
+SymbolsList=EURUSD,GBPUSD,USDJPY,AUDUSD,NZDUSD
+UseAllSymbols=false
+BaseMagic=298347
+
+;=== Trading Inputs ===
+RiskPercent=2.0
+Tppoints=200
+Slpoints=200
+TslTriggerPoints=15
+TslPoints=10
+Timeframe=PERIOD_M5
+TradeComment=Scalping Robot v2.0
+
+;=== Strategy Parameters ===
+BarsN=5
+ExpirationBars=100
+OrderDistPoints=100
+
+;=== Time Filter ===
+SHInput=8
+EHInput=17
+
+;+------------------------------------------------------------------+
+;| NOTES D'UTILISATION:                                            |
+;|                                                                  |
+;| 1. SymbolsList: Liste des symboles séparés par des virgules     |
+;|    - Assurez-vous que tous les symboles sont dans le Market Watch
+;|    - Le robot validera automatiquement chaque symbole           |
+;|                                                                  |
+;| 2. UseAllSymbols: Si true, ignore SymbolsList et utilise tous   |
+;|    les symboles du Market Watch                                 |
+;|                                                                  |
+;| 3. RiskPercent: Risque total divisé automatiquement par le      |
+;|    nombre de symboles (2.0% ÷ 5 symboles = 0.4% par symbole)   |
+;|                                                                  |
+;| 4. BaseMagic: Magic number de base, incrémenté automatiquement  |
+;|    (EURUSD=298347, GBPUSD=298447, USDJPY=298547, etc.)         |
+;|                                                                  |
+;| 5. Les autres paramètres s'appliquent à tous les symboles       |
+;|                                                                  |
+;+------------------------------------------------------------------+
