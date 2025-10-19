@@ -11,6 +11,7 @@
 #include "../../../CommonUtils/TradingEnums.mqh"
 #include "ForexCommissionManager.mqh"
 #include "ForexSwingAnalyzer.mqh"
+#include "ForexTrendlineManager.mqh"
 #include "../../../CommonUtils/TrailingTP_System.mqh"
 
 //+------------------------------------------------------------------+
@@ -53,6 +54,7 @@ private:
    COrderInfo        m_order;               // Gestion des ordres
    ForexCommissionManager m_commissionManager;  // Gestionnaire de commission
    ForexSwingAnalyzer m_swingAnalyzer;      // Analyseur de swing points
+   ForexTrendlineManager* m_trendlineManager; // Gestionnaire des lignes TP/SL
    
    // Trailing TP
    CTrailingTP*      m_trailingTP;
@@ -139,6 +141,9 @@ public:
       }
       ArrayResize(m_positionTrailings, 0);
       
+      // Initialiser le gestionnaire des lignes TP/SL
+      m_trendlineManager = new ForexTrendlineManager(symbol, magicNumber);
+      
       Print("✓ ForexSymbolTrader initialized for ", symbol, " | Magic: ", magicNumber);
    }
    
@@ -154,6 +159,13 @@ public:
          }
       }
       if(m_trailingTP != NULL) delete m_trailingTP;
+      
+      // Cleanup Trendline Manager
+      if(m_trendlineManager != NULL) 
+      {
+         delete m_trendlineManager;
+         m_trendlineManager = NULL;
+      }
       
       Print("✓ ForexSymbolTrader destroyed for ", m_symbol);
    }
@@ -192,6 +204,9 @@ public:
       
       // Mettre à jour les compteurs
       UpdateCounters();
+      
+      // Vérifier les nouvelles positions pour créer les lignes TP/SL
+      CheckForNewPositions();
       
       // Chercher des signaux de trading seulement si pas de positions/ordres existants
       if(m_buyTotal <= 0)
@@ -316,6 +331,14 @@ public:
                   {
                      Print("📈 TSL appliqué #", ticket, " [", m_symbol, "] BUY: SL ", 
                            DoubleToString(currentSL, 5), " → ", DoubleToString(newSL, 5));
+                     
+                     // Mettre à jour les lignes TP/SL
+                     if(m_trendlineManager != NULL)
+                     {
+                        m_trendlineManager.UpdatePositionLines(ticket, 
+                                                            PositionGetDouble(POSITION_TP), 
+                                                            newSL);
+                     }
                   }
                }
             }
@@ -335,6 +358,14 @@ public:
                   {
                      Print("📉 TSL appliqué #", ticket, " [", m_symbol, "] SELL: SL ", 
                            DoubleToString(currentSL, 5), " → ", DoubleToString(newSL, 5));
+                     
+                     // Mettre à jour les lignes TP/SL
+                     if(m_trendlineManager != NULL)
+                     {
+                        m_trendlineManager.UpdatePositionLines(ticket, 
+                                                            PositionGetDouble(POSITION_TP), 
+                                                            newSL);
+                     }
                   }
                }
             }
@@ -347,6 +378,12 @@ public:
    //+------------------------------------------------------------------+
    void CloseAllOrders()
    {
+      // Supprimer toutes les lignes TP/SL avant de fermer les positions
+      if(m_trendlineManager != NULL)
+      {
+         m_trendlineManager.DeleteAllLines();
+      }
+      
       // Fermer toutes les positions
       for(int i = PositionsTotal() - 1; i >= 0; i--)
       {
@@ -512,8 +549,18 @@ public:
    //+------------------------------------------------------------------+
    void OnPositionOpened(ulong ticket)
    {
-      if(!m_useTrailingTP || m_trailingTP == NULL) return;
       if(!PositionSelectByTicket(ticket)) return;
+      
+      // Créer les lignes TP/SL pour cette position
+      if(m_trendlineManager != NULL)
+      {
+         double tpPrice = PositionGetDouble(POSITION_TP);
+         double slPrice = PositionGetDouble(POSITION_SL);
+         m_trendlineManager.CreatePositionLines(ticket, tpPrice, slPrice);
+      }
+      
+      // Gestion du trailing TP (logique existante)
+      if(!m_useTrailingTP || m_trailingTP == NULL) return;
       
       // Vérifier que ce n'est pas déjà tracké
       for(int i = 0; i < ArraySize(m_positionTrailings); i++) {
@@ -547,6 +594,13 @@ public:
    //+------------------------------------------------------------------+
    void OnPositionClosed(ulong ticket)
    {
+      // Supprimer les lignes TP/SL pour cette position
+      if(m_trendlineManager != NULL)
+      {
+         m_trendlineManager.DeletePositionLines(ticket);
+      }
+      
+      // Gestion du trailing TP (logique existante)
       for(int i = 0; i < ArraySize(m_positionTrailings); i++) {
          if(m_positionTrailings[i].ticket == ticket) {
             if(m_positionTrailings[i].trailing != NULL) {
@@ -566,8 +620,6 @@ public:
    //+------------------------------------------------------------------+
    void CheckForNewPositions()
    {
-      if(!m_useTrailingTP) return;
-      
       for(int i = 0; i < PositionsTotal(); i++)
       {
          if(!m_position.SelectByIndex(i)) continue;
@@ -614,7 +666,14 @@ public:
          double newSL, newTP;
          if(m_positionTrailings[i].trailing.Update(currentPrice, newSL, newTP)) {
             if(newSL > 0 && newTP > 0) {
-               m_trade.PositionModify(ticket, newSL, newTP);
+               if(m_trade.PositionModify(ticket, newSL, newTP))
+               {
+                  // Mettre à jour les lignes TP/SL après modification du Trailing TP
+                  if(m_trendlineManager != NULL)
+                  {
+                     m_trendlineManager.UpdatePositionLines(ticket, newTP, newSL);
+                  }
+               }
             }
          }
       }
