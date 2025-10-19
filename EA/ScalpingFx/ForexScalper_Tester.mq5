@@ -189,6 +189,12 @@ void OnTick()
 //+------------------------------------------------------------------+
 void DisplayInputParameters()
 {
+   if(bot == NULL || bot.GetChartManager() == NULL)
+   {
+      Print("⚠️ Warning: Cannot display parameters - bot or ChartManager not initialized");
+      return;
+   }
+   
    string strategyTypeStr = (InpStrategyType == STRATEGY_BREAKOUT) ? "BREAKOUT" : "REVERSION";
    string trailingTPStr = "Disabled";
    
@@ -219,6 +225,32 @@ void DisplayInputParameters()
                                   InpStopBeforeNewsMin, InpStartAfterNewsMin, InpNewsCurrencies);
    }
    
+   // Créer array pour affichage multi-lignes
+   string inputLines[12];
+   inputLines[0] = "=== " + InpStrategyName + " TESTER ===";
+   inputLines[1] = "Magic: " + IntegerToString(InpBaseMagicNumber);
+   inputLines[2] = "Symbols: " + (InpUseAllMarketWatch ? "All Market Watch" : InpDefaultSymbols);
+   inputLines[3] = "Timeframe: " + EnumToString(InpTradingTimeframe);
+   inputLines[4] = "Risk: " + DoubleToString(InpRiskPercent, 1) + "%";
+   inputLines[5] = "TP/SL: " + IntegerToString(InpTpPoints) + "/" + IntegerToString(InpSlPoints) + " points";
+   inputLines[6] = "Strategy: " + strategyTypeStr;
+   inputLines[7] = "Bars Analysis: " + IntegerToString(InpBarsAnalysis);
+   inputLines[8] = "Trading Hours: " + StringFormat("%02d:00-%02d:00", InpStartHour, InpEndHour);
+   inputLines[9] = "Trailing TP: " + trailingTPStr;
+   inputLines[10] = "Risk Multiplier: " + riskMultStr;
+   inputLines[11] = "News Filter: " + newsFilterStr;
+   
+   // Position en haut à gauche
+   int chartHeight = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
+   int chartWidth = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
+   int yTopLeft = 30;   // Position en haut
+   int xTopLeft = 20;   // Position à gauche
+   
+   // Utiliser ChartManager pour affichage en haut à gauche
+   bot.GetChartManager().ShowMultiLineInfo(inputLines, CORNER_LEFT_UPPER, xTopLeft, yTopLeft, 16, 
+                                          clrBlack, 12, "InputParameters");
+   
+   // Garder l'ancien système pour compatibilité
    string inputs = StringFormat(
       "=== %s TESTER ===\n" +
       "Magic: %d\n" +
@@ -246,7 +278,6 @@ void DisplayInputParameters()
       newsFilterStr
    );
    
-   Comment(inputs);
    Print("=== TESTER INPUT PARAMETERS ===");
    Print(inputs);
    Print("================================");

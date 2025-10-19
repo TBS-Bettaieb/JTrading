@@ -222,6 +222,9 @@ public:
       // Update chart display
       UpdateChartInfo();
    }
+   
+   //--- Get ChartManager for external access
+   ChartManager* GetChartManager() const { return m_chartManager; }
 
 private:
    //--- Validate Trailing TP configuration
@@ -538,23 +541,30 @@ private:
    //--- Update detailed information
    void UpdateDetailedInfo()
    {
-      string detailLines[];
-      ArrayResize(detailLines, m_totalSymbols + 1);
+      // Suppression de l'affichage des détails des symboles
+      // On garde seulement le refresh des swing points
       
-      detailLines[0] = "━━━ SYMBOL DETAILS ━━━";
-      
-      for(int i = 0; i < m_totalSymbols; i++)
+      // Supprimer les anciens labels de symbol details s'ils existent
+      if(m_chartManager != NULL)
       {
-         if(m_symbolTraders[i] != NULL)
+         // Supprimer spécifiquement le groupe "SymbolDetails"
+         long chartId = m_chartManager.GetChartId();
+         string prefix = m_chartManager.GetLabelPrefix();
+         string searchPattern = prefix + "_SymbolDetails_";
+         
+         int total = ObjectsTotal(chartId);
+         for(int i = total - 1; i >= 0; i--)
          {
-            detailLines[i + 1] = m_symbolTraders[i].GetStatusInfo();
+            string objName = ObjectName(chartId, i);
+            if(StringFind(objName, searchPattern) == 0)
+            {
+               ObjectDelete(chartId, objName);
+            }
          }
+         ChartRedraw(chartId);
       }
       
-      m_chartManager.ShowMultiLineInfo(detailLines, CORNER_LEFT_LOWER, 10, 30, 14, 
-                                       clrDarkBlue, 8);
-      
-      // Refresh swing points
+      // Refresh swing points seulement
       for(int i = 0; i < m_totalSymbols; i++)
       {
          if(m_symbolTraders[i] != NULL)

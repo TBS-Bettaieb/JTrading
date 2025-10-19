@@ -49,20 +49,20 @@ public:
    //+------------------------------------------------------------------+
    bool SetupChart()
    {
-      // Fond noir (RGB: 0,0,0)
-      ChartSetInteger(m_chartId, CHART_COLOR_BACKGROUND, clrBlack);
+      // Fond blanc (RGB: 255,255,255)
+      ChartSetInteger(m_chartId, CHART_COLOR_BACKGROUND, clrWhite);
       
-      // Couleur du texte blanc (RGB: 255,255,255)
-      ChartSetInteger(m_chartId, CHART_COLOR_FOREGROUND, clrWhite);
+      // Couleur du texte noir (RGB: 0,0,0)
+      ChartSetInteger(m_chartId, CHART_COLOR_FOREGROUND, clrBlack);
       
       // Grille désactivée
       ChartSetInteger(m_chartId, CHART_SHOW_GRID, false);
       
-      // Couleurs des bougies
-      ChartSetInteger(m_chartId, CHART_COLOR_CANDLE_BULL, C'38,166,154');    // Bougie haussière (corps) - Vert turquoise
-      ChartSetInteger(m_chartId, CHART_COLOR_CHART_UP, C'38,166,154');       // Bougie haussière (bordure) - Vert turquoise
-      ChartSetInteger(m_chartId, CHART_COLOR_CANDLE_BEAR, C'239,83,80');      // Bougie baissière (corps) - Rouge
-      ChartSetInteger(m_chartId, CHART_COLOR_CHART_DOWN, C'239,83,80');       // Bougie baissière (bordure) - Rouge
+      // Couleurs des bougies - LimeGreen/Black selon l'image
+      ChartSetInteger(m_chartId, CHART_COLOR_CANDLE_BULL, clrLimeGreen);    // Bougie haussière (corps) - LimeGreen
+      ChartSetInteger(m_chartId, CHART_COLOR_CHART_UP, clrLimeGreen);       // Bougie haussière (bordure) - LimeGreen
+      ChartSetInteger(m_chartId, CHART_COLOR_CANDLE_BEAR, clrBlack);        // Bougie baissière (corps) - Black
+      ChartSetInteger(m_chartId, CHART_COLOR_CHART_DOWN, clrBlack);         // Bougie baissière (bordure) - Black
       
       // Lignes de prix - Vert clair
       ChartSetInteger(m_chartId, CHART_COLOR_CHART_LINE, C'86,186,132');
@@ -70,9 +70,9 @@ public:
       // Volumes - Vert turquoise
       ChartSetInteger(m_chartId, CHART_COLOR_VOLUME, C'38,166,154');
       
-      // Bid/Ask lines
-      ChartSetInteger(m_chartId, CHART_COLOR_BID, C'38,166,154');             // Bid - Vert turquoise
-      ChartSetInteger(m_chartId, CHART_COLOR_ASK, C'239,83,80');              // Ask - Rouge
+      // Bid/Ask lines - Silver selon l'image
+      ChartSetInteger(m_chartId, CHART_COLOR_BID, clrSilver);                // Bid - Silver
+      ChartSetInteger(m_chartId, CHART_COLOR_ASK, clrSilver);                // Ask - Silver
       
       // Stop levels - Rouge
       ChartSetInteger(m_chartId, CHART_COLOR_STOP_LEVEL, C'239,83,80');
@@ -133,7 +133,7 @@ public:
    //+------------------------------------------------------------------+
    //| Afficher un label dans le coin supérieur droit                  |
    //+------------------------------------------------------------------+
-   bool ShowTopRightLabel(string text, color clr = clrWhite, int fontSize = 18, int yDistance = 10)
+   bool ShowTopRightLabel(string text, color clr = clrBlack, int fontSize = 18, int yDistance = 10)  // Changé en noir pour fond blanc
    {
       string labelName = GenerateLabelName("TopRight");
       
@@ -173,56 +173,36 @@ public:
    //+------------------------------------------------------------------+
    bool ShowStrategyName(
       string strategyName,
-      color textColor = clrWhite,
-      int fontSize = 12,  // Réduit de 13 à 12
-      color backgroundColor = C'60,75,90'
+      color textColor = clrBlack,  // Changé en noir pour fond blanc
+      int fontSize = 18,  // Agrandi de 12 à 18
+      color backgroundColor = C'220,220,220'  // Gris clair pour contraster avec fond blanc (non utilisé)
    )
    {
-      // Fond optimisé
+      // Supprimer l'ancien fond (plus d'affichage de cadre)
       string bgName = m_labelPrefix + "_StrategyBg";
       ObjectDelete(m_chartId, bgName);
-      if(ObjectCreate(m_chartId, bgName, OBJ_RECTANGLE_LABEL, 0, 0, 0))
-      {
-         // Position
-         ObjectSetInteger(m_chartId, bgName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-         ObjectSetInteger(m_chartId, bgName, OBJPROP_XDISTANCE, 15);
-         ObjectSetInteger(m_chartId, bgName, OBJPROP_YDISTANCE, 15);
-
-         // Dimensions réduites
-         ObjectSetInteger(m_chartId, bgName, OBJPROP_XSIZE, 280);  // Réduit de 340 à 280
-         ObjectSetInteger(m_chartId, bgName, OBJPROP_YSIZE, 35);   // Réduit de 40 à 35
-
-         // Couleur de fond
-         ObjectSetInteger(m_chartId, bgName, OBJPROP_BGCOLOR, backgroundColor);
-
-         // Bordure
-         ObjectSetInteger(m_chartId, bgName, OBJPROP_BORDER_TYPE, BORDER_FLAT);
-         ObjectSetInteger(m_chartId, bgName, OBJPROP_COLOR, C'0,180,255');
-         ObjectSetInteger(m_chartId, bgName, OBJPROP_WIDTH, 2);
-
-         ObjectSetInteger(m_chartId, bgName, OBJPROP_BACK, true);
-         ObjectSetInteger(m_chartId, bgName, OBJPROP_SELECTABLE, false);
-         ObjectSetInteger(m_chartId, bgName, OBJPROP_HIDDEN, true);
-      }
       
-      // Texte optimisé
+      // Texte simple sans fond
       string labelName = m_labelPrefix + "_StrategyName";
       ObjectDelete(m_chartId, labelName);
       if(!ObjectCreate(m_chartId, labelName, OBJ_LABEL, 0, 0, 0))
          return false;
       
-      // Position ajustée
+      // Position centrée horizontalement au milieu
+      int chartWidth = (int)ChartGetInteger(m_chartId, CHART_WIDTH_IN_PIXELS);
+      int xCenter = chartWidth / 2 - 100;  // Centré horizontalement
+      
       ObjectSetInteger(m_chartId, labelName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-      ObjectSetInteger(m_chartId, labelName, OBJPROP_XDISTANCE, 30);  // Réduit de 40 à 30
-      ObjectSetInteger(m_chartId, labelName, OBJPROP_YDISTANCE, 28);  // Réduit de 31 à 28
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_XDISTANCE, xCenter);
+      ObjectSetInteger(m_chartId, labelName, OBJPROP_YDISTANCE, 20);  // Position haute
 
       // Contenu
       ObjectSetString(m_chartId, labelName, OBJPROP_TEXT, strategyName);
 
-      // Style
+      // Style - texte plus grand et bold
       ObjectSetInteger(m_chartId, labelName, OBJPROP_COLOR, textColor);
       ObjectSetInteger(m_chartId, labelName, OBJPROP_FONTSIZE, fontSize);
-      ObjectSetString(m_chartId, labelName, OBJPROP_FONT, "Arial Bold");  // Change de "Arial Black" à "Arial Bold"
+      ObjectSetString(m_chartId, labelName, OBJPROP_FONT, "Arial Bold");
 
       ObjectSetInteger(m_chartId, labelName, OBJPROP_BACK, false);
       ObjectSetInteger(m_chartId, labelName, OBJPROP_SELECTABLE, false);
@@ -240,7 +220,7 @@ public:
       ENUM_BASE_CORNER corner,
       int xDistance,
       int yDistance,
-      color clr = clrWhite,
+      color clr = clrBlack,  // Changé en noir pour fond blanc
       int fontSize = 10,
       string font = "Arial"
    )
@@ -286,7 +266,7 @@ public:
       int xDistance = 10,
       int yDistanceStart = 30,
       int lineSpacing = 18,
-      color clr = clrWhite,
+      color clr = clrBlack,  // Changé en noir pour fond blanc
       int fontSize = 9,
       string groupName = "MultiLine",  // NOUVEAU: identifier le groupe
       string fontName = "Arial Bold"  // NOUVEAU: Police Bold par défaut
@@ -357,9 +337,9 @@ public:
       int fontSize = 18
    )
    {
-      color statusColor = clrWhite;
+      color statusColor = clrBlack;
       
-      // Déterminer la couleur selon le contenu - couleurs vives pour fond noir
+      // Déterminer la couleur selon le contenu - couleurs vives pour fond blanc
       if(StringFind(text, "ACTIVE") >= 0 || StringFind(text, "PROFIT") >= 0)
          statusColor = clrLime;
       else if(StringFind(text, "LOSS") >= 0 || StringFind(text, "ERROR") >= 0)
@@ -467,8 +447,8 @@ public:
       // Mettre à jour le texte
       ObjectSetString(m_chartId, labelName, OBJPROP_TEXT, newText);
       
-      // Mettre à jour la couleur selon le contenu - couleurs vives pour fond noir
-      color statusColor = clrWhite;
+      // Mettre à jour la couleur selon le contenu - couleurs vives pour fond blanc
+      color statusColor = clrBlack;
       if(StringFind(newText, "ACTIVE") >= 0 || StringFind(newText, "PROFIT") >= 0)
          statusColor = clrLime;
       else if(StringFind(newText, "LOSS") >= 0 || StringFind(newText, "ERROR") >= 0)
