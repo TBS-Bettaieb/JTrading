@@ -642,7 +642,7 @@ private:
    //+------------------------------------------------------------------+
    double CalcLots(double slPoints)
    {
-      double risk = AccountInfoDouble(ACCOUNT_EQUITY) * m_riskPercent / 100;
+      double risk = AccountInfoDouble(ACCOUNT_BALANCE) * m_riskPercent / 100;
       
       double ticksize = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_SIZE);
       double tickvalue = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_VALUE);
