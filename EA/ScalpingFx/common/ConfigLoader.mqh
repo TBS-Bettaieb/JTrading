@@ -81,6 +81,89 @@ protected:
          hash = hash * 31 + StringGetCharacter(symbol, i);
       return baseMagic + (int)(hash % 1000);
    }
+   
+   //--- Common parameter setup methods ---
+   
+   // Setup basic strategy parameters
+   void SetupBasicParams(string strategyName, string strategyComment, int baseMagic)
+   {
+      m_config.strategyName = strategyName;
+      m_config.strategyComment = strategyComment;
+      m_config.baseMagic = baseMagic;
+      m_config.useAllSymbols = false;
+      m_config.timeframe = PERIOD_M5;
+      m_config.strategyMode = STRATEGY_BREAKOUT;
+   }
+   
+   // Setup risk and position sizing
+   void SetupRiskParams(double riskPercent, int tpPoints, int slPoints)
+   {
+      m_config.riskPercent = riskPercent;
+      m_config.tpPoints = tpPoints;
+      m_config.slPoints = slPoints;
+   }
+   
+   // Setup trailing stop parameters
+   void SetupTrailingStop(int tslTriggerPoints, int tslPoints, bool useTrailingTP, 
+                         ENUM_TRAILING_TP_MODE trailingTPMode, string customTPLevels = "")
+   {
+      m_config.tslTriggerPoints = tslTriggerPoints;
+      m_config.tslPoints = tslPoints;
+      m_config.useTrailingTP = useTrailingTP;
+      m_config.trailingTPMode = trailingTPMode;
+      if(customTPLevels != "") m_config.customTPLevels = customTPLevels;
+   }
+   
+   // Setup trading hours
+   void SetupTradingHours(int startHour, int endHour)
+   {
+      m_config.startHour = startHour;
+      m_config.endHour = endHour;
+   }
+   
+   // Setup strategy-specific parameters
+   void SetupStrategyParams(int barsN, int expirationBars, int orderDistPoints)
+   {
+      m_config.barsN = barsN;
+      m_config.expirationBars = expirationBars;
+      m_config.orderDistPoints = orderDistPoints;
+   }
+   
+   // Setup risk multiplier
+   void SetupRiskMultiplier(bool useRiskMultiplier, int startHour, int startMinute, 
+                           int endHour, int endMinute, double multiplier, string description = "")
+   {
+      m_config.useRiskMultiplier = useRiskMultiplier;
+      m_config.riskMultStartHour = startHour;
+      m_config.riskMultStartMinute = startMinute;
+      m_config.riskMultEndHour = endHour;
+      m_config.riskMultEndMinute = endMinute;
+      m_config.riskMultiplier = multiplier;
+      if(description != "") m_config.riskMultDescription = description;
+   }
+   
+   // Setup news filter parameters
+   void SetupNewsFilter(bool useNewsFilter, string currencies = "USD,EUR,GBP", 
+                       string keyEvents = "NFP,JOLTS,Nonfarm,PMI,Interest Rate,CPI,GDP",
+                       int stopBeforeMin = 30, int startAfterMin = 10, int lookupDays = 7)
+   {
+      m_config.useNewsFilter = useNewsFilter;
+      m_config.newsCurrencies = currencies;
+      m_config.keyNewsEvents = keyEvents;
+      m_config.stopBeforeNewsMin = stopBeforeMin;
+      m_config.startAfterNewsMin = startAfterMin;
+      m_config.newsLookupDays = lookupDays;
+      m_config.newsSeparator = COMMA;
+   }
+   
+   // Setup block messages (used by all groups identically)
+   void SetupBlockMessages()
+   {
+      m_config.newsBlockMsg = "📰 TRADING PAUSED - High Impact News Event";
+      m_config.hourBlockMsg = "⏰ TRADING PAUSED - Outside Trading Hours";
+      m_config.dayBlockMsg = "📅 TRADING PAUSED - Outside Trading Days";
+      m_config.bothBlockMsg = "🚫 TRADING PAUSED - Outside Trading Schedule";
+   }
 };
 
 //+------------------------------------------------------------------+
@@ -95,43 +178,14 @@ public:
       AddSymbols("EURUSD,GBPUSD");
       
       // Configuration from EU_GU_FXScalper.mq5
-      m_config.strategyName = "EU_GU_FXScalper V1.0";
-      m_config.strategyComment = "EU_GU_FXScalper";
-      m_config.baseMagic = 2971308;
-      m_config.useAllSymbols = false;
-      m_config.timeframe = PERIOD_M5;
-      m_config.riskPercent = 1.0;
-      m_config.tpPoints = 200;
-      m_config.slPoints = 180;
-      m_config.tslTriggerPoints = 10;
-      m_config.tslPoints = 10;
-      m_config.startHour = 7;
-      m_config.endHour = 20;
-      m_config.strategyMode = STRATEGY_BREAKOUT;
-      m_config.barsN = 5;
-      m_config.expirationBars = 50;
-      m_config.orderDistPoints = 80;
-      m_config.useTrailingTP = true;
-      m_config.trailingTPMode = TRAILING_TP_CUSTOM;
-      m_config.customTPLevels = "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150";
-      m_config.useRiskMultiplier = false;
-      m_config.riskMultStartHour = 13;
-      m_config.riskMultStartMinute = 0;
-      m_config.riskMultEndHour = 17;
-      m_config.riskMultEndMinute = 0;
-      m_config.riskMultiplier = 2.0;
-      m_config.riskMultDescription = "London-NY Overlap";
-      m_config.useNewsFilter = false;
-      m_config.newsCurrencies = "USD,EUR,GBP";
-      m_config.keyNewsEvents = "NFP,JOLTS,Nonfarm,PMI,Interest Rate,CPI,GDP";
-      m_config.stopBeforeNewsMin = 30;
-      m_config.startAfterNewsMin = 10;
-      m_config.newsLookupDays = 7;
-      m_config.newsSeparator = COMMA;
-      m_config.newsBlockMsg = "📰 TRADING PAUSED - High Impact News Event";
-      m_config.hourBlockMsg = "⏰ TRADING PAUSED - Outside Trading Hours";
-      m_config.dayBlockMsg = "📅 TRADING PAUSED - Outside Trading Days";
-      m_config.bothBlockMsg = "🚫 TRADING PAUSED - Outside Trading Schedule";
+      SetupBasicParams("EU_GU_FXScalper V1.0", "EU_GU_FXScalper", 2971308);
+      SetupRiskParams(1.0, 200, 180);
+      SetupTrailingStop(10, 10, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupTradingHours(7, 20);
+      SetupStrategyParams(5, 50, 80);
+      SetupRiskMultiplier(false, 13, 0, 17, 0, 2.0, "London-NY Overlap");
+      SetupNewsFilter(false);
+      SetupBlockMessages();
       
       return true;
    }
@@ -149,43 +203,14 @@ public:
       AddSymbols("GER40.cash");
       
       // Configuration from GER40_Scalper.mq5
-      m_config.strategyName = "GER40 Scalper V1.0";
-      m_config.strategyComment = "GER40_Scalper";
-      m_config.baseMagic = 28834731;
-      m_config.useAllSymbols = false;
-      m_config.timeframe = PERIOD_M5;
-      m_config.riskPercent = 0.5;
-      m_config.tpPoints = 5000;
-      m_config.slPoints = 5000;
-      m_config.tslTriggerPoints = 200;
-      m_config.tslPoints = 150;
-      m_config.startHour = 7;
-      m_config.endHour = 21;
-      m_config.strategyMode = STRATEGY_BREAKOUT;
-      m_config.barsN = 6;
-      m_config.expirationBars = 60;
-      m_config.orderDistPoints = 120;
-      m_config.useTrailingTP = true;
-      m_config.trailingTPMode = TRAILING_TP_STEPPED;
-      m_config.customTPLevels = "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150";
-      m_config.useRiskMultiplier = true;
-      m_config.riskMultStartHour = 8;
-      m_config.riskMultStartMinute = 0;
-      m_config.riskMultEndHour = 10;
-      m_config.riskMultEndMinute = 0;
-      m_config.riskMultiplier = 2.0;
-      m_config.riskMultDescription = "Euro Session";
-      m_config.useNewsFilter = true;
-      m_config.newsCurrencies = "USD,EUR,GBP";
-      m_config.keyNewsEvents = "NFP,JOLTS,Nonfarm,PMI,Interest Rate,CPI,GDP";
-      m_config.stopBeforeNewsMin = 30;
-      m_config.startAfterNewsMin = 10;
-      m_config.newsLookupDays = 7;
-      m_config.newsSeparator = COMMA;
-      m_config.newsBlockMsg = "📰 TRADING PAUSED - High Impact News Event";
-      m_config.hourBlockMsg = "⏰ TRADING PAUSED - Outside Trading Hours";
-      m_config.dayBlockMsg = "📅 TRADING PAUSED - Outside Trading Days";
-      m_config.bothBlockMsg = "🚫 TRADING PAUSED - Outside Trading Schedule";
+      SetupBasicParams("GER40 Scalper V1.0", "GER40_Scalper", 28834731);
+      SetupRiskParams(0.5, 5000, 5000);
+      SetupTrailingStop(200, 150, true, TRAILING_TP_STEPPED, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupTradingHours(7, 21);
+      SetupStrategyParams(6, 60, 120);
+      SetupRiskMultiplier(true, 8, 0, 10, 0, 2.0, "Euro Session");
+      SetupNewsFilter(true);
+      SetupBlockMessages();
       
       return true;
    }
@@ -203,43 +228,14 @@ public:
       AddSymbols("USDJPY");
       
       // Configuration from USDJPY_FXScalper.mq5
-      m_config.strategyName = "USDJPY_FXScalper V1.0";
-      m_config.strategyComment = "USDJPY_FXScalper";
-      m_config.baseMagic = 37483647;
-      m_config.useAllSymbols = false;
-      m_config.timeframe = PERIOD_M5;
-      m_config.riskPercent = 0.5;
-      m_config.tpPoints = 200;
-      m_config.slPoints = 180;
-      m_config.tslTriggerPoints = 10;
-      m_config.tslPoints = 10;
-      m_config.startHour = 13;
-      m_config.endHour = 18;
-      m_config.strategyMode = STRATEGY_BREAKOUT;
-      m_config.barsN = 5;
-      m_config.expirationBars = 50;
-      m_config.orderDistPoints = 80;
-      m_config.useTrailingTP = true;
-      m_config.trailingTPMode = TRAILING_TP_CUSTOM;
-      m_config.customTPLevels = "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150";
-      m_config.useRiskMultiplier = true;
-      m_config.riskMultStartHour = 14;
-      m_config.riskMultStartMinute = 0;
-      m_config.riskMultEndHour = 15;
-      m_config.riskMultEndMinute = 30;
-      m_config.riskMultiplier = 2.0;
-      m_config.riskMultDescription = "London-NY Overlap";
-      m_config.useNewsFilter = false;
-      m_config.newsCurrencies = "USD,EUR,GBP";
-      m_config.keyNewsEvents = "NFP,JOLTS,Nonfarm,PMI,Interest Rate,CPI,GDP";
-      m_config.stopBeforeNewsMin = 30;
-      m_config.startAfterNewsMin = 10;
-      m_config.newsLookupDays = 7;
-      m_config.newsSeparator = COMMA;
-      m_config.newsBlockMsg = "📰 TRADING PAUSED - High Impact News Event";
-      m_config.hourBlockMsg = "⏰ TRADING PAUSED - Outside Trading Hours";
-      m_config.dayBlockMsg = "📅 TRADING PAUSED - Outside Trading Days";
-      m_config.bothBlockMsg = "🚫 TRADING PAUSED - Outside Trading Schedule";
+      SetupBasicParams("USDJPY_FXScalper V1.0", "USDJPY_FXScalper", 37483647);
+      SetupRiskParams(0.5, 200, 180);
+      SetupTrailingStop(10, 10, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupTradingHours(13, 18);
+      SetupStrategyParams(5, 50, 80);
+      SetupRiskMultiplier(true, 14, 0, 15, 30, 2.0, "London-NY Overlap");
+      SetupNewsFilter(false);
+      SetupBlockMessages();
       
       return true;
    }
@@ -257,43 +253,14 @@ public:
       AddSymbols("US100.cash,US30.cash,US500.cash");
       
       // Configuration from USIndices_Scalper.mq5
-      m_config.strategyName = "US Indices Scalper V1.0";
-      m_config.strategyComment = "USIndices_Scalper";
-      m_config.baseMagic = 29834757;
-      m_config.useAllSymbols = false;
-      m_config.timeframe = PERIOD_M5;
-      m_config.riskPercent = 1.5;
-      m_config.tpPoints = 5000;
-      m_config.slPoints = 5000;
-      m_config.tslTriggerPoints = 200;
-      m_config.tslPoints = 150;
-      m_config.startHour = 0;
-      m_config.endHour = 0;
-      m_config.strategyMode = STRATEGY_BREAKOUT;
-      m_config.barsN = 6;
-      m_config.expirationBars = 60;
-      m_config.orderDistPoints = 120;
-      m_config.useTrailingTP = true;
-      m_config.trailingTPMode = TRAILING_TP_STEPPED;
-      m_config.customTPLevels = "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150";
-      m_config.useRiskMultiplier = true;
-      m_config.riskMultStartHour = 14;
-      m_config.riskMultStartMinute = 0;
-      m_config.riskMultEndHour = 18;
-      m_config.riskMultEndMinute = 0;
-      m_config.riskMultiplier = 2.0;
-      m_config.riskMultDescription = "London-NY Overlap";
-      m_config.useNewsFilter = true;
-      m_config.newsCurrencies = "USD,EUR,GBP";
-      m_config.keyNewsEvents = "NFP,JOLTS,Nonfarm,PMI,Interest Rate,CPI,GDP";
-      m_config.stopBeforeNewsMin = 30;
-      m_config.startAfterNewsMin = 10;
-      m_config.newsLookupDays = 7;
-      m_config.newsSeparator = COMMA;
-      m_config.newsBlockMsg = "📰 TRADING PAUSED - High Impact News Event";
-      m_config.hourBlockMsg = "⏰ TRADING PAUSED - Outside Trading Hours";
-      m_config.dayBlockMsg = "📅 TRADING PAUSED - Outside Trading Days";
-      m_config.bothBlockMsg = "🚫 TRADING PAUSED - Outside Trading Schedule";
+      SetupBasicParams("US Indices Scalper V1.0", "USIndices_Scalper", 29834757);
+      SetupRiskParams(1.5, 5000, 5000);
+      SetupTrailingStop(200, 150, true, TRAILING_TP_STEPPED, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupTradingHours(0, 0);
+      SetupStrategyParams(6, 60, 120);
+      SetupRiskMultiplier(true, 14, 0, 18, 0, 2.0, "London-NY Overlap");
+      SetupNewsFilter(true);
+      SetupBlockMessages();
       
       return true;
    }
@@ -311,43 +278,14 @@ public:
       AddSymbols("XAUUSD");
       
       // Configuration from XAUUSD_Gold_Scalper.mq5
-      m_config.strategyName = "XAUUSD Gold Scalper V1.0";
-      m_config.strategyComment = "XAUUSD_Gold_Scalper";
-      m_config.baseMagic = 29479999;
-      m_config.useAllSymbols = false;
-      m_config.timeframe = PERIOD_M5;
-      m_config.riskPercent = 0.5;
-      m_config.tpPoints = 1500;
-      m_config.slPoints = 1500;
-      m_config.tslTriggerPoints = 20;
-      m_config.tslPoints = 15;
-      m_config.startHour = 10;
-      m_config.endHour = 17;
-      m_config.strategyMode = STRATEGY_BREAKOUT;
-      m_config.barsN = 6;
-      m_config.expirationBars = 60;
-      m_config.orderDistPoints = 120;
-      m_config.useTrailingTP = true;
-      m_config.trailingTPMode = TRAILING_TP_STEPPED;
-      m_config.customTPLevels = "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150";
-      m_config.useRiskMultiplier = true;
-      m_config.riskMultStartHour = 13;
-      m_config.riskMultStartMinute = 0;
-      m_config.riskMultEndHour = 18;
-      m_config.riskMultEndMinute = 0;
-      m_config.riskMultiplier = 2.0;
-      m_config.riskMultDescription = "London-NY Overlap";
-      m_config.useNewsFilter = true;
-      m_config.newsCurrencies = "USD,EUR,GBP";
-      m_config.keyNewsEvents = "NFP,JOLTS,Nonfarm,PMI,Interest Rate,CPI,GDP";
-      m_config.stopBeforeNewsMin = 30;
-      m_config.startAfterNewsMin = 10;
-      m_config.newsLookupDays = 7;
-      m_config.newsSeparator = COMMA;
-      m_config.newsBlockMsg = "📰 TRADING PAUSED - High Impact News Event";
-      m_config.hourBlockMsg = "⏰ TRADING PAUSED - Outside Trading Hours";
-      m_config.dayBlockMsg = "📅 TRADING PAUSED - Outside Trading Days";
-      m_config.bothBlockMsg = "🚫 TRADING PAUSED - Outside Trading Schedule";
+      SetupBasicParams("XAUUSD Gold Scalper V1.0", "XAUUSD_Gold_Scalper", 29479999);
+      SetupRiskParams(0.5, 1500, 1500);
+      SetupTrailingStop(20, 15, true, TRAILING_TP_STEPPED, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupTradingHours(10, 17);
+      SetupStrategyParams(6, 60, 120);
+      SetupRiskMultiplier(true, 13, 0, 18, 0, 2.0, "London-NY Overlap");
+      SetupNewsFilter(true);
+      SetupBlockMessages();
       
       return true;
    }
