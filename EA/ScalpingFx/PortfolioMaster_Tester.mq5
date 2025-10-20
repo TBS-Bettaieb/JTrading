@@ -42,7 +42,7 @@ input ENUM_LOG_LEVEL InpLogLevel = LOG_INFO;  // Log Level (DEBUG/INFO/WARNING/E
 CConfigManager* configManager = NULL;
 ForexScalperBot* bots[];
 string symbols[];
-int totalSymbols = 0;
+int totalSymbolsGlobal = 0;
 
 // Statistics tracking
 struct PortfolioStats
@@ -75,15 +75,15 @@ int OnInit()
    Logger::Info("💰 Initial Capital: $" + DoubleToString(g_stats.initialBalance, 2));
    
    // Parse symbols list
-   totalSymbols = ParseSymbolsList(InpSymbolsList, symbols);
+   totalSymbolsGlobal = ParseSymbolsList(InpSymbolsList, symbols);
    
-   if(totalSymbols <= 0)
+   if(totalSymbolsGlobal <= 0)
    {
       Logger::Error("❌ ERROR: No valid symbols found in list: " + InpSymbolsList);
       return(INIT_FAILED);
    }
    
-   Logger::Info("📊 Portfolio Size: " + IntegerToString(totalSymbols) + " symbols");
+   Logger::Info("📊 Portfolio Size: " + IntegerToString(totalSymbolsGlobal) + " symbols");
    Logger::Info("───────────────────────────────────────────────────");
    
    // Initialize configuration manager
@@ -106,9 +106,9 @@ int OnInit()
    Logger::Info("───────────────────────────────────────────────────");
    
    // Create bot instances for each symbol
-   ArrayResize(bots, totalSymbols);
+   ArrayResize(bots, totalSymbolsGlobal);
    
-   for(int i = 0; i < totalSymbols; i++)
+   for(int i = 0; i < totalSymbolsGlobal; i++)
    {
       string symbol = symbols[i];
       
@@ -135,7 +135,7 @@ int OnInit()
       if(InpGlobalRiskPercent > 0)
       {
          double originalRisk = config.riskPercent;
-         config.riskPercent = InpGlobalRiskPercent / totalSymbols;
+         config.riskPercent = InpGlobalRiskPercent / totalSymbolsGlobal;
          Logger::Info("   ⚙️ Risk override: " + DoubleToString(originalRisk, 2) + "% → " + 
                DoubleToString(config.riskPercent, 2) + "%");
       }
@@ -174,7 +174,7 @@ int OnInit()
    
    // Count active bots
    int activeBots = 0;
-   for(int i = 0; i < totalSymbols; i++)
+   for(int i = 0; i < totalSymbolsGlobal; i++)
    {
       if(bots[i] != NULL) activeBots++;
    }
@@ -188,7 +188,7 @@ int OnInit()
    
    Logger::Info("═══════════════════════════════════════════════════");
    Logger::Success("✅ Portfolio Master initialized successfully");
-   Logger::Info("📊 Active Bots: " + IntegerToString(activeBots) + "/" + IntegerToString(totalSymbols));
+   Logger::Info("📊 Active Bots: " + IntegerToString(activeBots) + "/" + IntegerToString(totalSymbolsGlobal));
    Logger::Success("🚀 Ready to test portfolio trading");
    Logger::Info("═══════════════════════════════════════════════════");
    
@@ -262,7 +262,7 @@ void OnDeinit(const int reason)
 void OnTick()
 {
    // Process each bot
-   for(int i = 0; i < totalSymbols; i++)
+   for(int i = 0; i < totalSymbolsGlobal; i++)
    {
       if(bots[i] != NULL)
       {
@@ -434,12 +434,12 @@ void SaveTestConfiguration(double totalProfit, double profitPercent, double maxD
    content += "\n";
    content += "PORTFOLIO COMPOSITION:\n";
    content += "Symbols: " + InpSymbolsList + "\n";
-   content += "Total Symbols: " + IntegerToString(totalSymbols) + "\n";
+   content += "Total Symbols: " + IntegerToString(totalSymbolsGlobal) + "\n";
    
    if(InpGlobalRiskPercent > 0)
    {
       content += "Global Risk: " + DoubleToString(InpGlobalRiskPercent, 2) + "% (total)\n";
-      content += "Risk per Symbol: " + DoubleToString(InpGlobalRiskPercent / totalSymbols, 2) + "%\n";
+      content += "Risk per Symbol: " + DoubleToString(InpGlobalRiskPercent / totalSymbolsGlobal, 2) + "%\n";
    }
    else
    {

@@ -259,7 +259,7 @@ public:
              m_position.Volume()
          );
          // 2️⃣ Spread (coût d'entrée)
-         double spreadPoints = SymbolInfoInteger(m_symbol, SYMBOL_SPREAD);
+         double spreadPoints = (double)SymbolInfoInteger(m_symbol, SYMBOL_SPREAD);
          
          // 3️⃣ Swap (coût de financement overnight)
          double swap = PositionGetDouble(POSITION_SWAP);

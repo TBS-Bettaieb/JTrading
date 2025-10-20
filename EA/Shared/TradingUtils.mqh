@@ -227,3 +227,71 @@ bool CheckHistoricalData(string symbol, ENUM_TIMEFRAMES timeframe, int barsRequi
    
    return true;
 }
+
+//+------------------------------------------------------------------+
+//| Générer un magic number unique basé sur le symbole              |
+//| Format: BBBBSSTT                                                 |
+//|   BBBB = baseMagic (ex: 2983 pour 298347)                      |
+//|   SS = hash du symbole (00-99)                                  |
+//|   TT = hash du timeframe (00-99)                                |
+//+------------------------------------------------------------------+
+int GenerateSymbolMagicNumber(int baseMagic, string symbol, ENUM_TIMEFRAMES timeframe)
+{
+   // 1. Extraire les 4 premiers chiffres du baseMagic
+   int magicBase = (baseMagic / 100) % 10000; // Ex: 298347 → 2983
+   
+   // 2. Calculer hash du symbole (stable et unique)
+   int symbolHash = 0;
+   int len = StringLen(symbol);
+   
+   // Hash simple mais efficace : somme pondérée des caractères
+   for(int i = 0; i < len; i++)
+   {
+      ushort charCode = StringGetCharacter(symbol, i);
+      symbolHash += charCode * (i + 1); // Pondération par position
+   }
+   
+   // Normaliser entre 0-99
+   symbolHash = (symbolHash % 100);
+   
+   // 3. Calculer hash du timeframe
+   int tfHash = 0;
+   switch(timeframe)
+   {
+      case PERIOD_M1:  tfHash = 1; break;
+      case PERIOD_M5:  tfHash = 5; break;
+      case PERIOD_M15: tfHash = 15; break;
+      case PERIOD_M30: tfHash = 30; break;
+      case PERIOD_H1:  tfHash = 10; break;
+      case PERIOD_H4:  tfHash = 14; break;
+      case PERIOD_D1:  tfHash = 20; break;
+      case PERIOD_W1:  tfHash = 25; break;
+      case PERIOD_MN1: tfHash = 30; break;
+      default:         tfHash = 0; break;
+   }
+   
+   // 4. Construire le magic number final : BBBBSSTT
+   int finalMagic = (magicBase * 10000) + (symbolHash * 100) + tfHash;
+   
+   return finalMagic;
+}
+
+//+------------------------------------------------------------------+
+//| Fonction helper pour afficher les magic numbers générés         |
+//+------------------------------------------------------------------+
+void PrintMagicNumberMapping(string &symbolss[], int baseMagic, ENUM_TIMEFRAMES timeframe)
+{
+   Print("═══════════════════════════════════════");
+   Print("🔢 MAGIC NUMBER MAPPING");
+   Print("Base Magic: ", baseMagic);
+   Print("Timeframe: ", EnumToString(timeframe));
+   Print("───────────────────────────────────────");
+   
+   for(int i = 0; i < ArraySize(symbolss); i++)
+   {
+      int magic = GenerateSymbolMagicNumber(baseMagic, symbolss[i], timeframe);
+      Print(StringFormat("  %s → %d", symbolss[i], magic));
+   }
+   
+   Print("═══════════════════════════════════════");
+}

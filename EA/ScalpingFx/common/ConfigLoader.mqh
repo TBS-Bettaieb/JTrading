@@ -362,6 +362,7 @@ public:
          if(m_groups[i] != NULL && m_groups[i].HasSymbol(symbol))
          {
             config = m_groups[i].GetConfigForSymbol(symbol);
+            Logger::Info("📋 Symbol: " + symbol + " → Magic: " + IntegerToString(config.baseMagic));
             Logger::Success("✅ Found configuration for " + symbol + " in group: " + m_groups[i].GetGroupName());
             return true;
          }

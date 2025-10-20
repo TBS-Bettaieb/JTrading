@@ -88,6 +88,50 @@ input ENUM_LOG_LEVEL InpLogLevel = LOG_INFO;  // Log Level (DEBUG/INFO/WARNING/E
 ForexScalperBot* bot = NULL;
 
 //+------------------------------------------------------------------+
+//| 🧪 TEST MAGIC NUMBERS (à supprimer après validation)            |
+//+------------------------------------------------------------------+
+void TestMagicNumbers()
+{
+   string testSymbols[] = {"EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "US500.cash"};
+   int baseMagic = InpBaseMagicNumber;
+   
+   Print("═══════════════════════════════════════");
+   Print("🧪 TEST MAGIC NUMBER GENERATION");
+   Print("═══════════════════════════════════════");
+   
+   for(int i = 0; i < ArraySize(testSymbols); i++)
+   {
+      int m1 = GenerateSymbolMagicNumber(baseMagic, testSymbols[i], InpTradingTimeframe);
+      int m2 = GenerateSymbolMagicNumber(baseMagic, testSymbols[i], InpTradingTimeframe);
+      int m3 = GenerateSymbolMagicNumber(baseMagic, testSymbols[i], PERIOD_H1);
+      
+      Print(StringFormat("%s %s: %d | H1: %d | Stable: %s", 
+            testSymbols[i], EnumToString(InpTradingTimeframe), m1, m3, (m1 == m2 ? "✅" : "❌")));
+   }
+   
+   // Test collision
+   bool hasCollision = false;
+   for(int i = 0; i < ArraySize(testSymbols); i++)
+   {
+      for(int j = i+1; j < ArraySize(testSymbols); j++)
+      {
+         int m_i = GenerateSymbolMagicNumber(baseMagic, testSymbols[i], InpTradingTimeframe);
+         int m_j = GenerateSymbolMagicNumber(baseMagic, testSymbols[j], InpTradingTimeframe);
+         if(m_i == m_j)
+         {
+            Print("❌ COLLISION: ", testSymbols[i], " vs ", testSymbols[j], " → ", m_i);
+            hasCollision = true;
+         }
+      }
+   }
+   
+   if(!hasCollision)
+      Print("✅ Pas de collision détectée");
+   
+   Print("═══════════════════════════════════════");
+}
+
+//+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
@@ -142,6 +186,9 @@ int OnInit()
    
    // Logging Configuration
    config.logLevel = InpLogLevel;
+   
+   // 🧪 TEST MAGIC NUMBERS (à supprimer après validation)
+   TestMagicNumbers();
    
    // Initialize bot
    bot = new ForexScalperBot(config);

@@ -293,13 +293,23 @@ private:
    {
       ArrayResize(m_symbolTraders, m_totalSymbols);
       
+      // Afficher le mapping des magic numbers
+      PrintMagicNumberMapping(m_symbols, m_config.baseMagic, m_config.timeframe);
+      
       for(int i = 0; i < m_totalSymbols; i++)
       {
+         // Générer un magic number unique par symbole
+         int symbolMagic = GenerateSymbolMagicNumber(
+            m_config.baseMagic, 
+            m_symbols[i], 
+            m_config.timeframe
+         );
          
+         Logger::Info("✅ Creating trader for " + m_symbols[i] + " with magic " + IntegerToString(symbolMagic));
          
          m_symbolTraders[i] = new ForexSymbolTrader(
             m_symbols[i],
-            m_config.baseMagic,
+            symbolMagic,  // ✅ CORRECTION : magic unique
             m_config.timeframe,
             riskPerSymbol,
             m_config.tpPoints,
