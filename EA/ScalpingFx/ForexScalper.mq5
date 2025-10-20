@@ -75,6 +75,7 @@
 
 // Include the bot engine (all logic is here)
 #include "core/ForexScalperBot.mqh"
+#include "../Shared/Logger.mqh"
 
 // Global bot instance
 ForexScalperBot* bot = NULL;
@@ -84,6 +85,9 @@ ForexScalperBot* bot = NULL;
 //+------------------------------------------------------------------+
 int OnInit()
 {
+   // Initialize Logger first
+   Logger::Initialize(LOG_INFO, "[ForexScalper] ");
+   
    // Create bot configuration from defines
    BotConfig config;
    config.strategyName = STRATEGY_NAME;
@@ -129,19 +133,22 @@ int OnInit()
    config.newsSeparator = NEWS_SEPARATOR;
    config.newsBlockMsg = NEWS_BLOCK_MSG;
    
+   // Logging Configuration
+   config.logLevel = LOG_INFO;
+   
    // Initialize bot
    bot = new ForexScalperBot(config);
    
    if(bot == NULL)
    {
-      Print("❌ ERROR: Failed to create bot instance");
+      Logger::Error("❌ ERROR: Failed to create bot instance");
       return(INIT_FAILED);
    }
    
    // Initialize and validate
    if(!bot.Initialize())
    {
-      Print("❌ ERROR: Bot initialization failed");
+      Logger::Error("❌ ERROR: Bot initialization failed");
       delete bot;
       bot = NULL;
       return(INIT_FAILED);

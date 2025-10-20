@@ -5,6 +5,8 @@
 #property copyright "(c) 2025"
 #property version   "1.0"
 
+#include "Logger.mqh"
+
 //+------------------------------------------------------------------+
 //| Classe de gestion de l'affichage du graphique                    |
 //+------------------------------------------------------------------+
@@ -299,7 +301,7 @@ public:
          // Créer le label
          if(!ObjectCreate(m_chartId, labelName, OBJ_LABEL, 0, 0, 0))
          {
-            Print("❌ Erreur création label: ", labelName);
+            Logger::Error("❌ Erreur création label: " + labelName);
             continue;
          }
          
@@ -374,7 +376,7 @@ public:
       ChartRedraw(m_chartId);
       m_labelCounter = 0;
       
-      Print("✅ Labels nettoyés pour préfixe: ", m_labelPrefix);
+      Logger::Success("✅ Labels nettoyés pour préfixe: " + m_labelPrefix);
    }
    
    //+------------------------------------------------------------------+

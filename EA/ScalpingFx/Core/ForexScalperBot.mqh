@@ -10,6 +10,7 @@
 #include "../../../EA/Shared/TradingTimeManager.mqh"
 #include "../../../EA/Shared/ChartManager.mqh"
 #include "../../../EA/Shared/NewsFilterManager.mqh"
+#include "../../../EA/Shared/Logger.mqh"
 #include "../common/BotConfig.mqh"
 #include "../common/ForexSymbolTrader.mqh"
 #include "../common/ForexSymbolManager.mqh"
@@ -55,9 +56,10 @@ public:
    //--- Initialize bot
    bool Initialize()
    {
-      Print("═══════════════════════════════════════");
-      Print("🚀 Initializing ", m_config.strategyName);
-      Print("═══════════════════════════════════════");
+      Logger::Initialize(m_config.logLevel, "[" + m_config.strategyName + "] ");
+      Logger::Info("═══════════════════════════════════════");
+      Logger::Info("🚀 Initializing " + m_config.strategyName);
+      Logger::Info("═══════════════════════════════════════");
       
       // Step 1: Validate Trailing TP if needed
       if(!ValidateTrailingTP())
@@ -73,8 +75,8 @@ public:
       
       // Step 4: Calculate risk
       double riskPerSymbol = CalculateRiskPerSymbol(m_config.riskPercent, m_totalSymbols);
-      Print("💰 Risk per symbol: ", DoubleToString(riskPerSymbol, 2), "% (Total: ", 
-            DoubleToString(m_config.riskPercent, 2), "%)");
+      Logger::Info("💰 Risk per symbol: " + DoubleToString(riskPerSymbol, 2) + "% (Total: " + 
+            DoubleToString(m_config.riskPercent, 2) + "%)");
       
       // Step 5: Create symbol traders
       if(!CreateSymbolTraders(riskPerSymbol))
@@ -105,10 +107,10 @@ public:
    //--- Deinitialize bot
    void Deinitialize(const int reason)
    {
-      Print("═══════════════════════════════════════");
-      Print("🛑 ", m_config.strategyName, " stopping...");
-      Print("Reason: ", reason);
-      Print("═══════════════════════════════════════");
+      Logger::Info("═══════════════════════════════════════");
+      Logger::Info("🛑 " + m_config.strategyName + " stopping...");
+      Logger::Info("Reason: " + IntegerToString(reason));
+      Logger::Info("═══════════════════════════════════════");
       
       // Cleanup symbol traders
       if(ArraySize(m_symbolTraders) > 0)
@@ -122,7 +124,7 @@ public:
             }
          }
          ArrayFree(m_symbolTraders);
-         Print("✅ Symbol Traders cleaned up");
+         Logger::Success("✅ Symbol Traders cleaned up");
       }
       
       // Cleanup Risk Multiplier Manager
@@ -130,7 +132,7 @@ public:
       {
          delete m_riskMultiplierManager;
          m_riskMultiplierManager = NULL;
-         Print("✅ Risk Multiplier Manager cleaned up");
+         Logger::Success("✅ Risk Multiplier Manager cleaned up");
       }
       
       // Cleanup News Filter Manager
@@ -138,7 +140,7 @@ public:
       {
          delete m_newsFilterManager;
          m_newsFilterManager = NULL;
-         Print("✅ News Filter Manager cleaned up");
+         Logger::Success("✅ News Filter Manager cleaned up");
       }
       
       // Cleanup Time Manager
@@ -146,7 +148,7 @@ public:
       {
          delete m_timeManager;
          m_timeManager = NULL;
-         Print("✅ Time Manager cleaned up");
+         Logger::Success("✅ Time Manager cleaned up");
       }
       
       // Cleanup Chart Manager
@@ -154,12 +156,12 @@ public:
       {
          delete m_chartManager;
          m_chartManager = NULL;
-         Print("✅ Chart Manager cleaned up");
+         Logger::Success("✅ Chart Manager cleaned up");
       }
       
       ArrayFree(m_symbols);
-      Print("✅ All resources cleaned up successfully");
-      Print("═══════════════════════════════════════");
+      Logger::Success("✅ All resources cleaned up successfully");
+      Logger::Info("═══════════════════════════════════════");
    }
    
    //--- Main tick handler
@@ -189,7 +191,7 @@ public:
       {
          string newsStatus = m_newsFilterManager.GetStatusMessage();
          if(newsStatus != "")
-            Print("📰 NEWS ALERT: ", newsStatus);
+            Logger::Info("📰 NEWS ALERT: " + newsStatus);
       }
       
       // 🆕 Obtenir multiplicateur actuel
@@ -232,20 +234,20 @@ private:
    {
       if(m_config.useTrailingTP && m_config.trailingTPMode == TRAILING_TP_CUSTOM)
       {
-         Print("🔍 Validation Custom Trailing TP...");
+         Logger::Debug("🔍 Validation Custom Trailing TP...");
          string errorMessage;
          bool isValid = CTrailingTPValidator::ValidateCustomLevelsString(
             m_config.customTPLevels, errorMessage);
          
          if(!isValid)
          {
-            Print("❌ ERREUR: ", errorMessage);
-            Print("💡 Exemple: \"50:0:0, 75:25:50, 100:50:100\"");
+            Logger::Error("❌ ERREUR: " + errorMessage);
+            Logger::Info("💡 Exemple: \"50:0:0, 75:25:50, 100:50:100\"");
             return false;
          }
          
          CTrailingTPValidator::PrintParsedLevels(m_config.customTPLevels);
-         Print(errorMessage);
+         Logger::Info(errorMessage);
       }
       return true;
    }
@@ -256,17 +258,17 @@ private:
       if(m_config.useAllSymbols)
       {
          m_totalSymbols = GetSymbolsFromMarketWatch(m_symbols);
-         Print("📊 Using all symbols from Market Watch: ", m_totalSymbols, " symbols");
+         Logger::Info("📊 Using all symbols from Market Watch: " + IntegerToString(m_totalSymbols) + " symbols");
       }
       else
       {
          m_totalSymbols = ParseSymbolsList(m_config.symbolsList, m_symbols);
-         Print("📊 Using custom symbols list: ", m_totalSymbols, " symbols");
+         Logger::Info("📊 Using custom symbols list: " + IntegerToString(m_totalSymbols) + " symbols");
       }
       
       if(m_totalSymbols <= 0)
       {
-         Print("❌ ERROR: No valid symbols found");
+         Logger::Error("❌ ERROR: No valid symbols found");
          return false;
       }
       
@@ -280,7 +282,7 @@ private:
       {
          if(!CheckHistoricalData(m_symbols[i], m_config.timeframe))
          {
-            Print("⚠️ Warning: Limited historical data for ", m_symbols[i]);
+            Logger::Warning("⚠️ Warning: Limited historical data for " + m_symbols[i]);
          }
       }
       return true;
@@ -317,7 +319,7 @@ private:
          
          if(m_symbolTraders[i] == NULL)
          {
-            Print("❌ ERROR: Failed to create ForexSymbolTrader for ", m_symbols[i]);
+            Logger::Error("❌ ERROR: Failed to create ForexSymbolTrader for " + m_symbols[i]);
             return false;
          }
       }
@@ -339,7 +341,7 @@ private:
       }
       else
       {
-         Print("⚠️ Warning: Chart Manager initialization failed");
+         Logger::Warning("⚠️ Warning: Chart Manager initialization failed");
          return true; // Non-critical
       }
    }
@@ -359,8 +361,8 @@ private:
       m_timeManager.SetAlertMessages(m_config.hourBlockMsg, m_config.dayBlockMsg, 
                                      m_config.bothBlockMsg);
       
-      Print("⏰ Time Manager Configuration:");
-      Print(m_timeManager.GetDetailedInfo());
+      Logger::Info("⏰ Time Manager Configuration:");
+      Logger::Info(m_timeManager.GetDetailedInfo());
       
       return true;
    }
@@ -371,7 +373,7 @@ private:
       m_riskMultiplierManager = new RiskMultiplierManager();
       if(m_riskMultiplierManager == NULL)
       {
-         Print("⚠️ Warning: Risk Multiplier Manager creation failed");
+         Logger::Warning("⚠️ Warning: Risk Multiplier Manager creation failed");
          return true; // Non-critical
       }
       
@@ -394,7 +396,7 @@ private:
       m_newsFilterManager = new NewsFilterManager();
       if(m_newsFilterManager == NULL)
       {
-         Print("⚠️ Warning: News Filter Manager creation failed");
+         Logger::Warning("⚠️ Warning: News Filter Manager creation failed");
          return true; // Non-critical
       }
       
@@ -410,11 +412,11 @@ private:
       
       if(m_config.useNewsFilter)
       {
-         Print("📰 NEWS FILTER ENABLED");
-         Print("   Currencies: ", m_config.newsCurrencies);
-         Print("   Events: ", m_config.keyNewsEvents);
-         Print("   Stop Before: ", m_config.stopBeforeNewsMin, " min");
-         Print("   Resume After: ", m_config.startAfterNewsMin, " min");
+         Logger::Info("📰 NEWS FILTER ENABLED");
+         Logger::Info("   Currencies: " + m_config.newsCurrencies);
+         Logger::Info("   Events: " + m_config.keyNewsEvents);
+         Logger::Info("   Stop Before: " + IntegerToString(m_config.stopBeforeNewsMin) + " min");
+         Logger::Info("   Resume After: " + IntegerToString(m_config.startAfterNewsMin) + " min");
       }
       
       return true;
@@ -423,36 +425,36 @@ private:
    //--- Print initialization summary
    void PrintInitializationSummary()
    {
-      Print("✅ Initialization completed successfully!");
-      Print("📈 Trading ", m_totalSymbols, " symbols simultaneously");
-      Print("🕒 Timeframe: ", EnumToString(m_config.timeframe));
+      Logger::Success("✅ Initialization completed successfully!");
+      Logger::Info("📈 Trading " + IntegerToString(m_totalSymbols) + " symbols simultaneously");
+      Logger::Info("🕒 Timeframe: " + EnumToString(m_config.timeframe));
       
       if(m_config.useTrailingTP)
       {
-         Print("🎯 TRAILING TP: ", EnumToString(m_config.trailingTPMode));
+         Logger::Info("🎯 TRAILING TP: " + EnumToString(m_config.trailingTPMode));
          if(m_config.trailingTPMode == TRAILING_TP_CUSTOM)
-            Print("   Niveaux: ", m_config.customTPLevels);
+            Logger::Info("   Niveaux: " + m_config.customTPLevels);
       }
       
       if(m_config.useRiskMultiplier && m_riskMultiplierManager != NULL)
       {
-         Print("🚀 RISK MULTIPLIER: ", m_riskMultiplierManager.GetDetailedInfo());
+         Logger::Info("🚀 RISK MULTIPLIER: " + m_riskMultiplierManager.GetDetailedInfo());
       }
       
       if(m_config.useNewsFilter && m_newsFilterManager != NULL)
       {
-         Print("📰 NEWS FILTER: ", m_newsFilterManager.GetDetailedInfo());
+         Logger::Info("📰 NEWS FILTER: " + m_newsFilterManager.GetDetailedInfo());
       }
       
-      Print("═══════════════════════════════════════");
+      Logger::Info("═══════════════════════════════════════");
    }
    
    //--- Ajuster toutes les positions
    void AdjustAllPositionSizes(double multiplier)
    {
-      Print("═══════════════════════════════════════");
-      Print("🔄 AJUSTEMENT DES POSITIONS - Multiplier: x", DoubleToString(multiplier, 2));
-      Print("═══════════════════════════════════════");
+      Logger::Info("═══════════════════════════════════════");
+      Logger::Info("🔄 AJUSTEMENT DES POSITIONS - Multiplier: x" + DoubleToString(multiplier, 2));
+      Logger::Info("═══════════════════════════════════════");
       
       int adjustedCount = 0;
       for(int i = 0; i < m_totalSymbols; i++)
@@ -465,11 +467,11 @@ private:
       }
       
       if(adjustedCount > 0)
-         Print("✅ ", adjustedCount, " position(s) ajustée(s)");
+         Logger::Info("✅ " + IntegerToString(adjustedCount) + " position(s) ajustée(s)");
       else
-         Print("ℹ️ Aucune position à ajuster");
+         Logger::Info("ℹ️ Aucune position à ajuster");
       
-      Print("═══════════════════════════════════════");
+      Logger::Info("═══════════════════════════════════════");
    }
    
    //--- Update chart information

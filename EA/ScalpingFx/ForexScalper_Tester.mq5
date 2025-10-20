@@ -12,6 +12,7 @@
 #include "../../EA/Shared/TradingEnums.mqh"
 #include "../../EA/Shared/TrailingTP_System.mqh"
 #include "../../EA/Shared/TradingUtils.mqh"
+#include "../../EA/Shared/Logger.mqh"
 
 //+------------------------------------------------------------------+
 //| INPUT PARAMETERS FOR TESTING                                     |
@@ -75,6 +76,9 @@ input string   InpHourBlockMsg = "⏰ TRADING PAUSED - Outside Trading Hours";  
 input string   InpDayBlockMsg = "📅 TRADING PAUSED - Outside Trading Days";      // Day Block Message
 input string   InpBothBlockMsg = "🚫 TRADING PAUSED - Outside Trading Schedule"; // Both Block Message
 
+input group "🔧 LOGGING"
+input ENUM_LOG_LEVEL InpLogLevel = LOG_INFO;  // Log Level (DEBUG/INFO/WARNING/ERROR)
+
 //+------------------------------------------------------------------+
 
 // Include the bot engine (all logic is here)
@@ -88,6 +92,9 @@ ForexScalperBot* bot = NULL;
 //+------------------------------------------------------------------+
 int OnInit()
 {
+   // Initialize Logger first
+   Logger::Initialize(InpLogLevel, "[ForexScalper_Tester] ");
+   
    // Create bot configuration from input parameters
    BotConfig config;
    config.strategyName = InpStrategyName;
@@ -133,19 +140,22 @@ int OnInit()
    config.newsSeparator = InpNewsSeparator;
    config.newsBlockMsg = InpNewsBlockMsg;
    
+   // Logging Configuration
+   config.logLevel = InpLogLevel;
+   
    // Initialize bot
    bot = new ForexScalperBot(config);
    
    if(bot == NULL)
    {
-      Print("❌ ERROR: Failed to create bot instance");
+      Logger::Error("❌ ERROR: Failed to create bot instance");
       return(INIT_FAILED);
    }
    
    // Initialize and validate
    if(!bot.Initialize())
    {
-      Print("❌ ERROR: Bot initialization failed");
+      Logger::Error("❌ ERROR: Bot initialization failed");
       delete bot;
       bot = NULL;
       return(INIT_FAILED);
@@ -191,7 +201,7 @@ void DisplayInputParameters()
 {
    if(bot == NULL || bot.GetChartManager() == NULL)
    {
-      Print("⚠️ Warning: Cannot display parameters - bot or ChartManager not initialized");
+      Logger::Warning("⚠️ Warning: Cannot display parameters - bot or ChartManager not initialized");
       return;
    }
    
@@ -278,9 +288,9 @@ void DisplayInputParameters()
       newsFilterStr
    );
    
-   Print("=== TESTER INPUT PARAMETERS ===");
-   Print(inputs);
-   Print("================================");
+   Logger::Info("=== TESTER INPUT PARAMETERS ===");
+   Logger::Info(inputs);
+   Logger::Info("================================");
 }
 
 //+------------------------------------------------------------------+
@@ -311,22 +321,22 @@ void SaveConfigurationTemplate()
    
    if(fileExists) {
       FileClose(fileHandle);
-      Print("⚠️ Configuration file already exists in Common Files: ", filename, " - Overwriting...");
+      Logger::Warning("⚠️ Configuration file already exists in Common Files: " + filename + " - Overwriting...");
    }
    
    // Write to COMMON_FILES directory with UTF-8 encoding for proper icon display
    fileHandle = FileOpen(filename, FILE_WRITE|FILE_COMMON|FILE_TXT);
    if(fileHandle == INVALID_HANDLE)
    {
-      Print("❌ ERROR: Impossible de créer le fichier de config dans Common Files: ", filename);
+      Logger::Error("❌ ERROR: Impossible de créer le fichier de config dans Common Files: " + filename);
       return;
    }
    
    FileWriteString(fileHandle, headerContent);
    FileClose(fileHandle);
    
-   Print("✅ Configuration saved to Common Files: ", filename);
-   Print("📁 Location: MetaTrader 5 Common Files directory");
+   Logger::Success("✅ Configuration saved to Common Files: " + filename);
+   Logger::Info("📁 Location: MetaTrader 5 Common Files directory");
 }
 
 //+------------------------------------------------------------------+

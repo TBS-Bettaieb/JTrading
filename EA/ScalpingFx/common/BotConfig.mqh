@@ -7,6 +7,7 @@
 
 #include "../../Shared/TradingEnums.mqh"
 #include "../../Shared/TrailingTP_System.mqh"
+#include "../../Shared/Logger.mqh"
 
 //+------------------------------------------------------------------+
 //| Configuration structure                                          |
@@ -55,4 +56,7 @@ struct BotConfig
    int               newsLookupDays;
    ENUM_SEPARATOR    newsSeparator;
    string            newsBlockMsg;
+   
+   // LOGGING
+   ENUM_LOG_LEVEL    logLevel;
 };

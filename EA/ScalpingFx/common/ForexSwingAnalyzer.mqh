@@ -6,6 +6,7 @@
 #property strict
 
 #include "../../../EA/Shared/TradingEnums.mqh"
+#include "../../../EA/Shared/Logger.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe pour analyser les points swing                           |
@@ -64,7 +65,7 @@ public:
       ArrayInitialize(m_lastHighTimes, 0);
       ArrayInitialize(m_lastLowTimes, 0);
       
-      Print("✓ ForexSwingAnalyzer initialized for ", symbol);
+      Logger::Success("✓ ForexSwingAnalyzer initialized for " + symbol);
    }
    
    //+------------------------------------------------------------------+
@@ -73,7 +74,7 @@ public:
    ~ForexSwingAnalyzer()
    {
       DeleteSwingLines();
-      Print("✓ ForexSwingAnalyzer destroyed for ", m_symbol);
+      Logger::Success("✓ ForexSwingAnalyzer destroyed for " + m_symbol);
    }
    
    //+------------------------------------------------------------------+
@@ -82,12 +83,12 @@ public:
    double FindHigh()
    {
       // Tentative 1 : Recherche sur le timeframe actuel
-      Print("🔍 FindHigh: Searching on current timeframe ", EnumToString(m_timeframe));
+      Logger::Debug("🔍 FindHigh: Searching on current timeframe " + EnumToString(m_timeframe));
       double result = SearchHighOnTimeframe(m_timeframe);
       
       if(result > 0)
       {
-         Print("✓ FindHigh: Found high point at ", DoubleToString(result, _Digits), " on ", EnumToString(m_timeframe));
+         Logger::Debug("✓ FindHigh: Found high point at " + DoubleToString(result, _Digits) + " on " + EnumToString(m_timeframe));
          return result;
       }
       
@@ -95,12 +96,12 @@ public:
       ENUM_TIMEFRAMES nextTF1 = GetNextHigherTimeframe(m_timeframe);
       if(nextTF1 != PERIOD_CURRENT)
       {
-         Print("🔍 FindHigh: No point found. Trying higher timeframe ", EnumToString(nextTF1));
+         Logger::Debug("🔍 FindHigh: No point found. Trying higher timeframe " + EnumToString(nextTF1));
          result = SearchHighOnTimeframe(nextTF1);
          
          if(result > 0)
          {
-            Print("✓ FindHigh: Found high point at ", DoubleToString(result, _Digits), " on ", EnumToString(nextTF1));
+            Logger::Debug("✓ FindHigh: Found high point at " + DoubleToString(result, _Digits) + " on " + EnumToString(nextTF1));
             return result;
          }
       }
@@ -109,18 +110,18 @@ public:
       ENUM_TIMEFRAMES nextTF2 = GetNextHigherTimeframe(nextTF1);
       if(nextTF2 != PERIOD_CURRENT && nextTF1 != PERIOD_CURRENT)
       {
-         Print("🔍 FindHigh: Still no point. Trying even higher timeframe ", EnumToString(nextTF2));
+         Logger::Debug("🔍 FindHigh: Still no point. Trying even higher timeframe " + EnumToString(nextTF2));
          result = SearchHighOnTimeframe(nextTF2);
          
          if(result > 0)
          {
-            Print("✓ FindHigh: Found high point at ", DoubleToString(result, _Digits), " on ", EnumToString(nextTF2));
+            Logger::Debug("✓ FindHigh: Found high point at " + DoubleToString(result, _Digits) + " on " + EnumToString(nextTF2));
             return result;
          }
       }
       
       // Aucun point trouvé même après 3 tentatives
-      Print("✗ FindHigh: No high point found even on higher timeframes");
+      Logger::Warning("✗ FindHigh: No high point found even on higher timeframes");
       return -1;
    }
    
@@ -130,12 +131,12 @@ public:
    double FindLow()
    {
       // Tentative 1 : Recherche sur le timeframe actuel
-      Print("🔍 FindLow: Searching on current timeframe ", EnumToString(m_timeframe));
+      Logger::Debug("🔍 FindLow: Searching on current timeframe " + EnumToString(m_timeframe));
       double result = SearchLowOnTimeframe(m_timeframe);
       
       if(result > 0)
       {
-         Print("✓ FindLow: Found low point at ", DoubleToString(result, _Digits), " on ", EnumToString(m_timeframe));
+         Logger::Debug("✓ FindLow: Found low point at " + DoubleToString(result, _Digits) + " on " + EnumToString(m_timeframe));
          return result;
       }
       
@@ -143,12 +144,12 @@ public:
       ENUM_TIMEFRAMES nextTF1 = GetNextHigherTimeframe(m_timeframe);
       if(nextTF1 != PERIOD_CURRENT)
       {
-         Print("🔍 FindLow: No point found. Trying higher timeframe ", EnumToString(nextTF1));
+         Logger::Debug("🔍 FindLow: No point found. Trying higher timeframe " + EnumToString(nextTF1));
          result = SearchLowOnTimeframe(nextTF1);
          
          if(result > 0)
          {
-            Print("✓ FindLow: Found low point at ", DoubleToString(result, _Digits), " on ", EnumToString(nextTF1));
+            Logger::Debug("✓ FindLow: Found low point at " + DoubleToString(result, _Digits) + " on " + EnumToString(nextTF1));
             return result;
          }
       }
@@ -157,18 +158,18 @@ public:
       ENUM_TIMEFRAMES nextTF2 = GetNextHigherTimeframe(nextTF1);
       if(nextTF2 != PERIOD_CURRENT && nextTF1 != PERIOD_CURRENT)
       {
-         Print("🔍 FindLow: Still no point. Trying even higher timeframe ", EnumToString(nextTF2));
+         Logger::Debug("🔍 FindLow: Still no point. Trying even higher timeframe " + EnumToString(nextTF2));
          result = SearchLowOnTimeframe(nextTF2);
          
          if(result > 0)
          {
-            Print("✓ FindLow: Found low point at ", DoubleToString(result, _Digits), " on ", EnumToString(nextTF2));
+            Logger::Debug("✓ FindLow: Found low point at " + DoubleToString(result, _Digits) + " on " + EnumToString(nextTF2));
             return result;
          }
       }
       
       // Aucun point trouvé même après 3 tentatives
-      Print("✗ FindLow: No low point found even on higher timeframes");
+      Logger::Warning("✗ FindLow: No low point found even on higher timeframes");
       return -1;
    }
    

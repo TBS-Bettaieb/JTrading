@@ -7,6 +7,7 @@
 
 #include "../../Shared/TradingEnums.mqh"
 #include "../../Shared/TrailingTP_System.mqh"
+#include "../../Shared/Logger.mqh"
 #include "BotConfig.mqh"
 
 //+------------------------------------------------------------------+
@@ -398,12 +399,12 @@ public:
       {
          if(m_groups[i] == NULL || !m_groups[i].Initialize())
          {
-            Print("❌ ERROR: Failed to initialize group ", i);
+            Logger::Error("❌ ERROR: Failed to initialize group " + IntegerToString(i));
             return false;
          }
       }
       
-      Print("✅ ConfigManager: Loaded ", m_groupCount, " configuration groups");
+      Logger::Success("✅ ConfigManager: Loaded " + IntegerToString(m_groupCount) + " configuration groups");
       return true;
    }
    
@@ -413,7 +414,7 @@ public:
       // Validate symbol first
       if(!ValidateSymbol(symbol))
       {
-         Print("❌ ERROR: Symbol ", symbol, " is not valid or not available");
+         Logger::Error("❌ ERROR: Symbol " + symbol + " is not valid or not available");
          return false;
       }
       
@@ -423,12 +424,12 @@ public:
          if(m_groups[i] != NULL && m_groups[i].HasSymbol(symbol))
          {
             config = m_groups[i].GetConfigForSymbol(symbol);
-            Print("✅ Found configuration for ", symbol, " in group: ", m_groups[i].GetGroupName());
+            Logger::Success("✅ Found configuration for " + symbol + " in group: " + m_groups[i].GetGroupName());
             return true;
          }
       }
       
-      Print("❌ ERROR: No configuration found for symbol: ", symbol);
+      Logger::Error("❌ ERROR: No configuration found for symbol: " + symbol);
       return false;
    }
    
@@ -476,13 +477,13 @@ private:
    {
       if(!SymbolSelect(symbol, true))
       {
-         Print("❌ ERROR: Symbol ", symbol, " not found in Market Watch");
+         Logger::Error("❌ ERROR: Symbol " + symbol + " not found in Market Watch");
          return false;
       }
       
       if(!SymbolInfoInteger(symbol, SYMBOL_SELECT))
       {
-         Print("❌ ERROR: Symbol ", symbol, " not available for trading");
+         Logger::Error("❌ ERROR: Symbol " + symbol + " not available for trading");
          return false;
       }
       

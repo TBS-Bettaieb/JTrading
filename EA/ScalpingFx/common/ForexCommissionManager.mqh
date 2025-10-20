@@ -4,6 +4,8 @@
 //+------------------------------------------------------------------+
 #property strict
 
+#include "../../../EA/Shared/Logger.mqh"
+
 //+------------------------------------------------------------------+
 //| Classe helper pour gérer les commissions                         |
 //+------------------------------------------------------------------+
@@ -63,7 +65,7 @@ public:
         
         if(tickValue == 0 || tickSize == 0) 
         {
-            Print("Erreur: impossible de récupérer les infos du symbole ", symbol);
+            Logger::Error("Erreur: impossible de récupérer les infos du symbole " + symbol);
             return 0;
         }
         

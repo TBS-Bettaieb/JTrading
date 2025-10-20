@@ -5,6 +5,8 @@
 //+------------------------------------------------------------------+
 #property strict
 
+#include "../../../EA/Shared/Logger.mqh"
+
 //+------------------------------------------------------------------+
 //| Structure pour une période de multiplication                    |
 //+------------------------------------------------------------------+
@@ -64,19 +66,19 @@ public:
       {
          if(ValidatePeriod())
          {
-            Print("🚀 RISK MULTIPLIER ACTIVÉ: ", description);
-            Print("   Période: ", GetPeriodString());
-            Print("   Multiplicateur: x", DoubleToString(m_period.multiplier, 2));
+            Logger::Success("🚀 RISK MULTIPLIER ACTIVÉ: " + description);
+            Logger::Info("   Période: " + GetPeriodString());
+            Logger::Info("   Multiplicateur: x" + DoubleToString(m_period.multiplier, 2));
          }
          else
          {
-            Print("❌ ERREUR: Configuration Risk Multiplier invalide");
+            Logger::Error("❌ ERREUR: Configuration Risk Multiplier invalide");
             m_period.enabled = false;
          }
       }
       else
       {
-         Print("ℹ️ Risk Multiplier DÉSACTIVÉ");
+         Logger::Info("ℹ️ Risk Multiplier DÉSACTIVÉ");
       }
    }
    
@@ -140,12 +142,12 @@ public:
          
          if(currentlyActive)
          {
-            Print("🟡 RISK MULTIPLIER ACTIVÉ: x", DoubleToString(m_period.multiplier, 2), 
-                  " | Période: ", GetPeriodString());
+            Logger::Info("🟡 RISK MULTIPLIER ACTIVÉ: x" + DoubleToString(m_period.multiplier, 2) + 
+                  " | Période: " + GetPeriodString());
          }
          else
          {
-            Print("🔴 RISK MULTIPLIER DÉSACTIVÉ | Retour à x1.0");
+            Logger::Info("🔴 RISK MULTIPLIER DÉSACTIVÉ | Retour à x1.0");
          }
          
          return true;
@@ -196,7 +198,7 @@ private:
       if(m_period.startHour < 0 || m_period.startHour > 23 ||
          m_period.endHour < 0 || m_period.endHour > 23)
       {
-         Print("❌ Erreur: Heures invalides (doivent être entre 0 et 23)");
+         Logger::Error("❌ Erreur: Heures invalides (doivent être entre 0 et 23)");
          return false;
       }
       
@@ -204,14 +206,14 @@ private:
       if(m_period.startMinute < 0 || m_period.startMinute > 59 ||
          m_period.endMinute < 0 || m_period.endMinute > 59)
       {
-         Print("❌ Erreur: Minutes invalides (doivent être entre 0 et 59)");
+         Logger::Error("❌ Erreur: Minutes invalides (doivent être entre 0 et 59)");
          return false;
       }
       
       // Vérifier le multiplicateur (0.1 à 10.0)
       if(m_period.multiplier < 0.1 || m_period.multiplier > 10.0)
       {
-         Print("❌ Erreur: Multiplicateur invalide (doit être entre 0.1 et 10.0)");
+         Logger::Error("❌ Erreur: Multiplicateur invalide (doit être entre 0.1 et 10.0)");
          return false;
       }
       

@@ -6,6 +6,7 @@
 #property strict
 
 #include "../../../EA/Shared/TradingUtils.mqh"
+#include "../../../EA/Shared/Logger.mqh"
 
 //+------------------------------------------------------------------+
 //| Afficher les informations sur les symboles configurés           |
@@ -14,12 +15,12 @@ void PrintSymbolsInfo(string &symbolArray[], int baseMagic, ENUM_TIMEFRAMES time
 {
    int count = ArraySize(symbolArray);
    
-   Print("═══════════════════════════════════════");
-   Print("🔧 FOREX SYMBOLS CONFIGURATION");
-   Print("═══════════════════════════════════════");
-   Print("Total symbols: ", count);
-   Print("Strategy: ", strategyName);
-   Print("Timeframe: ", EnumToString(timeframe));
+   Logger::Info("═══════════════════════════════════════");
+   Logger::Info("🔧 FOREX SYMBOLS CONFIGURATION");
+   Logger::Info("═══════════════════════════════════════");
+   Logger::Info("Total symbols: " + IntegerToString(count));
+   Logger::Info("Strategy: " + strategyName);
+   Logger::Info("Timeframe: " + EnumToString(timeframe));
    
    for(int i = 0; i < count; i++)
    {
@@ -32,12 +33,12 @@ void PrintSymbolsInfo(string &symbolArray[], int baseMagic, ENUM_TIMEFRAMES time
       double minLot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
       double maxLot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
       
-      Print("  [", i+1, "] ", symbol, " | Magic: ", magic);
-      Print("      Point: ", DoubleToString(point, 5), " | Spread: ", DoubleToString(spread, 0));
-      Print("      Lots: ", DoubleToString(minLot, 2), " - ", DoubleToString(maxLot, 2));
+      Logger::Info("  [" + IntegerToString(i+1) + "] " + symbol + " | Magic: " + IntegerToString(magic));
+      Logger::Info("      Point: " + DoubleToString(point, 5) + " | Spread: " + DoubleToString(spread, 0));
+      Logger::Info("      Lots: " + DoubleToString(minLot, 2) + " - " + DoubleToString(maxLot, 2));
    }
    
-   Print("═══════════════════════════════════════");
+   Logger::Info("═══════════════════════════════════════");
 }
 
 //+------------------------------------------------------------------+

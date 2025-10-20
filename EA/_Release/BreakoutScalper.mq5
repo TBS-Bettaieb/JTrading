@@ -14,6 +14,7 @@ input double   InpRiskPercent = -1.0;  // Risk per trade (%) (-1 = use group def
 // Include required files
 #include "../ScalpingFx/Core/ForexScalperBot.mqh"
 #include "../ScalpingFx/common/ConfigLoader.mqh"
+#include "../../EA/Shared/Logger.mqh"
 
 // Global variables
 CConfigManager* configManager = NULL;
@@ -25,6 +26,9 @@ string currentSymbol = "";
 //+------------------------------------------------------------------+
 int OnInit()
 {
+   // Initialize Logger first
+   Logger::Initialize(LOG_INFO, "[BreakoutScalper] ");
+   
    // Determine which symbol to use
    if(InpSymbolToTrade == "")
    {
@@ -35,20 +39,20 @@ int OnInit()
       currentSymbol = InpSymbolToTrade;
    }
    
-   Print("=== INITIALIZING UNIFIED SCALPER ===");
-   Print("Target Symbol: ", currentSymbol);
+   Logger::Info("=== INITIALIZING UNIFIED SCALPER ===");
+   Logger::Info("Target Symbol: " + currentSymbol);
    
    // Initialize configuration manager
    configManager = new CConfigManager();
    if(configManager == NULL)
    {
-      Print("❌ ERROR: Failed to create configuration manager");
+      Logger::Error("❌ ERROR: Failed to create configuration manager");
       return(INIT_FAILED);
    }
    
    if(!configManager.Initialize())
    {
-      Print("❌ ERROR: Configuration manager initialization failed");
+      Logger::Error("❌ ERROR: Configuration manager initialization failed");
       delete configManager;
       configManager = NULL;
       return(INIT_FAILED);
@@ -58,13 +62,13 @@ int OnInit()
    BotConfig config;
    if(!configManager.GetConfigForSymbol(currentSymbol, config))
    {
-      Print("❌ ERROR: No configuration found for symbol: ", currentSymbol);
-      Print("Available symbols are:");
+      Logger::Error("❌ ERROR: No configuration found for symbol: " + currentSymbol);
+      Logger::Info("Available symbols are:");
       string allSymbols[];
       int symbolCount = configManager.GetAllSymbols(allSymbols);
       for(int i = 0; i < symbolCount; i++)
       {
-         Print("  - ", allSymbols[i]);
+         Logger::Info("  - " + allSymbols[i]);
       }
       
       delete configManager;
@@ -76,13 +80,13 @@ int OnInit()
    if(InpRiskPercent > 0)
    {
       config.riskPercent = InpRiskPercent;
-      Print("⚠️ Risk percent overridden to: ", InpRiskPercent, "%");
+      Logger::Warning("⚠️ Risk percent overridden to: " + DoubleToString(InpRiskPercent, 1) + "%");
    }
    
    // Validate symbol is available before creating bot
    if(!ValidateSymbolAvailable(currentSymbol))
    {
-      Print("❌ ERROR: Symbol ", currentSymbol, " is not available for trading");
+      Logger::Error("❌ ERROR: Symbol " + currentSymbol + " is not available for trading");
       delete configManager;
       configManager = NULL;
       return(INIT_FAILED);
@@ -92,7 +96,7 @@ int OnInit()
    bot = new ForexScalperBot(config);
    if(bot == NULL)
    {
-      Print("❌ ERROR: Failed to create bot instance");
+      Logger::Error("❌ ERROR: Failed to create bot instance");
       delete configManager;
       configManager = NULL;
       return(INIT_FAILED);
@@ -100,7 +104,7 @@ int OnInit()
    
    if(!bot.Initialize())
    {
-      Print("❌ ERROR: Bot initialization failed");
+      Logger::Error("❌ ERROR: Bot initialization failed");
       delete bot;
       bot = NULL;
       delete configManager;
@@ -111,11 +115,11 @@ int OnInit()
    // Display configuration info
    DisplayConfigurationInfo(config);
    
-   Print("✅ UNIFIED SCALPER INITIALIZED SUCCESSFULLY");
-   Print("Symbol: ", currentSymbol);
-   Print("Strategy: ", config.strategyName);
-   Print("Magic: ", config.baseMagic);
-   Print("Risk: ", config.riskPercent, "%");
+   Logger::Success("✅ UNIFIED SCALPER INITIALIZED SUCCESSFULLY");
+   Logger::Info("Symbol: " + currentSymbol);
+   Logger::Info("Strategy: " + config.strategyName);
+   Logger::Info("Magic: " + IntegerToString(config.baseMagic));
+   Logger::Info("Risk: " + DoubleToString(config.riskPercent, 1) + "%");
    
    return(INIT_SUCCEEDED);
 }
@@ -138,7 +142,7 @@ void OnDeinit(const int reason)
       configManager = NULL;
    }
    
-   Print("=== UNIFIED SCALPER DEINITIALIZED ===");
+   Logger::Info("=== UNIFIED SCALPER DEINITIALIZED ===");
 }
 
 //+------------------------------------------------------------------+
@@ -159,20 +163,20 @@ bool ValidateSymbolAvailable(string symbol)
 {
    if(!SymbolSelect(symbol, true))
    {
-      Print("❌ ERROR: Symbol ", symbol, " not found in Market Watch");
+      Logger::Error("❌ ERROR: Symbol " + symbol + " not found in Market Watch");
       return false;
    }
    
    if(!SymbolInfoInteger(symbol, SYMBOL_SELECT))
    {
-      Print("❌ ERROR: Symbol ", symbol, " not available for trading");
+      Logger::Error("❌ ERROR: Symbol " + symbol + " not available for trading");
       return false;
    }
    
    // Check if symbol info is valid
    if(SymbolInfoDouble(symbol, SYMBOL_BID) <= 0)
    {
-      Print("❌ ERROR: Invalid price data for symbol ", symbol);
+      Logger::Error("❌ ERROR: Invalid price data for symbol " + symbol);
       return false;
    }
    
@@ -241,9 +245,9 @@ void DisplayConfigurationInfo(BotConfig &config)
    );
    
    Comment(info);
-   Print("=== CONFIGURATION INFO ===");
-   Print(info);
-   Print("==========================");
+   Logger::Info("=== CONFIGURATION INFO ===");
+   Logger::Info(info);
+   Logger::Info("==========================");
 }
 
 //+------------------------------------------------------------------+
