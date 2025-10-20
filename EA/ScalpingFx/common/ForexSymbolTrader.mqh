@@ -41,7 +41,6 @@ private:
    int               m_slPoints;            // Stop Loss en points
    int               m_tslTriggerPoints;    // Points en profit avant TSL
    int               m_tslPoints;           // Trailing Stop Loss
-   bool              m_disableTslInProfit;  // Désactiver TSL en profit NET
    int               m_barsN;               // Nombre de barres pour l'analyse
    int               m_expirationBars;      // Expiration des ordres
    int               m_orderDistPoints;     // Distance des ordres
@@ -91,8 +90,7 @@ public:
                      ENUM_STRATEGY_MODE strategyMode,
                      bool useTrailingTP = false,
                      ENUM_TRAILING_TP_MODE trailingTPMode = TRAILING_TP_STEPPED,
-                     string customTPLevels = "",
-                     bool disableTslInProfit = false)
+                     string customTPLevels = "")
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -102,7 +100,6 @@ public:
       m_slPoints = slPoints;
       m_tslTriggerPoints = tslTriggerPoints;
       m_tslPoints = tslPoints;
-      m_disableTslInProfit = disableTslInProfit;
       m_barsN = barsN;
       m_expirationBars = expirationBars;
       m_orderDistPoints = orderDistPoints;
@@ -238,7 +235,7 @@ public:
    //| Trailing Stop pour ce symbole                                   |
    //+------------------------------------------------------------------+
    //+------------------------------------------------------------------+
-   //| Trailing Stop Loss avec option de désactivation en profit NET   |
+   //| Trailing Stop Loss avec buffer de commission                     |
    //+------------------------------------------------------------------+
    void TrailStop()
    {
@@ -252,39 +249,15 @@ public:
          if(PositionGetString(POSITION_SYMBOL) != m_symbol) continue;
          if(PositionGetInteger(POSITION_MAGIC) != m_magicNumber) continue;
          
-         // 🆕 VÉRIFICATION PROFIT NET AVEC COMMISSIONS ET SWAP
-         if(m_disableTslInProfit)
-         {
-            // Calculer le profit NET (CRITIQUE: inclure commissions + swap)
-            double profitGross = PositionGetDouble(POSITION_PROFIT);
-            double commission = m_commissionManager.GetCommission(m_position);
-            double commissionPoints = m_commissionManager.CalculateCommissionInPoints(m_position.Symbol(), commission, m_position.Volume());
-           
-           
-            
-            // Profit NET = Profit brut + Commissions (négatives) + Swap
-            double profitNet = profitGross + commission ;
-            
-            // Si position en profit NET, on désactive le trailing stop
-            if(profitNet > 0)
-            {
-               // Log optionnel pour debug (seulement la première fois)
-               static datetime lastLogTime = 0;
-               if(TimeCurrent() - lastLogTime > 300)  // Log toutes les 5 minutes max
-               {
-                  Print("🔒 TSL désactivé #", ticket, " [", m_symbol, "] - Profit NET: $", 
-                        DoubleToString(profitNet, 2), 
-                        " (Brut: $", DoubleToString(profitGross, 2),
-                        " | Com: $", DoubleToString(commission, 2),
-                         ")");
-                  lastLogTime = TimeCurrent();
-               }
-               
-               continue;  // Skip le trailing stop pour cette position
-            }
-            
-            // Si profitNet <= 0, on continue normalement avec le trailing stop
-         }
+         // Calculate commission costs for this position
+         if(!m_position.SelectByTicket(ticket)) continue;
+         
+         double commission = m_commissionManager.GetCommission(m_position);
+         double commissionPoints = m_commissionManager.CalculateCommissionInPoints(
+             m_position.Symbol(), 
+             commission, 
+             m_position.Volume()
+         );
          
          // ═══ LOGIQUE DE TRAILING STOP NORMALE ═══
          double currentSL = PositionGetDouble(POSITION_SL);
@@ -302,7 +275,7 @@ public:
             // Vérifier si trigger atteint
             if(profitPoints >= m_tslTriggerPoints)
             {
-               double newSL = currentPrice - (m_tslPoints * point);
+               double newSL = currentPrice - (m_tslPoints * point) + (commissionPoints * point);
                
                // Ne bouger que si amélioration du SL
                if(newSL > currentSL)
@@ -329,7 +302,7 @@ public:
             
             if(profitPoints >= m_tslTriggerPoints)
             {
-               double newSL = currentPrice + (m_tslPoints * point);
+               double newSL = currentPrice + (m_tslPoints * point) - (commissionPoints * point);
                
                // Ne bouger que si amélioration (ou SL non défini)
                if(newSL < currentSL || currentSL == 0)
