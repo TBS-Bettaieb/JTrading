@@ -28,6 +28,54 @@ private:
    static ENUM_LOG_LEVEL s_logLevel;
    static string s_prefix;
 
+   //+------------------------------------------------------------------+
+   //| Extract filename from full path                                  |
+   //+------------------------------------------------------------------+
+   static string GetFileName(string fullPath)
+   {
+      if(fullPath == "") return "";
+      
+      string parts[];
+      int count = StringSplit(fullPath, '\\', parts);
+      if(count > 0)
+         return parts[count-1];
+      count = StringSplit(fullPath, '/', parts);
+      if(count > 0)
+         return parts[count-1];
+      return fullPath; // Return original if no separator found
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Format log message with filename and method name                |
+   //+------------------------------------------------------------------+
+   static string FormatLogMessage(string level, string message, string fileName = "", string methodName = "")
+   {
+      string result = s_prefix;
+      result += level;
+      
+      if(fileName != "" || methodName != "")
+      {
+         result += " [";
+         if(fileName != "")
+         {
+            result += GetFileName(fileName);
+            if(methodName != "") result += "::";
+         }
+         if(methodName != "")
+         {
+            result += methodName;
+         }
+         result += "] ";
+      }
+      else
+      {
+         result += " ";
+      }
+      
+      result += message;
+      return result;
+   }
+
 public:
    //+------------------------------------------------------------------+
    //| Initialize logger                                                |
@@ -45,7 +93,7 @@ public:
    {
       if(s_logLevel >= LOG_ERROR)
       {
-         Print(s_prefix, "❌ ERROR: ", message);
+         Print(FormatLogMessage("❌ ERROR", message, __FILE__, __FUNCTION__));
       }
    }
    
@@ -56,7 +104,7 @@ public:
    {
       if(s_logLevel >= LOG_WARNING)
       {
-         Print(s_prefix, "⚠️ WARNING: ", message);
+         Print(FormatLogMessage("⚠️ WARNING", message, __FILE__, __FUNCTION__));
       }
    }
    
@@ -67,7 +115,7 @@ public:
    {
       if(s_logLevel >= LOG_INFO)
       {
-         Print(s_prefix, "ℹ️ INFO: ", message);
+         Print(FormatLogMessage("ℹ️ INFO", message, __FILE__, __FUNCTION__));
       }
    }
    
@@ -78,7 +126,7 @@ public:
    {
       if(s_logLevel >= LOG_DEBUG)
       {
-         Print(s_prefix, "🔍 DEBUG: ", message);
+         Print(FormatLogMessage("🔍 DEBUG", message, __FILE__, __FUNCTION__));
       }
    }
    
@@ -89,7 +137,7 @@ public:
    {
       if(s_logLevel >= LOG_INFO)
       {
-         Print(s_prefix, "✅ SUCCESS: ", message);
+         Print(FormatLogMessage("✅ SUCCESS", message, __FILE__, __FUNCTION__));
       }
    }
    
@@ -100,7 +148,8 @@ public:
    {
       if(s_logLevel >= LOG_INFO)
       {
-         Print(s_prefix, isBuy ? "🟢 BUY: " : "🔴 SELL: ", message);
+         string signalLevel = isBuy ? "🟢 BUY" : "🔴 SELL";
+         Print(FormatLogMessage(signalLevel, message, __FILE__, __FUNCTION__));
       }
    }
    
