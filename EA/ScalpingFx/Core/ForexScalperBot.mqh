@@ -295,12 +295,11 @@ private:
       
       for(int i = 0; i < m_totalSymbols; i++)
       {
-         int magicNumber = GenerateMagicNumber(m_config.baseMagic, i, 
-                                               m_config.timeframe, "ScalpingRobot");
+         
          
          m_symbolTraders[i] = new ForexSymbolTrader(
             m_symbols[i],
-            magicNumber,
+            m_config.baseMagic,
             m_config.timeframe,
             riskPerSymbol,
             m_config.tpPoints,

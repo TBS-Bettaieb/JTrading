@@ -24,7 +24,6 @@ void PrintSymbolsInfo(string &symbolArray[], int baseMagic, ENUM_TIMEFRAMES time
    
    for(int i = 0; i < count; i++)
    {
-      int magic = GenerateMagicNumber(baseMagic, i, timeframe, strategyName);
       string symbol = symbolArray[i];
       
       // Informations sur le symbole
@@ -33,7 +32,7 @@ void PrintSymbolsInfo(string &symbolArray[], int baseMagic, ENUM_TIMEFRAMES time
       double minLot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
       double maxLot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
       
-      Logger::Info("  [" + IntegerToString(i+1) + "] " + symbol + " | Magic: " + IntegerToString(magic));
+      Logger::Info("  [" + IntegerToString(i+1) + "] " + symbol + " | Magic: " + IntegerToString(baseMagic));
       Logger::Info("      Point: " + DoubleToString(point, 5) + " | Spread: " + DoubleToString(spread, 0));
       Logger::Info("      Lots: " + DoubleToString(minLot, 2) + " - " + DoubleToString(maxLot, 2));
    }

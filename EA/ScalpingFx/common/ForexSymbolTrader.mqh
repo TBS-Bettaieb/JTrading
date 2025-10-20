@@ -103,7 +103,7 @@ public:
       m_barsN = barsN;
       m_expirationBars = expirationBars;
       m_orderDistPoints = orderDistPoints;
-      m_tradeComment = tradeComment + "_" + symbol;
+      m_tradeComment = "BreakoutScalper_" + TimeframeToString(m_timeframe);
       m_strategyMode = strategyMode;
       
       // Initialiser les variables
@@ -258,7 +258,29 @@ public:
              commission, 
              m_position.Volume()
          );
+         // 2️⃣ Spread (coût d'entrée)
+         double spreadPoints = SymbolInfoInteger(m_symbol, SYMBOL_SPREAD);
          
+         // 3️⃣ Swap (coût de financement overnight)
+         double swap = PositionGetDouble(POSITION_SWAP);
+         double swapPoints = 0;
+         if(swap != 0) {
+            double tickValue = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_VALUE);
+            double volume = PositionGetDouble(POSITION_VOLUME);
+            double tickSize = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_SIZE);
+            double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+            
+            if(tickValue > 0 && volume > 0) {
+               swapPoints = (swap / tickValue / volume) * (tickSize / point);
+            }
+         }  
+
+
+         double totalCostPoints = commissionPoints + spreadPoints + swapPoints;
+         // Note: Si swap est négatif (coût), on l'ajoute. Si positif (gain), on pourrait le soustraire,
+         // mais pour un BE conservateur, on peut ignorer les swaps positifs
+         if(swap < 0) totalCostPoints += MathAbs(swapPoints);
+
          // ═══ LOGIQUE DE TRAILING STOP NORMALE ═══
          double currentSL = PositionGetDouble(POSITION_SL);
          double currentPrice = PositionGetDouble(POSITION_PRICE_CURRENT);
@@ -275,7 +297,7 @@ public:
             // Vérifier si trigger atteint
             if(profitPoints >= m_tslTriggerPoints)
             {
-               double newSL = currentPrice - (m_tslPoints * point) + (commissionPoints * point);
+               double newSL = currentPrice - (m_tslPoints * point) + (totalCostPoints * point);
                
                // Ne bouger que si amélioration du SL
                if(newSL > currentSL)
@@ -302,7 +324,7 @@ public:
             
             if(profitPoints >= m_tslTriggerPoints)
             {
-               double newSL = currentPrice + (m_tslPoints * point) - (commissionPoints * point);
+               double newSL = currentPrice + (m_tslPoints * point) - (totalCostPoints * point);
                
                // Ne bouger que si amélioration (ou SL non défini)
                if(newSL < currentSL || currentSL == 0)
@@ -511,7 +533,7 @@ public:
             double additionalVolume = newVolume - currentVolume;
             if(posType == POSITION_TYPE_BUY)
             {
-               if(trade.Buy(additionalVolume, m_symbol, 0, currentSL, currentTP, m_tradeComment + "_Boost"))
+               if(trade.Buy(additionalVolume, m_symbol, 0, currentSL, currentTP, m_tradeComment))
                {
                   Print("📈 Position #", ticket, " [", m_symbol, "] augmentée: ", 
                         DoubleToString(currentVolume, 2), " → ", DoubleToString(newVolume, 2), " lots");
@@ -520,7 +542,7 @@ public:
             }
             else if(posType == POSITION_TYPE_SELL)
             {
-               if(trade.Sell(additionalVolume, m_symbol, 0, currentSL, currentTP, m_tradeComment + "_Boost"))
+               if(trade.Sell(additionalVolume, m_symbol, 0, currentSL, currentTP, m_tradeComment))
                {
                   Print("📉 Position #", ticket, " [", m_symbol, "] augmentée: ", 
                         DoubleToString(currentVolume, 2), " → ", DoubleToString(newVolume, 2), " lots");
@@ -809,6 +831,26 @@ private:
          {
             Print("✗ Failed to send Sell Limit order for ", m_symbol, " | Error: ", GetLastError());
          }
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Convertir un timeframe en string                                |
+   //+------------------------------------------------------------------+
+   string TimeframeToString(ENUM_TIMEFRAMES tf)
+   {
+      switch(tf)
+      {
+         case PERIOD_M1:  return "M1";
+         case PERIOD_M5:  return "M5";
+         case PERIOD_M15: return "M15";
+         case PERIOD_M30: return "M30";
+         case PERIOD_H1:  return "H1";
+         case PERIOD_H4:  return "H4";
+         case PERIOD_D1:  return "D1";
+         case PERIOD_W1:  return "W1";
+         case PERIOD_MN1: return "MN1";
+         default:         return "UNKNOWN";
       }
    }
    

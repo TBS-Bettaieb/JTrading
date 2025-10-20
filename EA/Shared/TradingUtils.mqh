@@ -132,30 +132,7 @@ int GetSymbolsFromMarketWatch(string &symbolArray[])
    return validCount;
 }
 
-//+------------------------------------------------------------------+
-//| Générer un magic number unique pour un symbole                  |
-//+------------------------------------------------------------------+
-int GenerateMagicNumber(int baseMagic, int symbolIndex, ENUM_TIMEFRAMES timeframe, string strategyName = "")
-{
-   // Calculer le hash du timeframe (0-20)
-   int tfHash = GetTimeframeHash(timeframe);
-   
-   // Calculer le hash du nom de stratégie (0-99)
-   int stratHash = GetStrategyHash(strategyName);
-   
-   // Format du Magic Number : BBBBBBSSTTII
-   // BBBBBB = BaseMagic (jusqu'à 6 chiffres)
-   // SS = Strategy Hash (2 chiffres)
-   // TT = Timeframe Hash (2 chiffres)
-   // II = Symbol Index (2 chiffres)
-   
-   int magic = baseMagic * 10000;        // Décaler le base magic
-   magic += stratHash * 100;              // Ajouter le hash stratégie
-   magic += tfHash * 10;                  // Ajouter le hash timeframe
-   magic += symbolIndex;                  // Ajouter l'index symbole
-   
-   return magic;
-}
+
 
 //+------------------------------------------------------------------+
 //| Fonction helper pour obtenir un hash du timeframe               |
