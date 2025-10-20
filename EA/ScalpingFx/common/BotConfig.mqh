@@ -31,6 +31,7 @@ struct BotConfig
    int               barsN;
    int               expirationBars;
    int               orderDistPoints;
+   int               slippagePoints;        // NEW: Slippage tolerance in points
    bool              useTrailingTP;
    ENUM_TRAILING_TP_MODE trailingTPMode;
    string            customTPLevels;

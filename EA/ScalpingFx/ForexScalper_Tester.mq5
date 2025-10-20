@@ -46,6 +46,7 @@ input ENUM_STRATEGY_MODE InpStrategyType = STRATEGY_BREAKOUT; // Strategy Type: 
 input int      InpBarsAnalysis = 5;                         // Bars Analysis
 input int      InpExpirationBars = 50;                      // Expiration Bars
 input int      InpOrderDistancePoints = 80;                // Order Distance (Points)
+input int      InpSlippagePoints = 10;                     // Slippage Tolerance (Points)
 
 input group "🎯 TRAILING TAKE PROFIT"
 input bool     InpUseTrailingTP = true;                     // Use Trailing TP
@@ -158,6 +159,7 @@ int OnInit()
    config.barsN = InpBarsAnalysis;
    config.expirationBars = InpExpirationBars;
    config.orderDistPoints = InpOrderDistancePoints;
+   config.slippagePoints = InpSlippagePoints;
    config.useTrailingTP = InpUseTrailingTP;
    config.trailingTPMode = InpTrailingTPMode;
    config.customTPLevels = InpCustomTPLevels;

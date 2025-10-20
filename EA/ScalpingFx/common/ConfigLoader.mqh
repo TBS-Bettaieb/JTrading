@@ -122,11 +122,12 @@ protected:
    }
    
    // Setup strategy-specific parameters
-   void SetupStrategyParams(int barsN, int expirationBars, int orderDistPoints)
+   void SetupStrategyParams(int barsN, int expirationBars, int orderDistPoints, int slippagePoints = 10)
    {
       m_config.barsN = barsN;
       m_config.expirationBars = expirationBars;
       m_config.orderDistPoints = orderDistPoints;
+      m_config.slippagePoints = slippagePoints;
    }
    
    // Setup risk multiplier
@@ -181,7 +182,7 @@ public:
       SetupBasicParams("EU_GU_FXScalper V1.0", "EU_GU_FXScalper", 2971308);
       SetupRiskParams(1.0, 200, 180);
       SetupTrailingStop(10, 10, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours(7, 20);
+      SetupTradingHours(7, 21);
       SetupStrategyParams(5, 50, 80);
       SetupRiskMultiplier(false, 13, 0, 17, 0, 2.0, "London-NY Overlap");
       SetupNewsFilter(false);
@@ -204,10 +205,10 @@ public:
       
       // Configuration from GER40_Scalper.mq5
       SetupBasicParams("GER40 Scalper V1.0", "GER40_Scalper", 28834731);
-      SetupRiskParams(0.5, 5000, 5000);
-      SetupTrailingStop(200, 150, true, TRAILING_TP_STEPPED, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours(7, 21);
-      SetupStrategyParams(6, 60, 120);
+      SetupRiskParams(0.5, 7000, 5500);
+      SetupTrailingStop(100, 50, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupTradingHours(7, 18);
+      SetupStrategyParams(6, 60, 120,50);
       SetupRiskMultiplier(true, 8, 0, 10, 0, 2.0, "Euro Session");
       SetupNewsFilter(true);
       SetupBlockMessages();
@@ -229,9 +230,9 @@ public:
       
       // Configuration from USDJPY_FXScalper.mq5
       SetupBasicParams("USDJPY_FXScalper V1.0", "USDJPY_FXScalper", 37483647);
-      SetupRiskParams(0.5, 200, 180);
+      SetupRiskParams(0.25, 200, 180);
       SetupTrailingStop(10, 10, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours(13, 18);
+      SetupTradingHours(7, 21);
       SetupStrategyParams(5, 50, 80);
       SetupRiskMultiplier(true, 14, 0, 15, 30, 2.0, "London-NY Overlap");
       SetupNewsFilter(false);
@@ -242,21 +243,71 @@ public:
 };
 
 //+------------------------------------------------------------------+
-//| US Indices Group Configuration                                    |
+//| US100 Index Group Configuration                                   |
 //+------------------------------------------------------------------+
-class CUSIndicesGroup : public CConfigGroup
+class CUS100IndexGroup : public CConfigGroup
 {
 public:
    bool Initialize() override
    {
-      m_groupName = "US_Indices";
-      AddSymbols("US100.cash,US30.cash,US500.cash");
+      m_groupName = "US100_Index";
+      AddSymbols("US100.cash");
       
       // Configuration from USIndices_Scalper.mq5
-      SetupBasicParams("US Indices Scalper V1.0", "USIndices_Scalper", 29834757);
-      SetupRiskParams(1.5, 5000, 5000);
-      SetupTrailingStop(200, 150, true, TRAILING_TP_STEPPED, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours(0, 0);
+      SetupBasicParams("US100 Index Scalper V1.0", "US100_Scalper", 29834757);
+      SetupRiskParams(0.5, 5000, 5000);
+      SetupTrailingStop(200, 150, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupTradingHours(13,21);
+      SetupStrategyParams(6, 60, 120,50);
+      SetupRiskMultiplier(false, 14, 30, 18, 0, 2.0, "London-NY Overlap");
+      SetupNewsFilter(true);
+      SetupBlockMessages();
+      
+      return true;
+   }
+};
+
+//+------------------------------------------------------------------+
+//| US30 Index Group Configuration                                    |
+//+------------------------------------------------------------------+
+class CUS30IndexGroup : public CConfigGroup
+{
+public:
+   bool Initialize() override
+   {
+      m_groupName = "US30_Index";
+      AddSymbols("US30.cash");
+      
+      // Configuration from USIndices_Scalper.mq5
+      SetupBasicParams("US30 Index Scalper V1.0", "US30_Scalper", 29834758);
+      SetupRiskParams(0.5, 7000, 5500);
+      SetupTrailingStop(30, 5, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupTradingHours(8, 21);
+      SetupStrategyParams(5, 50, 140,50);
+      SetupRiskMultiplier(true, 14, 0, 18, 0, 2.0, "London-NY Overlap");
+      SetupNewsFilter(true);
+      SetupBlockMessages();
+      
+      return true;
+   }
+};
+
+//+------------------------------------------------------------------+
+//| US500 Index Group Configuration                                   |
+//+------------------------------------------------------------------+
+class CUS500IndexGroup : public CConfigGroup
+{
+public:
+   bool Initialize() override
+   {
+      m_groupName = "US500_Index";
+      AddSymbols("US500.cash");
+      
+      // Configuration from USIndices_Scalper.mq5
+      SetupBasicParams("US500 Index Scalper V1.0", "US500_Scalper", 29834759);
+      SetupRiskParams(0.25, 4000, 3600);
+      SetupTrailingStop(20, 5, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupTradingHours(8, 20);
       SetupStrategyParams(6, 60, 120);
       SetupRiskMultiplier(true, 14, 0, 18, 0, 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
@@ -279,11 +330,11 @@ public:
       
       // Configuration from XAUUSD_Gold_Scalper.mq5
       SetupBasicParams("XAUUSD Gold Scalper V1.0", "XAUUSD_Gold_Scalper", 29479999);
-      SetupRiskParams(0.5, 1500, 1500);
-      SetupTrailingStop(20, 15, true, TRAILING_TP_STEPPED, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours(10, 17);
-      SetupStrategyParams(6, 60, 120);
-      SetupRiskMultiplier(true, 13, 0, 18, 0, 2.0, "London-NY Overlap");
+      SetupRiskParams(0.5, 1600,1400);
+      SetupTrailingStop(20, 15, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupTradingHours(7, 20);
+      SetupStrategyParams(6, 60, 120,30);
+      SetupRiskMultiplier(true, 13, 15, 18, 0, 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
@@ -322,15 +373,17 @@ public:
    bool Initialize()
    {
       // Create all group instances
-      ArrayResize(m_groups, 5);
+      ArrayResize(m_groups, 7);
       
       m_groups[0] = new CEUGUForexGroup();
       m_groups[1] = new CGER40IndexGroup();
       m_groups[2] = new CUSDJPYForexGroup();
-      m_groups[3] = new CUSIndicesGroup();
-      m_groups[4] = new CXAUUSDGoldGroup();
+      m_groups[3] = new CUS100IndexGroup();
+      m_groups[4] = new CUS30IndexGroup();
+      m_groups[5] = new CUS500IndexGroup();
+      m_groups[6] = new CXAUUSDGoldGroup();
       
-      m_groupCount = 5;
+      m_groupCount = 7;
       
       // Initialize each group
       for(int i = 0; i < m_groupCount; i++)
@@ -373,7 +426,7 @@ public:
    }
    
    // Get all symbols from all groups
-   int GetAllSymbols(string &symbols[])
+   int GetAllSymbols(string &symbolss[])
    {
       int totalSymbols = 0;
       string temp[];
@@ -392,10 +445,10 @@ public:
          }
       }
       
-      ArrayResize(symbols, totalSymbols);
+      ArrayResize(symbolss, totalSymbols);
       for(int i = 0; i < totalSymbols; i++)
       {
-         symbols[i] = temp[i];
+         symbolss[i] = temp[i];
       }
       
       return totalSymbols;
