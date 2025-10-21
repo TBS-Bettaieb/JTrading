@@ -552,78 +552,124 @@ void TrailStop()
    }
    
    //+------------------------------------------------------------------+
-   //| 🆕 Ajuster toutes les positions existantes                       |
+   //| 🆕 Ajuster le multiplicateur + ordres pending                    |
    //+------------------------------------------------------------------+
    int AdjustPositionSizes(double newMultiplier)
    {
-      int adjustedCount = 0;
-      CTrade trade;
-      trade.SetExpertMagicNumber(m_magicNumber);
+      // Valider le multiplicateur (0.1 à 10.0)
+      double validMultiplier = MathMax(0.1, MathMin(10.0, newMultiplier));
       
-      for(int i = PositionsTotal() - 1; i >= 0; i--)
+      // Sauvegarder l'ancien multiplicateur pour le calcul
+      double oldMultiplier = m_currentRiskMultiplier;
+      
+      // ✅ Mettre à jour le multiplicateur actuel
+      m_currentRiskMultiplier = validMultiplier;
+      
+      int adjustedOrders = 0;
+      
+      // ✅ Ajuster les ordres pending existants
+      for(int i = OrdersTotal() - 1; i >= 0; i--)
       {
-         if(!m_position.SelectByIndex(i)) continue;
-         if(m_position.Magic() != m_magicNumber) continue;
-         if(m_position.Symbol() != m_symbol) continue;
+         ulong ticket = OrderGetTicket(i);
+         if(!OrderSelect(ticket)) continue;
          
-         ulong ticket = m_position.Ticket();
-         double currentVolume = m_position.Volume();
-         double currentTP = m_position.TakeProfit();
-         double currentSL = m_position.StopLoss();
-         ENUM_POSITION_TYPE posType = m_position.PositionType();
+         // Vérifier que c'est notre ordre
+         if(OrderGetInteger(ORDER_MAGIC) != m_magicNumber) continue;
+         if(OrderGetString(ORDER_SYMBOL) != m_symbol) continue;
          
-         // Calculer nouveau volume
-         double baseVolume = currentVolume / m_currentRiskMultiplier;
-         double newVolume = baseVolume * newMultiplier;
+         // Récupérer les infos de l'ordre
+         ENUM_ORDER_TYPE orderType = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+         double orderPrice = OrderGetDouble(ORDER_PRICE_OPEN);
+         double orderSL = OrderGetDouble(ORDER_SL);
+         double orderTP = OrderGetDouble(ORDER_TP);
+         double currentVolume = OrderGetDouble(ORDER_VOLUME_CURRENT);
+         datetime expiration = (datetime)OrderGetInteger(ORDER_TIME_EXPIRATION);
          
-         // Normaliser
+         // Calculer le nouveau volume
+         // Hypothèse: l'ordre a été créé avec l'ancien multiplicateur
+         double baseVolume = (oldMultiplier > 0) ? (currentVolume / oldMultiplier) : currentVolume;
+         double newVolume = baseVolume * validMultiplier;
+         
+         // Normaliser selon les contraintes du broker
          double minLot = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MIN);
          double maxLot = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_MAX);
          double lotStep = SymbolInfoDouble(m_symbol, SYMBOL_VOLUME_STEP);
-         newVolume = MathMax(minLot, MathMin(maxLot, newVolume));
          newVolume = MathFloor(newVolume / lotStep) * lotStep;
+         newVolume = MathMax(minLot, MathMin(maxLot, newVolume));
          newVolume = NormalizeDouble(newVolume, 2);
          
+         // Si le volume n'a pas changé significativement, passer
          if(MathAbs(newVolume - currentVolume) < lotStep) continue;
          
-         // Ajuster
-         if(newVolume > currentVolume)
+         // ✅ Supprimer l'ancien ordre
+         if(!m_trade.OrderDelete(ticket))
          {
-            // Augmenter
-            double additionalVolume = newVolume - currentVolume;
-            if(posType == POSITION_TYPE_BUY)
-            {
-               if(trade.Buy(additionalVolume, m_symbol, 0, currentSL, currentTP, m_tradeComment))
-               {
-                  Print("📈 Position #", ticket, " [", m_symbol, "] augmentée: ", 
-                        DoubleToString(currentVolume, 2), " → ", DoubleToString(newVolume, 2), " lots");
-                  adjustedCount++;
-               }
-            }
-            else if(posType == POSITION_TYPE_SELL)
-            {
-               if(trade.Sell(additionalVolume, m_symbol, 0, currentSL, currentTP, m_tradeComment))
-               {
-                  Print("📉 Position #", ticket, " [", m_symbol, "] augmentée: ", 
-                        DoubleToString(currentVolume, 2), " → ", DoubleToString(newVolume, 2), " lots");
-                  adjustedCount++;
-               }
-            }
+            Print("❌ [", m_symbol, "] Impossible de supprimer ordre #", ticket, " | Erreur: ", GetLastError());
+            continue;
          }
-         else if(newVolume < currentVolume)
+         
+         // ✅ Recréer l'ordre avec le nouveau volume
+         bool success = false;
+         ulong newTicket = 0;
+         
+         switch(orderType)
          {
-            // Réduire
-            double volumeToClose = currentVolume - newVolume;
-            if(trade.PositionClosePartial(ticket, volumeToClose))
-            {
-               Print("📉 Position #", ticket, " [", m_symbol, "] réduite: ", 
-                     DoubleToString(currentVolume, 2), " → ", DoubleToString(newVolume, 2), " lots");
-               adjustedCount++;
-            }
+            case ORDER_TYPE_BUY_STOP:
+               success = m_trade.BuyStop(newVolume, orderPrice, m_symbol, orderSL, orderTP, 
+                                        ORDER_TIME_SPECIFIED, expiration, m_tradeComment);
+               newTicket = m_trade.ResultOrder();
+               break;
+               
+            case ORDER_TYPE_SELL_STOP:
+               success = m_trade.SellStop(newVolume, orderPrice, m_symbol, orderSL, orderTP,
+                                         ORDER_TIME_SPECIFIED, expiration, m_tradeComment);
+               newTicket = m_trade.ResultOrder();
+               break;
+               
+            case ORDER_TYPE_BUY_LIMIT:
+               success = m_trade.BuyLimit(newVolume, orderPrice, m_symbol, orderSL, orderTP,
+                                         ORDER_TIME_SPECIFIED, expiration, m_tradeComment);
+               newTicket = m_trade.ResultOrder();
+               break;
+               
+            case ORDER_TYPE_SELL_LIMIT:
+               success = m_trade.SellLimit(newVolume, orderPrice, m_symbol, orderSL, orderTP,
+                                          ORDER_TIME_SPECIFIED, expiration, m_tradeComment);
+               newTicket = m_trade.ResultOrder();
+               break;
+               
+            default:
+               // Ignorer les autres types (Market orders ne devraient pas être ici)
+               continue;
+         }
+         
+         if(success)
+         {
+            Print("📝 [", m_symbol, "] Ordre #", ticket, " → #", newTicket, " | Volume: ", 
+                  DoubleToString(currentVolume, 2), " → ", DoubleToString(newVolume, 2), " lots");
+            adjustedOrders++;
+         }
+         else
+         {
+            Print("❌ [", m_symbol, "] Échec recréation ordre (", EnumToString(orderType), ") | ",
+                  "Prix: ", DoubleToString(orderPrice, _Digits), " | Volume: ", DoubleToString(newVolume, 2), " | ",
+                  "Erreur: ", GetLastError());
          }
       }
       
-      return adjustedCount;
+      // Log du résultat final
+      if(adjustedOrders > 0)
+      {
+         Print("📊 [", m_symbol, "] Multiplicateur: ", DoubleToString(oldMultiplier, 2), 
+               " → ", DoubleToString(validMultiplier, 2), " | ", adjustedOrders, " ordre(s) ajusté(s)");
+      }
+      else
+      {
+         Print("📊 [", m_symbol, "] Multiplicateur: ", DoubleToString(oldMultiplier, 2),
+               " → ", DoubleToString(validMultiplier, 2), " | Aucun ordre pending à ajuster");
+      }
+      
+      return adjustedOrders;
    }
    
    //+------------------------------------------------------------------+
