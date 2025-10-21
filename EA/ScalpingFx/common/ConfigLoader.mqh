@@ -232,12 +232,12 @@ public:
       
       // Configuration from USDJPY_FXScalper.mq5
       SetupBasicParams("USDJPY_FXScalper V1.0", "USDJPY_FXScalper", 37483647);
-      SetupRiskParams(0.25, 200, 180);
-      SetupTrailingStop(10, 10, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupRiskParams(0.25, 230, 210);
+      SetupTrailingStop(30, 20, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours(13, 18);
-      SetupStrategyParams(5, 50, 80,10,1);
+      SetupStrategyParams(5, 50, 80,10,30);
       SetupRiskMultiplier(true, 14, 0, 15, 30, 2.0, "London-NY Overlap");
-      SetupNewsFilter(false);
+      SetupNewsFilter(true);
       SetupBlockMessages();
       
       return true;
