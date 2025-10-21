@@ -236,46 +236,37 @@ public:
          }
       }
    }
-   
    //+------------------------------------------------------------------+
-   //| Trailing Stop Loss avec buffer de commission                     |
-   //+------------------------------------------------------------------+
-   void TrailStop()
+//| Trailing Stop Loss avec breakeven correct                        |
+//+------------------------------------------------------------------+
+void TrailStop()
+{
+   // ✅ ÉTAPE 1: Obtenir le stop level minimum du broker
+   int stopLevel = (int)SymbolInfoInteger(m_symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+   double minDistance = stopLevel * point;
+
+   if(stopLevel == 0)
    {
-   
-   
-   // ✅ ÉTAPE 2: Parcourir toutes les positions de ce symbole
+      int spread = (int)SymbolInfoInteger(m_symbol, SYMBOL_SPREAD);
+      minDistance = spread * point * 2.0;
+   }
+
+   double safetyMargin = MathMax(minDistance * 0.1, 5.0 * point);
+   minDistance += safetyMargin;
+
+   // ✅ ÉTAPE 2: Parcourir toutes les positions
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
       ulong ticket = PositionGetTicket(i);
       if(ticket <= 0) continue;
       
-      // Vérifier que c'est notre position
       if(PositionGetString(POSITION_SYMBOL) != m_symbol) continue;
       if(PositionGetInteger(POSITION_MAGIC) != m_magicNumber) continue;
       
-      // ✅ ÉTAPE 1: Obtenir le stop level minimum du broker
-      int stopLevel = (int)SymbolInfoInteger(m_symbol, SYMBOL_TRADE_STOPS_LEVEL);
-      double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
-      double minDistance = stopLevel * point;
-
-      // Si stopLevel = 0, utiliser le spread comme minimum de sécurité
-      if(stopLevel == 0)
-      {
-         int spread = (int)SymbolInfoInteger(m_symbol, SYMBOL_SPREAD);
-         minDistance = spread * point * 2.0; // 2x spread minimum pour sécurité
-      }
-
-      // Ajouter une marge de sécurité supplémentaire (10% du minDistance ou 5 points minimum)
-      double safetyMargin = MathMax(minDistance * 0.1, 5.0 * point);
-      minDistance += safetyMargin;
-
-      Print("🔍 [", m_symbol, "] Stop Level: ", stopLevel, " pts | Min Distance: ", 
-      DoubleToString(minDistance / point, 1), " pts");
-      
-      // ✅ ÉTAPE 3: Calculer les coûts de commission
       if(!m_position.SelectByTicket(ticket)) continue;
       
+      // ✅ ÉTAPE 3: Calculer TOUS les coûts
       double commission = m_commissionManager.GetCommission(m_position);
       double commissionPoints = m_commissionManager.CalculateCommissionInPoints(
           m_position.Symbol(), 
@@ -283,13 +274,11 @@ public:
           m_position.Volume()
       );
       
-      // Spread (coût d'entrée)
       double spreadPoints = SymbolInfoInteger(m_symbol, SYMBOL_SPREAD);
       
-      // Swap (coût de financement overnight)
       double swap = PositionGetDouble(POSITION_SWAP);
       double swapPoints = 0;
-      if(swap != 0)
+      if(swap < 0) // Seulement si swap négatif (coût)
       {
          double tickValue = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_VALUE);
          double volume = PositionGetDouble(POSITION_VOLUME);
@@ -297,22 +286,22 @@ public:
          
          if(tickValue > 0 && volume > 0)
          {
-            swapPoints = (swap / tickValue / volume) * (tickSize / point);
+            swapPoints = MathAbs((swap / tickValue / volume) * (tickSize / point));
          }
       }
       
       // Total des coûts en points
-      double totalCostPoints = commissionPoints + spreadPoints;
-      // Si swap négatif (coût), l'ajouter
-      if(swap < 0) totalCostPoints += MathAbs(swapPoints);
+      double totalCostPoints = commissionPoints + spreadPoints + swapPoints;
       
-      // ✅ ÉTAPE 4: Logique de trailing stop
+      // ✅ ÉTAPE 4: Calculer le prix de BREAKEVEN
       double currentSL = PositionGetDouble(POSITION_SL);
       double currentPrice = PositionGetDouble(POSITION_PRICE_CURRENT);
       double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
       ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
       
       double profitPoints = 0;
+      double breakEvenSL = 0;
+      double newSL = 0;
       
       // ═══════════════════════════════════════════════════════
       // POSITIONS BUY
@@ -321,50 +310,46 @@ public:
       {
          profitPoints = (currentPrice - openPrice) / point;
          
+         // 🎯 BREAKEVEN = Prix d'entrée + TOUS les coûts
+         breakEvenSL = openPrice + (totalCostPoints * point);
+         
          // Vérifier si trigger atteint
          if(profitPoints >= m_tslTriggerPoints)
          {
-            // Calculer le nouveau SL avec buffer de coûts
-            double newSL = currentPrice - (m_tslPoints * point) + (totalCostPoints * point);
+            // Calculer le trailing SL
+            double trailingSL = currentPrice - (m_tslPoints * point);
             
-            // ✅ VÉRIFICATION CRITIQUE: Distance minimale
+            // 🔥 CHOIX: Prendre le MEILLEUR entre breakeven et trailing
+            // (le plus haut pour BUY = meilleure protection)
+            newSL = MathMax(breakEvenSL, trailingSL);
+            
+            // ✅ Vérifier distance minimale
             double actualDistance = currentPrice - newSL;
             if(actualDistance < minDistance)
             {
                newSL = currentPrice - minDistance;
-               Print("⚠️ #", ticket, " [", m_symbol, "] BUY: SL ajusté au minimum | ",
-                     "Distance: ", DoubleToString(actualDistance / point, 1), " → ",
-                     DoubleToString(minDistance / point, 1), " pts");
             }
             
-            // Normaliser le prix
+            // Normaliser
             newSL = NormalizeDouble(newSL, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS));
             
-            // Ne bouger que si amélioration du SL
-            if(newSL > currentSL + point) // Ajouter 1 point pour éviter modifications inutiles
+            // Ne bouger que si amélioration
+            if(newSL > currentSL + point)
             {
                if(m_trade.PositionModify(ticket, newSL, PositionGetDouble(POSITION_TP)))
                {
-                  Print("📈 TSL appliqué #", ticket, " [", m_symbol, "] BUY: SL ", 
+                  Print("📈 TSL #", ticket, " [", m_symbol, "] BUY: ", 
                         DoubleToString(currentSL, 5), " → ", DoubleToString(newSL, 5),
-                        " | Profit: ", DoubleToString(profitPoints, 1), " pts");
+                        " | Profit: ", DoubleToString(profitPoints, 1), " pts",
+                        " | BE: ", DoubleToString(breakEvenSL, 5),
+                        " | Costs: ", DoubleToString(totalCostPoints, 1), " pts");
                   
-                  // Mettre à jour les lignes TP/SL
                   if(m_trendlineManager != NULL)
                   {
                      m_trendlineManager.UpdatePositionLines(ticket, 
                                                          PositionGetDouble(POSITION_TP), 
                                                          newSL);
                   }
-               }
-               else
-               {
-                  int error = GetLastError();
-                  Print("❌ Échec TSL #", ticket, " [", m_symbol, "] BUY | ",
-                        "SL: ", DoubleToString(newSL, 5), " | ",
-                        "Prix: ", DoubleToString(currentPrice, 5), " | ",
-                        "Distance: ", DoubleToString((currentPrice - newSL) / point, 1), " pts | ",
-                        "Erreur: ", error);
                }
             }
          }
@@ -376,23 +361,27 @@ public:
       {
          profitPoints = (openPrice - currentPrice) / point;
          
+         // 🎯 BREAKEVEN = Prix d'entrée - TOUS les coûts
+         breakEvenSL = openPrice - (totalCostPoints * point);
+         
          // Vérifier si trigger atteint
          if(profitPoints >= m_tslTriggerPoints)
          {
-            // Calculer le nouveau SL avec buffer de coûts
-            double newSL = currentPrice + (m_tslPoints * point) - (totalCostPoints * point);
+            // Calculer le trailing SL
+            double trailingSL = currentPrice + (m_tslPoints * point);
             
-            // ✅ VÉRIFICATION CRITIQUE: Distance minimale
+            // 🔥 CHOIX: Prendre le MEILLEUR entre breakeven et trailing
+            // (le plus bas pour SELL = meilleure protection)
+            newSL = MathMin(breakEvenSL, trailingSL);
+            
+            // ✅ Vérifier distance minimale
             double actualDistance = newSL - currentPrice;
             if(actualDistance < minDistance)
             {
                newSL = currentPrice + minDistance;
-               Print("⚠️ #", ticket, " [", m_symbol, "] SELL: SL ajusté au minimum | ",
-                     "Distance: ", DoubleToString(actualDistance / point, 1), " → ",
-                     DoubleToString(minDistance / point, 1), " pts");
             }
             
-            // Normaliser le prix
+            // Normaliser
             newSL = NormalizeDouble(newSL, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS));
             
             // Ne bouger que si amélioration (ou SL non défini)
@@ -400,11 +389,12 @@ public:
             {
                if(m_trade.PositionModify(ticket, newSL, PositionGetDouble(POSITION_TP)))
                {
-                  Print("📉 TSL appliqué #", ticket, " [", m_symbol, "] SELL: SL ", 
+                  Print("📉 TSL #", ticket, " [", m_symbol, "] SELL: ", 
                         DoubleToString(currentSL, 5), " → ", DoubleToString(newSL, 5),
-                        " | Profit: ", DoubleToString(profitPoints, 1), " pts");
+                        " | Profit: ", DoubleToString(profitPoints, 1), " pts",
+                        " | BE: ", DoubleToString(breakEvenSL, 5),
+                        " | Costs: ", DoubleToString(totalCostPoints, 1), " pts");
                   
-                  // Mettre à jour les lignes TP/SL
                   if(m_trendlineManager != NULL)
                   {
                      m_trendlineManager.UpdatePositionLines(ticket, 
@@ -412,20 +402,11 @@ public:
                                                          newSL);
                   }
                }
-               else
-               {
-                  int error = GetLastError();
-                  Print("❌ Échec TSL #", ticket, " [", m_symbol, "] SELL | ",
-                        "SL: ", DoubleToString(newSL, 5), " | ",
-                        "Prix: ", DoubleToString(currentPrice, 5), " | ",
-                        "Distance: ", DoubleToString((newSL - currentPrice) / point, 1), " pts | ",
-                        "Erreur: ", error);
-               }
             }
          }
       }
    }
-   }
+}
    
    //+------------------------------------------------------------------+
    //| Fermer toutes les positions et ordres pour ce symbole          |
@@ -841,7 +822,7 @@ private:
       if(m_strategyMode == STRATEGY_BREAKOUT)
       {
          // Mode BREAKOUT : utiliser BuyStop (attendre que le prix casse le niveau)
-         double adjustedEntry = entry + (m_entryOffsetPoints * m_point);  // NEW: Apply offset
+         double adjustedEntry = entry - (m_entryOffsetPoints * m_point);  // NEW: Apply offset
          double adjustedTP = adjustedEntry + m_tpPoints * m_point;        // NEW: Recalc TP
          double adjustedSL = adjustedEntry - m_slPoints * m_point;        // NEW: Recalc SL
          
@@ -894,7 +875,7 @@ private:
       if(m_strategyMode == STRATEGY_BREAKOUT)
       {
          // Mode BREAKOUT : utiliser SellStop (attendre que le prix casse le niveau)
-         double adjustedEntry = entry - (m_entryOffsetPoints * m_point);  // NEW: Apply offset
+         double adjustedEntry = entry + (m_entryOffsetPoints * m_point);  // NEW: Apply offset
          double adjustedTP = adjustedEntry - m_tpPoints * m_point;        // NEW: Recalc TP
          double adjustedSL = adjustedEntry + m_slPoints * m_point;        // NEW: Recalc SL
          
