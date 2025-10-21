@@ -283,9 +283,9 @@ public:
       // Configuration from USIndices_Scalper.mq5
       SetupBasicParams("US30 Index Scalper V1.0", "US30_Scalper", 29834758);
       SetupRiskParams(0.5, 7000, 5500);
-      SetupTrailingStop(30, 5, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupTrailingStop(800, 400, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours(8, 21);
-      SetupStrategyParams(5, 50, 140,50,20);
+      SetupStrategyParams(5, 50, 140,50,200);
       SetupRiskMultiplier(true, 14, 0, 18, 0, 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
