@@ -122,12 +122,14 @@ protected:
    }
    
    // Setup strategy-specific parameters
-   void SetupStrategyParams(int barsN, int expirationBars, int orderDistPoints, int slippagePoints = 10)
+   void SetupStrategyParams(int barsN, int expirationBars, int orderDistPoints, 
+                           int slippagePoints = 10, int entryOffsetPoints = 0)
    {
       m_config.barsN = barsN;
       m_config.expirationBars = expirationBars;
       m_config.orderDistPoints = orderDistPoints;
       m_config.slippagePoints = slippagePoints;
+      m_config.entryOffsetPoints = entryOffsetPoints;
    }
    
    // Setup risk multiplier
@@ -183,7 +185,7 @@ public:
       SetupRiskParams(1.0, 200, 180);
       SetupTrailingStop(10, 10, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours(7, 21);
-      SetupStrategyParams(5, 50, 80);
+      SetupStrategyParams(5, 50, 80,10,0);
       SetupRiskMultiplier(false, 13, 0, 17, 0, 2.0, "London-NY Overlap");
       SetupNewsFilter(false);
       SetupBlockMessages();
@@ -208,7 +210,7 @@ public:
       SetupRiskParams(0.5, 7000, 5500);
       SetupTrailingStop(100, 50, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours(7, 18);
-      SetupStrategyParams(6, 60, 120,50);
+      SetupStrategyParams(6, 60, 120,50,30);
       SetupRiskMultiplier(true, 8, 0, 10, 0, 2.0, "Euro Session");
       SetupNewsFilter(true);
       SetupBlockMessages();
@@ -232,8 +234,8 @@ public:
       SetupBasicParams("USDJPY_FXScalper V1.0", "USDJPY_FXScalper", 37483647);
       SetupRiskParams(0.25, 200, 180);
       SetupTrailingStop(10, 10, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours(7, 21);
-      SetupStrategyParams(5, 50, 80);
+      SetupTradingHours(13, 18);
+      SetupStrategyParams(5, 50, 80,10,1);
       SetupRiskMultiplier(true, 14, 0, 15, 30, 2.0, "London-NY Overlap");
       SetupNewsFilter(false);
       SetupBlockMessages();
@@ -258,7 +260,7 @@ public:
       SetupRiskParams(0.5, 5000, 5000);
       SetupTrailingStop(200, 150, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours(13,21);
-      SetupStrategyParams(6, 60, 120,50);
+      SetupStrategyParams(6, 60, 120,50,20);
       SetupRiskMultiplier(false, 14, 30, 18, 0, 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
@@ -283,7 +285,7 @@ public:
       SetupRiskParams(0.5, 7000, 5500);
       SetupTrailingStop(30, 5, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours(8, 21);
-      SetupStrategyParams(5, 50, 140,50);
+      SetupStrategyParams(5, 50, 140,50,20);
       SetupRiskMultiplier(true, 14, 0, 18, 0, 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
@@ -308,7 +310,7 @@ public:
       SetupRiskParams(0.25, 4000, 3600);
       SetupTrailingStop(20, 5, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours(8, 20);
-      SetupStrategyParams(6, 60, 120);
+      SetupStrategyParams(6, 60, 120,30,20);
       SetupRiskMultiplier(true, 14, 0, 18, 0, 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
@@ -333,7 +335,7 @@ public:
       SetupRiskParams(0.5, 1600,1400);
       SetupTrailingStop(20, 15, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours(7, 20);
-      SetupStrategyParams(6, 60, 120,30);
+      SetupStrategyParams(6, 60, 120,30,10);
       SetupRiskMultiplier(true, 13, 15, 18, 0, 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();

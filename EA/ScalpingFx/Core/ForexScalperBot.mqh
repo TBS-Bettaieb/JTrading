@@ -320,6 +320,7 @@ private:
             m_config.expirationBars,
             m_config.orderDistPoints,
             m_config.slippagePoints,        // NEW
+            m_config.entryOffsetPoints,     // NEW
             m_config.strategyComment,
             m_config.strategyMode,
             m_config.useTrailingTP,

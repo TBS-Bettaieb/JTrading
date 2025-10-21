@@ -45,6 +45,7 @@ private:
    int               m_expirationBars;      // Expiration des ordres
    int               m_orderDistPoints;     // Distance des ordres
    int               m_slippagePoints;      // NEW: Slippage tolerance
+   int               m_entryOffsetPoints;   // NEW: Entry offset for Stop orders
    string            m_tradeComment;        // Commentaire des trades
    ENUM_STRATEGY_MODE m_strategyMode; // Mode de stratégie (Breakout/Reversion)
    
@@ -88,6 +89,7 @@ public:
                      int expirationBars,
                      int orderDistPoints,
                      int slippagePoints,
+                     int entryOffsetPoints,
                      string tradeComment,
                      ENUM_STRATEGY_MODE strategyMode,
                      bool useTrailingTP = false,
@@ -106,6 +108,7 @@ public:
       m_expirationBars = expirationBars;
       m_orderDistPoints = orderDistPoints;
       m_slippagePoints = slippagePoints;
+      m_entryOffsetPoints = entryOffsetPoints;
       m_tradeComment = "BreakoutScalper_" + TimeframeToString(m_timeframe);
       m_strategyMode = strategyMode;
       
@@ -838,11 +841,19 @@ private:
       if(m_strategyMode == STRATEGY_BREAKOUT)
       {
          // Mode BREAKOUT : utiliser BuyStop (attendre que le prix casse le niveau)
-         if(ask > entry - m_orderDistPoints * m_point) return;
+         double adjustedEntry = entry + (m_entryOffsetPoints * m_point);  // NEW: Apply offset
+         double adjustedTP = adjustedEntry + m_tpPoints * m_point;        // NEW: Recalc TP
+         double adjustedSL = adjustedEntry - m_slPoints * m_point;        // NEW: Recalc SL
          
-         if(m_trade.BuyStop(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
+         // Recalculate lots with adjusted SL for proper risk calculation
+         if(m_riskPercent > 0) lots = CalcLots(adjustedEntry - adjustedSL);
+         
+         if(ask > adjustedEntry - m_orderDistPoints * m_point) return;
+         
+         if(m_trade.BuyStop(lots, adjustedEntry, m_symbol, adjustedSL, adjustedTP, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
          {
-            Print("✓ Buy Stop order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
+            Print("✓ Buy Stop order sent for ", m_symbol, " at ", adjustedEntry, 
+                  " (offset: ", m_entryOffsetPoints, " pts) | Lots: ", lots);
          }
          else
          {
@@ -883,11 +894,19 @@ private:
       if(m_strategyMode == STRATEGY_BREAKOUT)
       {
          // Mode BREAKOUT : utiliser SellStop (attendre que le prix casse le niveau)
-         if(bid < entry + m_orderDistPoints * m_point) return;
+         double adjustedEntry = entry - (m_entryOffsetPoints * m_point);  // NEW: Apply offset
+         double adjustedTP = adjustedEntry - m_tpPoints * m_point;        // NEW: Recalc TP
+         double adjustedSL = adjustedEntry + m_slPoints * m_point;        // NEW: Recalc SL
          
-         if(m_trade.SellStop(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
+         // Recalculate lots with adjusted SL for proper risk calculation
+         if(m_riskPercent > 0) lots = CalcLots(adjustedSL - adjustedEntry);
+         
+         if(bid < adjustedEntry + m_orderDistPoints * m_point) return;
+         
+         if(m_trade.SellStop(lots, adjustedEntry, m_symbol, adjustedSL, adjustedTP, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
          {
-            Print("✓ Sell Stop order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
+            Print("✓ Sell Stop order sent for ", m_symbol, " at ", adjustedEntry,
+                  " (offset: ", m_entryOffsetPoints, " pts) | Lots: ", lots);
          }
          else
          {
