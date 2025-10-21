@@ -332,10 +332,10 @@ public:
       
       // Configuration from XAUUSD_Gold_Scalper.mq5
       SetupBasicParams("XAUUSD Gold Scalper V1.0", "XAUUSD_Gold_Scalper", 29479999);
-      SetupRiskParams(0.5, 1600,1400);
-      SetupTrailingStop(20, 15, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
+      SetupRiskParams(0.25, 1600,1400);
+      SetupTrailingStop(70, 25, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       SetupTradingHours(7, 20);
-      SetupStrategyParams(6, 60, 120,30,10);
+      SetupStrategyParams(6, 60, 90,30,40);
       SetupRiskMultiplier(true, 13, 15, 18, 0, 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
