@@ -247,6 +247,13 @@ public:
    // ✅ ÉTAPE 2: Parcourir toutes les positions de ce symbole
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket <= 0) continue;
+      
+      // Vérifier que c'est notre position
+      if(PositionGetString(POSITION_SYMBOL) != m_symbol) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != m_magicNumber) continue;
+      
       // ✅ ÉTAPE 1: Obtenir le stop level minimum du broker
       int stopLevel = (int)SymbolInfoInteger(m_symbol, SYMBOL_TRADE_STOPS_LEVEL);
       double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
@@ -265,13 +272,6 @@ public:
 
       Print("🔍 [", m_symbol, "] Stop Level: ", stopLevel, " pts | Min Distance: ", 
       DoubleToString(minDistance / point, 1), " pts");
-
-      ulong ticket = PositionGetTicket(i);
-      if(ticket <= 0) continue;
-      
-      // Vérifier que c'est notre position
-      if(PositionGetString(POSITION_SYMBOL) != m_symbol) continue;
-      if(PositionGetInteger(POSITION_MAGIC) != m_magicNumber) continue;
       
       // ✅ ÉTAPE 3: Calculer les coûts de commission
       if(!m_position.SelectByTicket(ticket)) continue;
