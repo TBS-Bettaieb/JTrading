@@ -6,10 +6,10 @@
 
 ## 📊 Overview
 
-This document contains all trading configurations organized by 5 different trading groups, each optimized for specific market instruments and trading sessions.
+This document contains all trading configurations organized by 7 different trading groups, each optimized for specific market instruments and trading sessions.
 
-**Total Groups:** 5  
-**Total Symbols:** 7
+**Total Groups:** 7  
+**Total Symbols:** 8
 
 ---
 
@@ -41,7 +41,7 @@ This document contains all trading configurations organized by 5 different tradi
 | Parameter | Value |
 |-----------|-------|
 | **Start Hour** | 7:00 |
-| **End Hour** | 20:00 |
+| **End Hour** | 21:00 |
 
 ### Strategy Parameters
 | Parameter | Value |
@@ -49,6 +49,8 @@ This document contains all trading configurations organized by 5 different tradi
 | **Bars N** | 5 |
 | **Expiration Bars** | 50 |
 | **Order Distance Points** | 80 |
+| **Slippage Points** | 10 |
+| **Entry Offset Points** | 0 |
 
 ### Trailing Take Profit
 | Setting | Value |
@@ -96,16 +98,16 @@ This document contains all trading configurations organized by 5 different tradi
 | Parameter | Value |
 |-----------|-------|
 | **Risk Percent** | 0.5% |
-| **Take Profit (Points)** | 5000 |
-| **Stop Loss (Points)** | 5000 |
-| **TSL Trigger Points** | 200 |
-| **TSL Points** | 150 |
+| **Take Profit (Points)** | 7000 |
+| **Stop Loss (Points)** | 5500 |
+| **TSL Trigger Points** | 100 |
+| **TSL Points** | 50 |
 
 ### Trading Hours
 | Parameter | Value |
 |-----------|-------|
 | **Start Hour** | 7:00 |
-| **End Hour** | 21:00 |
+| **End Hour** | 18:00 |
 
 ### Strategy Parameters
 | Parameter | Value |
@@ -113,12 +115,14 @@ This document contains all trading configurations organized by 5 different tradi
 | **Bars N** | 6 |
 | **Expiration Bars** | 60 |
 | **Order Distance Points** | 120 |
+| **Slippage Points** | 50 |
+| **Entry Offset Points** | 30 |
 
 ### Trailing Take Profit
 | Setting | Value |
 |---------|-------|
 | **Use Trailing TP** | ✅ Enabled |
-| **Trailing Mode** | TRAILING_TP_STEPPED |
+| **Trailing Mode** | TRAILING_TP_CUSTOM |
 | **Custom TP Levels** | `25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150` |
 
 ### Risk Multiplier
@@ -159,7 +163,7 @@ This document contains all trading configurations organized by 5 different tradi
 ### Risk Management
 | Parameter | Value |
 |-----------|-------|
-| **Risk Percent** | 0.5% |
+| **Risk Percent** | 0.25% |
 | **Take Profit (Points)** | 200 |
 | **Stop Loss (Points)** | 180 |
 | **TSL Trigger Points** | 10 |
@@ -177,6 +181,8 @@ This document contains all trading configurations organized by 5 different tradi
 | **Bars N** | 5 |
 | **Expiration Bars** | 50 |
 | **Order Distance Points** | 80 |
+| **Slippage Points** | 10 |
+| **Entry Offset Points** | 1 |
 
 ### Trailing Take Profit
 | Setting | Value |
@@ -206,18 +212,16 @@ This document contains all trading configurations organized by 5 different tradi
 
 ---
 
-## 🇺🇸 Group 4: US_Indices
+## 🇺🇸 Group 4: US100_Index
 
 ### Symbols
 - **US100.cash** - NASDAQ 100 Index
-- **US30.cash** - Dow Jones Industrial Average
-- **US500.cash** - S&P 500 Index
 
 ### Strategy Configuration
 | Parameter | Value |
 |-----------|-------|
-| **Strategy Name** | US Indices Scalper V1.0 |
-| **Strategy Comment** | USIndices_Scalper |
+| **Strategy Name** | US100 Index Scalper V1.0 |
+| **Strategy Comment** | US100_Scalper |
 | **Base Magic Number** | 29834757 |
 | **Timeframe** | PERIOD_M5 |
 | **Strategy Mode** | STRATEGY_BREAKOUT |
@@ -225,7 +229,7 @@ This document contains all trading configurations organized by 5 different tradi
 ### Risk Management
 | Parameter | Value |
 |-----------|-------|
-| **Risk Percent** | 1.5% |
+| **Risk Percent** | 0.5% |
 | **Take Profit (Points)** | 5000 |
 | **Stop Loss (Points)** | 5000 |
 | **TSL Trigger Points** | 200 |
@@ -234,8 +238,8 @@ This document contains all trading configurations organized by 5 different tradi
 ### Trading Hours
 | Parameter | Value |
 |-----------|-------|
-| **Start Hour** | 0:00 (24/7) |
-| **End Hour** | 0:00 (24/7) |
+| **Start Hour** | 13:00 |
+| **End Hour** | 21:00 |
 
 ### Strategy Parameters
 | Parameter | Value |
@@ -243,12 +247,80 @@ This document contains all trading configurations organized by 5 different tradi
 | **Bars N** | 6 |
 | **Expiration Bars** | 60 |
 | **Order Distance Points** | 120 |
+| **Slippage Points** | 50 |
+| **Entry Offset Points** | 20 |
 
 ### Trailing Take Profit
 | Setting | Value |
 |---------|-------|
 | **Use Trailing TP** | ✅ Enabled |
-| **Trailing Mode** | TRAILING_TP_STEPPED |
+| **Trailing Mode** | TRAILING_TP_CUSTOM |
+| **Custom TP Levels** | `25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150` |
+
+### Risk Multiplier
+| Setting | Value |
+|---------|-------|
+| **Use Risk Multiplier** | ❌ Disabled |
+| **Start Time** | 14:30 |
+| **End Time** | 18:00 |
+| **Multiplier** | 2.0x |
+| **Description** | London-NY Overlap |
+
+### News Filter
+| Setting | Value |
+|---------|-------|
+| **Use News Filter** | ✅ Enabled |
+| **Currencies** | USD, EUR, GBP |
+| **Key Events** | NFP, JOLTS, Nonfarm, PMI, Interest Rate, CPI, GDP |
+| **Stop Before News** | 30 minutes |
+| **Start After News** | 10 minutes |
+| **Lookup Days** | 7 |
+
+---
+
+## 🇺🇸 Group 5: US30_Index
+
+### Symbols
+- **US30.cash** - Dow Jones Industrial Average
+
+### Strategy Configuration
+| Parameter | Value |
+|-----------|-------|
+| **Strategy Name** | US30 Index Scalper V1.0 |
+| **Strategy Comment** | US30_Scalper |
+| **Base Magic Number** | 29834758 |
+| **Timeframe** | PERIOD_M5 |
+| **Strategy Mode** | STRATEGY_BREAKOUT |
+
+### Risk Management
+| Parameter | Value |
+|-----------|-------|
+| **Risk Percent** | 0.5% |
+| **Take Profit (Points)** | 7000 |
+| **Stop Loss (Points)** | 5500 |
+| **TSL Trigger Points** | 30 |
+| **TSL Points** | 5 |
+
+### Trading Hours
+| Parameter | Value |
+|-----------|-------|
+| **Start Hour** | 8:00 |
+| **End Hour** | 21:00 |
+
+### Strategy Parameters
+| Parameter | Value |
+|-----------|-------|
+| **Bars N** | 5 |
+| **Expiration Bars** | 50 |
+| **Order Distance Points** | 140 |
+| **Slippage Points** | 50 |
+| **Entry Offset Points** | 20 |
+
+### Trailing Take Profit
+| Setting | Value |
+|---------|-------|
+| **Use Trailing TP** | ✅ Enabled |
+| **Trailing Mode** | TRAILING_TP_CUSTOM |
 | **Custom TP Levels** | `25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150` |
 
 ### Risk Multiplier
@@ -272,7 +344,73 @@ This document contains all trading configurations organized by 5 different tradi
 
 ---
 
-## 🥇 Group 5: XAUUSD_Gold
+## 🇺🇸 Group 6: US500_Index
+
+### Symbols
+- **US500.cash** - S&P 500 Index
+
+### Strategy Configuration
+| Parameter | Value |
+|-----------|-------|
+| **Strategy Name** | US500 Index Scalper V1.0 |
+| **Strategy Comment** | US500_Scalper |
+| **Base Magic Number** | 29834759 |
+| **Timeframe** | PERIOD_M5 |
+| **Strategy Mode** | STRATEGY_BREAKOUT |
+
+### Risk Management
+| Parameter | Value |
+|-----------|-------|
+| **Risk Percent** | 0.25% |
+| **Take Profit (Points)** | 4000 |
+| **Stop Loss (Points)** | 3600 |
+| **TSL Trigger Points** | 20 |
+| **TSL Points** | 5 |
+
+### Trading Hours
+| Parameter | Value |
+|-----------|-------|
+| **Start Hour** | 8:00 |
+| **End Hour** | 20:00 |
+
+### Strategy Parameters
+| Parameter | Value |
+|-----------|-------|
+| **Bars N** | 6 |
+| **Expiration Bars** | 60 |
+| **Order Distance Points** | 120 |
+| **Slippage Points** | 30 |
+| **Entry Offset Points** | 20 |
+
+### Trailing Take Profit
+| Setting | Value |
+|---------|-------|
+| **Use Trailing TP** | ✅ Enabled |
+| **Trailing Mode** | TRAILING_TP_CUSTOM |
+| **Custom TP Levels** | `25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150` |
+
+### Risk Multiplier
+| Setting | Value |
+|---------|-------|
+| **Use Risk Multiplier** | ✅ Enabled |
+| **Start Time** | 14:00 |
+| **End Time** | 18:00 |
+| **Multiplier** | 2.0x |
+| **Description** | London-NY Overlap |
+
+### News Filter
+| Setting | Value |
+|---------|-------|
+| **Use News Filter** | ✅ Enabled |
+| **Currencies** | USD, EUR, GBP |
+| **Key Events** | NFP, JOLTS, Nonfarm, PMI, Interest Rate, CPI, GDP |
+| **Stop Before News** | 30 minutes |
+| **Start After News** | 10 minutes |
+| **Lookup Days** | 7 |
+
+---
+
+## 🥇 Group 7: XAUUSD_Gold
 
 ### Symbols
 - **XAUUSD** - Gold vs. US Dollar
@@ -290,16 +428,16 @@ This document contains all trading configurations organized by 5 different tradi
 | Parameter | Value |
 |-----------|-------|
 | **Risk Percent** | 0.5% |
-| **Take Profit (Points)** | 1500 |
-| **Stop Loss (Points)** | 1500 |
+| **Take Profit (Points)** | 1600 |
+| **Stop Loss (Points)** | 1400 |
 | **TSL Trigger Points** | 20 |
 | **TSL Points** | 15 |
 
 ### Trading Hours
 | Parameter | Value |
 |-----------|-------|
-| **Start Hour** | 10:00 |
-| **End Hour** | 17:00 |
+| **Start Hour** | 7:00 |
+| **End Hour** | 20:00 |
 
 ### Strategy Parameters
 | Parameter | Value |
@@ -307,19 +445,21 @@ This document contains all trading configurations organized by 5 different tradi
 | **Bars N** | 6 |
 | **Expiration Bars** | 60 |
 | **Order Distance Points** | 120 |
+| **Slippage Points** | 30 |
+| **Entry Offset Points** | 10 |
 
 ### Trailing Take Profit
 | Setting | Value |
 |---------|-------|
 | **Use Trailing TP** | ✅ Enabled |
-| **Trailing Mode** | TRAILING_TP_STEPPED |
+| **Trailing Mode** | TRAILING_TP_CUSTOM |
 | **Custom TP Levels** | `25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150` |
 
 ### Risk Multiplier
 | Setting | Value |
 |---------|-------|
 | **Use Risk Multiplier** | ✅ Enabled |
-| **Start Time** | 13:00 |
+| **Start Time** | 13:15 |
 | **End Time** | 18:00 |
 | **Multiplier** | 2.0x |
 | **Description** | London-NY Overlap |
@@ -350,21 +490,23 @@ This document contains all trading configurations organized by 5 different tradi
 
 ## 📈 Summary by Asset Type
 
-### Forex Pairs (3 groups)
+### Forex Pairs (2 groups)
 1. **EU_GU_Forex** - EUR/USD, GBP/USD
 2. **USDJPY_Forex** - USD/JPY
 
-### Indices (2 groups)
+### Indices (4 groups)
 3. **GER40_Index** - German DAX
-4. **US_Indices** - NASDAQ 100, Dow Jones, S&P 500
+4. **US100_Index** - NASDAQ 100
+5. **US30_Index** - Dow Jones Industrial Average
+6. **US500_Index** - S&P 500
 
 ### Commodities (1 group)
-5. **XAUUSD_Gold** - Gold
+7. **XAUUSD_Gold** - Gold
 
 ### Common Settings Across All Groups
 - **Timeframe:** M5 (5 minutes)
 - **Strategy Mode:** Breakout
-- **Trailing TP:** Enabled for all groups
+- **Trailing TP:** Enabled for all groups (TRAILING_TP_CUSTOM mode)
 - **News Filter:** Enabled for indices and gold, disabled for major forex pairs
 
 ---
