@@ -25,6 +25,12 @@ struct BotConfig
    int               slPoints;
    int               tslTriggerPoints;
    int               tslPoints;
+   
+   // 🆕 Dynamic TSL Parameters
+   bool              useDynamicTSLTrigger;  // true = trigger auto basé sur coûts
+   double            tslCostMultiplier;     // Multiplicateur (ex: 1.5 = trigger à 150% des coûts)
+   int               tslMinTriggerPoints;   // Trigger minimum absolu (sécurité)
+   
    int               startHour;
    int               endHour;
    ENUM_STRATEGY_MODE strategyMode;
