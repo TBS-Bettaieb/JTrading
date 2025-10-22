@@ -131,7 +131,7 @@ public:
       
       // Initialiser les variables
       m_point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-      m_lastBarTime = 0;
+      m_lastBarTime = iTime(symbol, timeframe, 0);  
       m_buyTotal = 0;
       m_sellTotal = 0;
       m_totalProfit = 0;

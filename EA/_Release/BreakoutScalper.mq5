@@ -26,6 +26,16 @@ string currentSymbol = "";
 //+------------------------------------------------------------------+
 int OnInit()
 {
+   // 🔧 AJOUTER AU DÉBUT : Empêcher réinit si juste changement de timeframe
+   static bool alreadyInitialized = false;
+   static string lastSymbol = "";
+   
+   if(alreadyInitialized && lastSymbol == Symbol())
+   {
+      Logger::Info("⚠️ Chart timeframe changed - EA configuration unchanged");
+      return(INIT_SUCCEEDED);  // Ne pas réinitialiser
+   }
+   
    // Initialize Logger first
    Logger::Initialize(LOG_INFO, "[BreakoutScalper] ");
    
@@ -120,6 +130,10 @@ int OnInit()
    Logger::Info("Strategy: " + config.strategyName);
    Logger::Info("Magic: " + IntegerToString(config.baseMagic));
    Logger::Info("Risk: " + DoubleToString(config.riskPercent, 1) + "%");
+   
+   // 🔧 AJOUTER À LA FIN avant le return :
+   alreadyInitialized = true;
+   lastSymbol = currentSymbol;
    
    return(INIT_SUCCEEDED);
 }
