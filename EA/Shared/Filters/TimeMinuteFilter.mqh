@@ -214,8 +214,9 @@ public:
 
       MqlDateTime dt;
       TimeToStruct(TimeCurrent(), dt);
-      int currentTimeMinute = dt.hour * 100 + dt.min;
-      bool allowed = IsTimeMinuteInRangesGlobal(m_timeMinuteRanges, currentTimeMinute);
+      
+      // Support des formats unifiés: "08:30-10:45" et "0830-1045"
+      bool allowed = IsTimeMinuteInRangesUnified(m_timeMinuteRanges, dt.hour, dt.min);
 
       // Logging anti-spam : une fois par minute seulement
       if(!allowed && (m_lastLoggedHour != dt.hour || m_lastLoggedMinute != dt.min))
@@ -269,5 +270,97 @@ public:
       return m_useFilter;
    }
 
+   // Vérifier le statut actuel (version const)
+   bool IsCurrentlyActive() const
+   {
+      if(!m_useFilter) return true;
+
+      MqlDateTime dt;
+      TimeToStruct(TimeCurrent(), dt);
+      
+      // Support des formats unifiés: "08:30-10:45" et "0830-1045"
+      bool allowed = IsTimeMinuteInRangesUnified(m_timeMinuteRanges, dt.hour, dt.min);
+
+      return allowed;
+   }
+
+   // Info pour affichage graphique
+   string GetInfo() const
+   {
+      if(!m_useFilter) return "TimeMinuteFilter: OFF";
+      
+      // Vérifier le statut sans modifier l'objet
+      bool isActive = IsCurrentlyActive();
+      string status = isActive ? "ACTIVE" : "INACTIVE";
+      string info = "TimeMinuteFilter: ON [" + m_timeMinuteRanges + "] | " + status;
+      return info;
+   }
+
 private:
+   // Support des formats unifiés: "08:30-10:45" et "0830-1045"
+   bool IsTimeMinuteInRangesUnified(string ranges, int hour, int min) const
+   {
+      if(ranges == "" || ranges == " ") return true;
+      
+      int currentMinutes = hour * 60 + min;
+      
+      string tokens[]; int n = StringSplit(ranges, ';', tokens);
+      for(int i=0;i<n;i++)
+      {
+         string token = tokens[i]; StringTrimLeft(token); StringTrimRight(token);
+         if(token == "") continue;
+
+         int dash = StringFind(token, "-");
+         if(dash >= 0)
+         {
+            string startStr = StringSubstr(token, 0, dash);
+            string endStr   = StringSubstr(token, dash+1);
+            int startMin = ParseTimeToMinutes(startStr);
+            int endMin   = ParseTimeToMinutes(endStr);
+            if(startMin < 0 || endMin < 0) continue;
+
+            if(startMin <= endMin)
+            {
+               if(currentMinutes >= startMin && currentMinutes <= endMin) return true;
+            }
+            else
+            {
+               // Traverse minuit
+               if(currentMinutes >= startMin || currentMinutes <= endMin) return true;
+            }
+         }
+         else
+         {
+            // Moment exact
+            int one = ParseTimeToMinutes(token);
+            if(one >= 0 && currentMinutes == one) return true;
+         }
+      }
+      return false;
+   }
+
+   // Parse "HH:MM" ou "HHMM" vers minutes
+   int ParseTimeToMinutes(string s) const
+   {
+      StringTrimLeft(s); StringTrimRight(s);
+      int colon = StringFind(s, ":");
+      int hh = 0, mm = 0;
+      if(colon >= 0)
+      {
+         hh = (int)StringToInteger(StringSubstr(s,0,colon));
+         mm = (int)StringToInteger(StringSubstr(s,colon+1));
+      }
+      else
+      {
+         // Compact: HMM ou HHMM
+         int len = StringLen(s);
+         if(len < 3 || len > 4) return -1;
+         string hs = (len==3? StringSubstr(s,0,1): StringSubstr(s,0,2));
+         string ms = (len==3? StringSubstr(s,1): StringSubstr(s,2));
+         hh = (int)StringToInteger(hs);
+         mm = (int)StringToInteger(ms);
+      }
+      if(hh < 0 || hh > 23 || mm < 0 || mm > 59) return -1;
+      return hh*60 + mm;
+   }
 };

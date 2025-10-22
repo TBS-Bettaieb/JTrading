@@ -181,13 +181,26 @@ public:
    {
       if(!m_useFilter) return true;
 
-      int currentHour = CurrentHour();
-      bool allowed = IsHourAllowedCustom(m_hourRanges, currentHour);
+      // Détection format minutes (ex: "08:30-10:45" ou compact "0830-1045")
+      bool useMinuteFormat = RangesHasMinuteFormat(m_hourRanges);
 
-      if(!allowed && m_lastLoggedHour != currentHour)
+      bool allowed;
+      if(useMinuteFormat)
       {
-         Print(m_logPrefix + "Heure non autorisée: ", currentHour, ":00 | Ranges: ", m_hourRanges);
-         m_lastLoggedHour = currentHour;
+         MqlDateTime dt; TimeToStruct(TimeCurrent(), dt);
+         int currentMinutes = dt.hour * 60 + dt.min;
+         allowed = IsTimeMinuteAllowedUnified(m_hourRanges, currentMinutes);
+      }
+      else
+      {
+         int currentHour = CurrentHour();
+         allowed = IsHourAllowedCustom(m_hourRanges, currentHour);
+      }
+
+      if(!allowed && m_lastLoggedHour != CurrentHour())
+      {
+         Print(m_logPrefix + "Heure non autorisée: ", CurrentHour(), ":00 | Ranges: ", m_hourRanges);
+         m_lastLoggedHour = CurrentHour();
          m_lastBlockReason = "Hour not in allowed ranges";
       }
       else if(allowed)
@@ -201,7 +214,7 @@ public:
    //+------------------------------------------------------------------+
    //| Helpers publics                                                  |
    //+------------------------------------------------------------------+
-   int CurrentHour()
+   int CurrentHour() const
    {
       MqlDateTime dt; TimeToStruct(TimeCurrent(), dt); return dt.hour;
    }
@@ -231,11 +244,47 @@ public:
       return m_useFilter;
    }
 
+   // Vérifier le statut actuel (version const)
+   bool IsCurrentlyActive() const
+   {
+      if(!m_useFilter) return true;
+
+      // Détection format minutes (ex: "08:30-10:45" ou compact "0830-1045")
+      bool useMinuteFormat = RangesHasMinuteFormat(m_hourRanges);
+
+      bool allowed;
+      if(useMinuteFormat)
+      {
+         MqlDateTime dt; TimeToStruct(TimeCurrent(), dt);
+         int currentMinutes = dt.hour * 60 + dt.min;
+         allowed = IsTimeMinuteAllowedUnified(m_hourRanges, currentMinutes);
+      }
+      else
+      {
+         int currentHour = CurrentHour();
+         allowed = IsHourAllowedCustom(m_hourRanges, currentHour);
+      }
+
+      return allowed;
+   }
+
+   // Info pour affichage graphique
+   string GetInfo() const
+   {
+      if(!m_useFilter) return "TimeRangeFilter: OFF";
+      
+      // Vérifier le statut sans modifier l'objet
+      bool isActive = IsCurrentlyActive();
+      string status = isActive ? "ACTIVE" : "INACTIVE";
+      string info = "TimeRangeFilter: ON [" + m_hourRanges + "] | " + status;
+      return info;
+   }
+
 private:
    //+------------------------------------------------------------------+
    //| Parsing "8-10;16;20-22" → test d'appartenance                   |
    //+------------------------------------------------------------------+
-   bool IsHourAllowedCustom(string ranges, int hour)
+   bool IsHourAllowedCustom(string ranges, int hour) const
    {
       if(ranges == "" || ranges == " ") return true; // rien => tout autorisé
 
@@ -273,5 +322,99 @@ private:
          }
       }
       return false;
+   }
+
+   // Détecte si la chaîne contient un format minute (":" ou HHMM)
+   bool RangesHasMinuteFormat(const string ranges) const
+   {
+      if(StringFind(ranges, ":") >= 0) return true;
+      string tokens[]; int n = StringSplit(ranges, ';', tokens);
+      for(int i=0;i<n;i++)
+      {
+         string t = tokens[i]; StringTrimLeft(t); StringTrimRight(t);
+         if(t == "") continue;
+         int dash = StringFind(t, "-");
+         string a = (dash>=0? StringSubstr(t,0,dash): t);
+         string b = (dash>=0? StringSubstr(t,dash+1): t);
+         // Si un des segments est numérique de longueur >=3 (ex: 830, 1045) ⇒ minute
+         if(IsAllDigits(a) && StringLen(a) >= 3) return true;
+         if(IsAllDigits(b) && StringLen(b) >= 3) return true;
+      }
+      return false;
+   }
+
+   bool IsAllDigits(const string s) const
+   {
+      for(int i=0;i<StringLen(s);i++)
+      {
+         int ch = (uchar)StringGetCharacter(s,i);
+         if(ch < '0' || ch > '9') return false;
+      }
+      return StringLen(s) > 0;
+   }
+
+   // Test d'appartenance avec précision minute
+   bool IsTimeMinuteAllowedUnified(string ranges, int currentMinutes) const
+   {
+      if(ranges == "" || ranges == " ") return true;
+
+      string tokens[]; int n = StringSplit(ranges, ';', tokens);
+      for(int i=0;i<n;i++)
+      {
+         string token = tokens[i]; StringTrimLeft(token); StringTrimRight(token);
+         if(token == "") continue;
+
+         int dash = StringFind(token, "-");
+         if(dash >= 0)
+         {
+            string startStr = StringSubstr(token, 0, dash);
+            string endStr   = StringSubstr(token, dash+1);
+            int startMin = ParseHHMMtoMinutes(startStr);
+            int endMin   = ParseHHMMtoMinutes(endStr);
+            if(startMin < 0 || endMin < 0) continue;
+
+            if(startMin <= endMin)
+            {
+               if(currentMinutes >= startMin && currentMinutes <= endMin) return true;
+            }
+            else
+            {
+               // Traverse minuit
+               if(currentMinutes >= startMin || currentMinutes <= endMin) return true;
+            }
+         }
+         else
+         {
+            // Moment exact HH:MM ou HHMM
+            int one = ParseHHMMtoMinutes(token);
+            if(one >= 0 && currentMinutes == one) return true;
+         }
+      }
+      return false;
+   }
+
+   // Accepte "HH:MM", "H:MM", ou compacts "HHMM"/"HMM"
+   int ParseHHMMtoMinutes(string s) const
+   {
+      StringTrimLeft(s); StringTrimRight(s);
+      int colon = StringFind(s, ":");
+      int hh = 0, mm = 0;
+      if(colon >= 0)
+      {
+         hh = (int)StringToInteger(StringSubstr(s,0,colon));
+         mm = (int)StringToInteger(StringSubstr(s,colon+1));
+      }
+      else
+      {
+         // Compact: HMM ou HHMM
+         int len = StringLen(s);
+         if(len < 3 || len > 4) return -1;
+         string hs = (len==3? StringSubstr(s,0,1): StringSubstr(s,0,2));
+         string ms = (len==3? StringSubstr(s,1): StringSubstr(s,2));
+         hh = (int)StringToInteger(hs);
+         mm = (int)StringToInteger(ms);
+      }
+      if(hh < 0 || hh > 23 || mm < 0 || mm > 59) return -1;
+      return hh*60 + mm;
    }
 };

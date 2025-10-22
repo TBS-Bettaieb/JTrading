@@ -30,9 +30,8 @@
 #define TSL_TRIGGER_POINTS     10       // Profit before TSL activates
 #define TSL_POINTS             10       // Trailing stop distance
 
-// ⏰ TRADING HOURS (0 = Inactive)
-#define START_HOUR             7
-#define END_HOUR               19
+// ⏰ TRADING HOURS (Format unifié)
+#define TRADING_TIME_RANGES    "07:00-19:00"  // Format unifié
 
 // 📈 STRATEGY PARAMETERS
 #define STRATEGY_TYPE          STRATEGY_BREAKOUT  // STRATEGY_BREAKOUT or STRATEGY_REVERSION
@@ -49,10 +48,7 @@
 
 // 🚀 RISK MULTIPLIER (BOOST PERIOD)
 #define USE_RISK_MULTIPLIER    true
-#define RISK_MULT_START_HOUR   13
-#define RISK_MULT_START_MINUTE 0
-#define RISK_MULT_END_HOUR     17
-#define RISK_MULT_END_MINUTE   0
+#define RISK_MULT_TIME_RANGES  "13:00-17:00"  // Format unifié
 #define RISK_MULTIPLIER        2.0
 #define RISK_MULT_DESCRIPTION  "London-NY Overlap Boost"
 
@@ -103,8 +99,7 @@ int OnInit()
    config.slPoints = STOP_LOSS_POINTS;
    config.tslTriggerPoints = TSL_TRIGGER_POINTS;
    config.tslPoints = TSL_POINTS;
-   config.startHour = START_HOUR;
-   config.endHour = END_HOUR;
+   config.tradingTimeRanges = TRADING_TIME_RANGES;
    config.strategyMode = STRATEGY_TYPE;
    config.barsN = BARS_ANALYSIS;
    config.expirationBars = EXPIRATION_BARS;
@@ -120,10 +115,7 @@ int OnInit()
    
    // Risk Multiplier Configuration
    config.useRiskMultiplier = USE_RISK_MULTIPLIER;
-   config.riskMultStartHour = RISK_MULT_START_HOUR;
-   config.riskMultStartMinute = RISK_MULT_START_MINUTE;
-   config.riskMultEndHour = RISK_MULT_END_HOUR;
-   config.riskMultEndMinute = RISK_MULT_END_MINUTE;
+   config.riskMultTimeRanges = RISK_MULT_TIME_RANGES;
    config.riskMultiplier = RISK_MULTIPLIER;
    config.riskMultDescription = RISK_MULT_DESCRIPTION;
    

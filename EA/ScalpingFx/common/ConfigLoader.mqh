@@ -131,11 +131,14 @@ protected:
       if(customTPLevels != "") m_config.customTPLevels = customTPLevels;
    }
    
-   // Setup trading hours
-   void SetupTradingHours(int startHour, int endHour)
+   // Setup trading hours (nouveau format unifié)
+   void SetupTradingHours(string timeRanges)
    {
-      m_config.startHour = startHour;
-      m_config.endHour = endHour;
+      m_config.tradingTimeRanges = timeRanges;
+      
+      // Garder les anciens champs vides pour la rétro-compatibilité
+      m_config.startHour = 0;
+      m_config.endHour = 0;
    }
    
    // Setup strategy-specific parameters
@@ -149,17 +152,19 @@ protected:
       m_config.entryOffsetPoints = entryOffsetPoints;
    }
    
-   // Setup risk multiplier
-   void SetupRiskMultiplier(bool useRiskMultiplier, int startHour, int startMinute, 
-                           int endHour, int endMinute, double multiplier, string description = "")
+   // Setup risk multiplier (nouveau format unifié)
+   void SetupRiskMultiplier(bool useRiskMultiplier, string timeRanges, double multiplier, string description = "")
    {
       m_config.useRiskMultiplier = useRiskMultiplier;
-      m_config.riskMultStartHour = startHour;
-      m_config.riskMultStartMinute = startMinute;
-      m_config.riskMultEndHour = endHour;
-      m_config.riskMultEndMinute = endMinute;
+      m_config.riskMultTimeRanges = timeRanges;
       m_config.riskMultiplier = multiplier;
       if(description != "") m_config.riskMultDescription = description;
+      
+      // Garder les anciens champs vides pour la rétro-compatibilité
+      m_config.riskMultStartHour = 0;
+      m_config.riskMultStartMinute = 0;
+      m_config.riskMultEndHour = 0;
+      m_config.riskMultEndMinute = 0;
    }
    
    // Setup news filter parameters
@@ -201,9 +206,9 @@ public:
       SetupBasicParams("EURUSD_FXScalper V1.0", "EURUSD_FXScalper", 2971308);
       SetupRiskParams(1.0, 200, 180);
       SetupDynamicTrailingStop(10, 10, 1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours(7, 21);
+      SetupTradingHours("07:00-21:00");
       SetupStrategyParams(5, 50, 80,10,10);
-      SetupRiskMultiplier(true, 13, 0, 17, 0, 2.0, "London-NY Overlap");
+      SetupRiskMultiplier(true, "13:00-17:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
@@ -226,9 +231,9 @@ public:
       SetupBasicParams("GBPUSD_FXScalper V1.0", "GBPUSD_FXScalper", 2971308);
       SetupRiskParams(1.0, 200, 180);
       SetupDynamicTrailingStop(20, 15, 1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours(7, 21);
+      SetupTradingHours("07:00-21:00");
       SetupStrategyParams(5, 50, 80,10,15);
-      SetupRiskMultiplier(true, 13, 0, 17, 0, 2.0, "London-NY Overlap");
+      SetupRiskMultiplier(true, "13:00-17:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
@@ -251,9 +256,9 @@ public:
       SetupBasicParams("GER40 Scalper V1.0", "GER40_Scalper", 28834731);
       SetupRiskParams(0.5, 7000, 5500);
       SetupDynamicTrailingStop(200, 120, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours(7, 18);
+      SetupTradingHours("07:00-18:00");
       SetupStrategyParams(6, 60, 120,50,30);
-      SetupRiskMultiplier(true, 8, 0, 10, 0, 2.0, "Euro Session");
+      SetupRiskMultiplier(true, "08:00-10:00", 2.0, "Euro Session");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
@@ -276,9 +281,9 @@ public:
       SetupBasicParams("USDJPY_FXScalper V1.0", "USDJPY_FXScalper", 37483647);
       SetupRiskParams(0.25, 230, 210);
       SetupDynamicTrailingStop(30, 20, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours(13, 18);
+      SetupTradingHours("13:00-18:00");
       SetupStrategyParams(5, 50, 80,10,30);
-      SetupRiskMultiplier(true, 14, 0, 15, 30, 2.0, "London-NY Overlap");
+      SetupRiskMultiplier(true, "14:00-15:30", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
@@ -301,9 +306,9 @@ public:
       SetupBasicParams("US100 Index Scalper V1.0", "US100_Scalper", 29834757);
       SetupRiskParams(0.5, 5000, 5000);
       SetupDynamicTrailingStop(200, 150, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours(13,21);
+      SetupTradingHours("13:00-21:00");
       SetupStrategyParams(6, 60, 120,50,20);
-      SetupRiskMultiplier(false, 14, 30, 18, 0, 2.0, "London-NY Overlap");
+      SetupRiskMultiplier(false, "14:30-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
@@ -326,9 +331,9 @@ public:
       SetupBasicParams("US30 Index Scalper V1.0", "US30_Scalper", 29834758);
       SetupRiskParams(0.5, 7000, 5500);
       SetupDynamicTrailingStop(500, 550, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours(8, 21);
+      SetupTradingHours("08:00-21:00");
       SetupStrategyParams(5, 50, 140,50,200);
-      SetupRiskMultiplier(true, 14, 0, 18, 0, 2.0, "London-NY Overlap");
+      SetupRiskMultiplier(true, "14:00-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
@@ -351,9 +356,9 @@ public:
       SetupBasicParams("US500 Index Scalper V1.0", "US500_Scalper", 29834759);
       SetupRiskParams(0.25, 4000, 3600);
       SetupDynamicTrailingStop(150, 90, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours(8, 20);
+      SetupTradingHours("08:00-20:00");
       SetupStrategyParams(6, 60, 120,30,60);
-      SetupRiskMultiplier(true, 14, 0, 18, 0, 2.0, "London-NY Overlap");
+      SetupRiskMultiplier(true, "14:00-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
@@ -376,9 +381,9 @@ public:
       SetupBasicParams("XAUUSD Gold Scalper V1.0", "XAUUSD_Gold_Scalper", 29479999);
       SetupRiskParams(0.25, 1600,1400);
       SetupDynamicTrailingStop(80, 50, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours(7, 20);
+      SetupTradingHours("07:00-20:00");
       SetupStrategyParams(6, 60, 90,30,40);
-      SetupRiskMultiplier(true, 13, 15, 18, 0, 2.0, "London-NY Overlap");
+      SetupRiskMultiplier(true, "13:15-18:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
       

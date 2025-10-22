@@ -364,13 +364,30 @@ private:
    bool InitializeTimeManager()
    {
       m_timeManager = new TradingTimeManager(m_chartManager);
-      m_timeManager.Initialize(
-         (m_config.startHour != 0 || m_config.endHour != 0),
-         IntegerToString(m_config.startHour) + "-" + IntegerToString(m_config.endHour),
-         false,
-         "",
-         true
-      );
+      
+      // Utiliser le nouveau format unifié si disponible
+      if(m_config.tradingTimeRanges != "")
+      {
+         m_timeManager.Initialize(
+            true,  // useHourFilter
+            m_config.tradingTimeRanges,
+            false, // useDayFilter
+            "",    // dayRanges
+            true   // verboseLogging
+         );
+      }
+      else
+      {
+         // Fallback vers l'ancien format (rétro-compatibilité)
+         m_timeManager.Initialize(
+            (m_config.startHour != 0 || m_config.endHour != 0),
+            IntegerToString(m_config.startHour) + "-" + IntegerToString(m_config.endHour),
+            false,
+            "",
+            true
+         );
+      }
+      
       m_timeManager.SetVerboseLogging(true);
       m_timeManager.SetAlertMessages(m_config.hourBlockMsg, m_config.dayBlockMsg, 
                                      m_config.bothBlockMsg);
@@ -391,15 +408,29 @@ private:
          return true; // Non-critical
       }
       
-      m_riskMultiplierManager.Initialize(
-         m_config.useRiskMultiplier,
-         m_config.riskMultStartHour,
-         m_config.riskMultStartMinute,
-         m_config.riskMultEndHour,
-         m_config.riskMultEndMinute,
-         m_config.riskMultiplier,
-         m_config.riskMultDescription
-      );
+      // Utiliser le nouveau format unifié si disponible
+      if(m_config.riskMultTimeRanges != "")
+      {
+         m_riskMultiplierManager.InitializeUnified(
+            m_config.useRiskMultiplier,
+            m_config.riskMultTimeRanges,
+            m_config.riskMultiplier,
+            m_config.riskMultDescription
+         );
+      }
+      else
+      {
+         // Fallback vers l'ancien format (rétro-compatibilité)
+         m_riskMultiplierManager.Initialize(
+            m_config.useRiskMultiplier,
+            m_config.riskMultStartHour,
+            m_config.riskMultStartMinute,
+            m_config.riskMultEndHour,
+            m_config.riskMultEndMinute,
+            m_config.riskMultiplier,
+            m_config.riskMultDescription
+         );
+      }
       
       return true;
    }
