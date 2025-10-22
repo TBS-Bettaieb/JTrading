@@ -76,6 +76,10 @@ public:
       ChartSetInteger(m_chartId, CHART_COLOR_BID, clrSilver);                // Bid - Silver
       ChartSetInteger(m_chartId, CHART_COLOR_ASK, clrSilver);                // Ask - Silver
       
+      // Enable Bid/Ask lines display
+      ChartSetInteger(m_chartId, CHART_SHOW_BID_LINE, true);
+      ChartSetInteger(m_chartId, CHART_SHOW_ASK_LINE, true);
+      
       // Stop levels - Rouge
       ChartSetInteger(m_chartId, CHART_COLOR_STOP_LEVEL, C'239,83,80');
       
