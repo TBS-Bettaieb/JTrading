@@ -5,7 +5,7 @@ echo ========================================
 echo.
 
 REM --- Configuration des chemins ---
-set "SOURCE_DIR=%~dp0MT5\Indicators"
+set "SOURCE_DIR=%~dp0Indicators"
 
 REM --- Chemin de destination (modifiez si necessaire) ---
 REM Option 1: Chemin relatif (recommandé)
