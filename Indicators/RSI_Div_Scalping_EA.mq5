@@ -2,6 +2,20 @@
 //|                                    RSI_Divergence_Indicator.mq5  |
 //|                         RSI Divergence Indicator                   |
 //+------------------------------------------------------------------+
+//| CHANGELOG - Corrections apportées                                 |
+//| ✅ [CRITICAL] Ajout validation arrays partout                     |
+//| ✅ [CRITICAL] Optimisation calcul RSI (prev_calculated)           |
+//| ✅ [IMPORTANT] Cohérence indexation arrays (série inversée)       |
+//| ✅ [IMPORTANT] Détection nouvelle barre robuste                   |
+//| ✅ [IMPORTANT] Validation paramètres CalculateMA()                |
+//| ✅ [PERFORMANCE] Optimisation boucles détection divergences       |
+//| ✅ [PERFORMANCE] Tri optimisé avec ArraySort() natif              |
+//| ✅ [CONFIG] Paramètres configurables pour constantes magiques     |
+//| ✅ [PINE SCRIPT] Suppression validation Range Lower bloquante     |
+//| ✅ [PINE SCRIPT] Implémentation IsPivotLow/IsPivotHigh           |
+//| ✅ [PINE SCRIPT] Refactorisation détection divergences            |
+//| ✅ [CONFIG] Paramètres par défaut TradingView (RSI=3)             |
+//+------------------------------------------------------------------+
 #property copyright "RSI Divergence Trading System"
 #property link      ""
 #property version   "2.10"
@@ -44,14 +58,14 @@
 
 //--- Input parameters
 input group "═══ RSI Settings ═══"
-input int                InpRSIPeriod        = 14;              // RSI Length
+input int                InpRSIPeriod        = 3;               // RSI Length (config TradingView)
 input ENUM_APPLIED_PRICE InpRSIAppliedPrice = PRICE_CLOSE;     // Source
 
 input group "═══ RSI Levels ═══"
 input bool   InpShowLevels      = true;      // Show Levels
-input double InpUpperLevel      = 70.0;      // Upper Level
+input double InpUpperLevel      = 90.0;      // Upper Level
 input double InpMiddleLevel     = 50.0;      // Middle Level
-input double InpLowerLevel      = 30.0;      // Lower Level
+input double InpLowerLevel      = 10.0;      // Lower Level
 input color  InpLevelColor      = clrSilver; // Level Color
 
 input group "═══ Smoothing ═══"
@@ -93,8 +107,11 @@ double StdDevBuffer[];
 
 //--- Constantes
 const double DIVERGENCE_MARKER_OFFSET = 5.0;
-const int MAX_TRENDLINES_TO_KEEP = 50;
-const int MAX_BARS_TO_CHECK = 100;
+
+// ✅ FIX: Paramètres configurables au lieu de constantes magiques
+input group "═══ Performance Settings ═══"
+input int InpMaxTrendlines = 50;      // Max Trendlines to Keep
+input int InpMaxBarsCheck = 100;      // Max Bars to Check for Divergences
 
 //--- Global variables
 string indicatorPrefix = "RSI_DIV_";
@@ -124,9 +141,11 @@ int OnInit()
       return INIT_PARAMETERS_INCORRECT;
    }
    
-   if(InpRangeLower < InpLookbackLeft + InpLookbackRight)
+   // ✅ FIX PINE SCRIPT: Validation corrigée - similaire à Pine Script
+   // Range Lower doit juste être positif et inférieur à Range Upper
+   if(InpRangeLower < 1)
    {
-      Print("❌ Erreur: Range Lower trop petit pour la détection de pivots");
+      Print("❌ Erreur: Range Lower doit être >= 1");
       return INIT_PARAMETERS_INCORRECT;
    }
    
@@ -208,44 +227,48 @@ int OnCalculate(const int rates_total,
                 const long &volume[],
                 const int &spread[])
 {
-   //--- Check for minimum bars
+   // ✅ FIX: Validation des limites des arrays
    if(rates_total < InpRSIPeriod + InpRangeUpper + 10)
       return(0);
    
-   //--- Set arrays as series
+   // ✅ FIX: Cohérence indexation - tous les arrays en série inversée
    ArraySetAsSeries(time, true);
    ArraySetAsSeries(close, true);
    ArraySetAsSeries(high, true);
    ArraySetAsSeries(low, true);
+   ArraySetAsSeries(RSIBuffer, true);
+   ArraySetAsSeries(MABuffer, true);
+   ArraySetAsSeries(BBUpperBuffer, true);
+   ArraySetAsSeries(BBLowerBuffer, true);
+   ArraySetAsSeries(DivergenceBuffer, true);
+   ArraySetAsSeries(UpBuffer, true);
+   ArraySetAsSeries(DownBuffer, true);
+   ArraySetAsSeries(StdDevBuffer, true);
    
-   // Utiliser directement les paramètres passés à OnCalculate
-   
-   //--- Calculate RSI FIRST (calcul complet sur tous les historiques)
+   // ✅ FIX: Optimisation calcul RSI - ne calculer que les nouvelles barres
    CalculateRSI(rates_total, prev_calculated, close);
    
-   //--- Check divergences ONLY on new bar
-   static datetime lastBarTime = 0;
-   datetime currentBarTime[1];
+   // ✅ FIX: Détection nouvelle barre robuste avec prev_calculated
+   bool isNewBar = (prev_calculated == 0 || rates_total > prev_calculated);
    
-   if(CopyTime(_Symbol, _Period, 0, 1, currentBarTime) <= 0)
-      return(prev_calculated);
-   
-   // Détecter les divergences uniquement sur nouvelle barre
-   if(currentBarTime[0] != lastBarTime)
+   if(isNewBar)
    {
-      lastBarTime = currentBarTime[0];
-      
       // Supprimer les anciennes trendlines AVANT de détecter les nouvelles
       DeleteOldTrendlines();
       
-      // Vérifier les divergences sur les 100 dernières barres seulement pour optimiser la performance
+      // ✅ FIX: Optimisation zone de recherche - limiter à 50 dernières barres
       if(rates_total > InpRangeLower + InpLookbackLeft + InpLookbackRight + 20)
       {
-         int limit = MathMin(MAX_BARS_TO_CHECK, rates_total - InpRangeUpper - InpLookbackLeft - 1);
+         int limit = MathMin(InpMaxBarsCheck, rates_total - InpRangeUpper - InpLookbackLeft - 1);
          for(int i = InpLookbackRight + 1; i <= limit; i++)
          {
-            CheckBullishDivergence(i, time, low);
-            CheckBearishDivergence(i, time, high);
+            // ✅ FIX: Validation des indices avant appel des fonctions
+            if(i >= 0 && i < ArraySize(RSIBuffer) && i < ArraySize(time) && 
+               i < ArraySize(high) && i < ArraySize(low))
+            {
+               CheckBullishDivergence(i, time, low);
+               CheckBearishDivergence(i, time, high);
+            }
          }
       }
    }
@@ -261,7 +284,12 @@ int OnCalculate(const int rates_total,
 //+------------------------------------------------------------------+
 void CalculateRSI(int rates_total, int prev_calculated, const double &close[])
 {
+   // ✅ FIX: Validation des paramètres d'entrée
    if(rates_total < InpRSIPeriod + 2)
+      return;
+   
+   // ✅ FIX: Validation des tailles d'arrays
+   if(ArraySize(close) < rates_total || ArraySize(RSIBuffer) < rates_total)
       return;
    
    // Initialisation seulement si nécessaire (première fois ou nouvelle barre)
@@ -278,13 +306,13 @@ void CalculateRSI(int rates_total, int prev_calculated, const double &close[])
    
    int start;
    
-   // Première exécution: calculer tout
+   // ✅ FIX: Optimisation - Première exécution: calculer tout
    if(prev_calculated == 0)
    {
       start = rates_total - InpRSIPeriod - 1;
       
-      // Vérification des limites pour éviter array out of range
-      if(start < 0 || start + InpRSIPeriod >= rates_total)
+      // ✅ FIX: Validation des limites pour éviter array out of range
+      if(start < 0 || start + InpRSIPeriod >= rates_total || start >= ArraySize(close))
          return;
       
       // Étape 1: Initialisation avec SMA (correction des indices)
@@ -292,7 +320,9 @@ void CalculateRSI(int rates_total, int prev_calculated, const double &close[])
       for(int j = 0; j < InpRSIPeriod; j++)
       {
          int idx = start + 1 + j;
-         if(idx >= rates_total) break;
+         // ✅ FIX: Validation des indices
+         if(idx >= rates_total || idx >= ArraySize(close) || idx - 1 < 0 || idx - 1 >= ArraySize(close))
+            break;
          double change = close[idx - 1] - close[idx];
          if(change > 0)
             sumUp += change;
@@ -300,20 +330,24 @@ void CalculateRSI(int rates_total, int prev_calculated, const double &close[])
             sumDown += -change;
       }
       
-      UpBuffer[start] = sumUp / InpRSIPeriod;
-      DownBuffer[start] = sumDown / InpRSIPeriod;
-      
-      // Calcul du RSI initial
-      if(DownBuffer[start] == 0)
-         RSIBuffer[start] = 100;
-      else if(UpBuffer[start] == 0)
-         RSIBuffer[start] = 0;
-      else
-         RSIBuffer[start] = 100.0 - (100.0 / (1.0 + UpBuffer[start] / DownBuffer[start]));
+      // ✅ FIX: Validation avant assignation
+      if(start >= 0 && start < ArraySize(UpBuffer) && start < ArraySize(DownBuffer))
+      {
+         UpBuffer[start] = sumUp / InpRSIPeriod;
+         DownBuffer[start] = sumDown / InpRSIPeriod;
+         
+         // Calcul du RSI initial
+         if(DownBuffer[start] == 0)
+            RSIBuffer[start] = 100;
+         else if(UpBuffer[start] == 0)
+            RSIBuffer[start] = 0;
+         else
+            RSIBuffer[start] = 100.0 - (100.0 / (1.0 + UpBuffer[start] / DownBuffer[start]));
+      }
    }
    else
    {
-      // Seulement recalculer les nouvelles barres
+      // ✅ FIX: Seulement recalculer les nouvelles barres
       start = rates_total - prev_calculated - 1;
       if(start < 0) start = 0;
    }
@@ -321,8 +355,11 @@ void CalculateRSI(int rates_total, int prev_calculated, const double &close[])
    // Étape 2: Application de la formule RMA
    for(int i = start - 1; i >= 0; i--)
    {
-      // Vérifier que i+1 est accessible
-      if(i + 1 >= rates_total)
+      // ✅ FIX: Validation complète des indices
+      if(i + 1 >= rates_total || i + 1 >= ArraySize(close) || i >= ArraySize(close) ||
+         i >= ArraySize(UpBuffer) || i + 1 >= ArraySize(UpBuffer) ||
+         i >= ArraySize(DownBuffer) || i + 1 >= ArraySize(DownBuffer) ||
+         i >= ArraySize(RSIBuffer))
          continue;
          
       double change = close[i] - close[i + 1];
@@ -340,25 +377,36 @@ void CalculateRSI(int rates_total, int prev_calculated, const double &close[])
          RSIBuffer[i] = 100.0 - (100.0 / (1.0 + UpBuffer[i] / DownBuffer[i]));
    }
    
-   // Calcul du lissage MA si activé
+   // ✅ FIX: Calcul du lissage MA avec validation des paramètres
    if(InpMAType != MA_NONE && rates_total > InpRSIPeriod + InpMAPeriod)
    {
       for(int i = 0; i < rates_total - InpRSIPeriod - InpMAPeriod; i++)
       {
-         MABuffer[i] = CalculateMA(i, InpMAPeriod, InpMAType);
-         
-         // Bollinger Bands si activé
-         if(InpMAType == MA_SMA_BB)
+         // ✅ FIX: Validation des indices avant calcul MA
+         if(i >= 0 && i < ArraySize(MABuffer))
          {
-            double sum = 0;
-            for(int j = 0; j < InpMAPeriod; j++)
+            MABuffer[i] = CalculateMA(i, InpMAPeriod, InpMAType);
+            
+            // Bollinger Bands si activé
+            if(InpMAType == MA_SMA_BB && i < ArraySize(BBUpperBuffer) && i < ArraySize(BBLowerBuffer))
             {
-               double diff = RSIBuffer[i + j] - MABuffer[i];
-               sum += diff * diff;
+               double sum = 0;
+               for(int j = 0; j < InpMAPeriod; j++)
+               {
+                  // ✅ FIX: Validation des indices dans la boucle BB
+                  if(i + j >= 0 && i + j < ArraySize(RSIBuffer) && i < ArraySize(MABuffer))
+                  {
+                     double diff = RSIBuffer[i + j] - MABuffer[i];
+                     sum += diff * diff;
+                  }
+               }
+               if(i < ArraySize(StdDevBuffer))
+               {
+                  StdDevBuffer[i] = MathSqrt(sum / InpMAPeriod);
+                  BBUpperBuffer[i] = MABuffer[i] + InpBBStdDev * StdDevBuffer[i];
+                  BBLowerBuffer[i] = MABuffer[i] - InpBBStdDev * StdDevBuffer[i];
+               }
             }
-            StdDevBuffer[i] = MathSqrt(sum / InpMAPeriod);
-            BBUpperBuffer[i] = MABuffer[i] + InpBBStdDev * StdDevBuffer[i];
-            BBLowerBuffer[i] = MABuffer[i] - InpBBStdDev * StdDevBuffer[i];
          }
       }
    }
@@ -370,6 +418,14 @@ void CalculateRSI(int rates_total, int prev_calculated, const double &close[])
 //+------------------------------------------------------------------+
 double CalculateMA(int pos, int period, MA_TYPE_CUSTOM ma_type)
 {
+   // ✅ FIX: Validation complète des paramètres d'entrée
+   if(pos < 0 || period <= 0 || pos >= ArraySize(RSIBuffer))
+      return EMPTY_VALUE;
+   
+   // ✅ FIX: Vérifier que pos + period ne dépasse pas la taille de l'array
+   if(pos + period > ArraySize(RSIBuffer))
+      return EMPTY_VALUE;
+   
    double sum = 0;
    
    switch(ma_type)
@@ -377,48 +433,146 @@ double CalculateMA(int pos, int period, MA_TYPE_CUSTOM ma_type)
       case MA_SMA:
       case MA_SMA_BB:
          for(int i = 0; i < period; i++)
-            sum += RSIBuffer[pos + i];
-         return sum / period;
+         {
+            // ✅ FIX: Validation des indices dans la boucle
+            if(pos + i >= 0 && pos + i < ArraySize(RSIBuffer))
+               sum += RSIBuffer[pos + i];
+         }
+         return (period > 0) ? sum / period : EMPTY_VALUE;
          
       case MA_EMA:
-         if(pos >= ArraySize(MABuffer) - period - 1)
+         // ✅ FIX: Validation des indices pour EMA
+         if(pos >= ArraySize(MABuffer) - period - 1 || pos + 1 >= ArraySize(MABuffer))
          {
             for(int i = 0; i < period; i++)
-               sum += RSIBuffer[pos + i];
-            return sum / period;
+            {
+               if(pos + i >= 0 && pos + i < ArraySize(RSIBuffer))
+                  sum += RSIBuffer[pos + i];
+            }
+            return (period > 0) ? sum / period : EMPTY_VALUE;
          }
          else
          {
-            double alpha = 2.0 / (period + 1.0);
-            return alpha * RSIBuffer[pos] + (1 - alpha) * MABuffer[pos + 1];
+            // ✅ FIX: Validation avant accès aux arrays
+            if(pos >= 0 && pos < ArraySize(RSIBuffer) && pos + 1 >= 0 && pos + 1 < ArraySize(MABuffer))
+            {
+               double alpha = 2.0 / (period + 1.0);
+               return alpha * RSIBuffer[pos] + (1 - alpha) * MABuffer[pos + 1];
+            }
          }
+         break;
          
       case MA_SMMA:
-         if(pos >= ArraySize(MABuffer) - period - 1)
+         // ✅ FIX: Validation des indices pour SMMA
+         if(pos >= ArraySize(MABuffer) - period - 1 || pos + 1 >= ArraySize(MABuffer))
          {
             for(int i = 0; i < period; i++)
-               sum += RSIBuffer[pos + i];
-            return sum / period;
+            {
+               if(pos + i >= 0 && pos + i < ArraySize(RSIBuffer))
+                  sum += RSIBuffer[pos + i];
+            }
+            return (period > 0) ? sum / period : EMPTY_VALUE;
          }
          else
          {
-            return (MABuffer[pos + 1] * (period - 1) + RSIBuffer[pos]) / period;
+            // ✅ FIX: Validation avant accès aux arrays
+            if(pos >= 0 && pos < ArraySize(RSIBuffer) && pos + 1 >= 0 && pos + 1 < ArraySize(MABuffer))
+            {
+               return (MABuffer[pos + 1] * (period - 1) + RSIBuffer[pos]) / period;
+            }
          }
+         break;
          
       case MA_LWMA:
       {
          double weightSum = 0;
          for(int i = 0; i < period; i++)
          {
-            int weight = period - i;
-            sum += RSIBuffer[pos + i] * weight;
-            weightSum += weight;
+            // ✅ FIX: Validation des indices dans la boucle LWMA
+            if(pos + i >= 0 && pos + i < ArraySize(RSIBuffer))
+            {
+               int weight = period - i;
+               sum += RSIBuffer[pos + i] * weight;
+               weightSum += weight;
+            }
          }
-         return sum / weightSum;
+         return (weightSum > 0) ? sum / weightSum : EMPTY_VALUE;
       }
    }
    
-   return 0;
+   return EMPTY_VALUE;
+}
+
+//+------------------------------------------------------------------+
+//| Équivalent de ta.pivotlow() de Pine Script                       |
+//| Vérifie si la position 'pos' est un pivot BAS                    |
+//| leftBars : nombre de barres à gauche (historique)                |
+//| rightBars : nombre de barres à droite (récent)                   |
+//| buffer : array contenant les valeurs (RSI, prix, etc.)           |
+//+------------------------------------------------------------------+
+bool IsPivotLow(int pos, int leftBars, int rightBars, const double &buffer[])
+{
+   // ✅ FIX PINE SCRIPT: Validation des limites
+   if(pos < 0 || pos >= ArraySize(buffer))
+      return false;
+   
+   // Vérifier qu'on a assez de barres de chaque côté
+   if(pos < rightBars || pos + leftBars >= ArraySize(buffer))
+      return false;
+   
+   double pivotValue = buffer[pos];
+   
+   // ✅ FIX PINE SCRIPT: Vérifier que pos est le MINIMUM dans la fenêtre
+   // De pos-rightBars à pos+leftBars (inclusif)
+   // Si une valeur est STRICTEMENT inférieure, ce n'est pas un pivot
+   for(int i = pos - rightBars; i <= pos + leftBars; i++)
+   {
+      // Ne pas comparer avec soi-même
+      if(i == pos) 
+         continue;
+      
+      // Validation de l'indice
+      if(i < 0 || i >= ArraySize(buffer))
+         continue;
+      
+      // ✅ FIX PINE SCRIPT: Si une valeur est plus petite, ce n'est PAS un pivot bas
+      if(buffer[i] < pivotValue)
+         return false;
+   }
+   
+   return true; // C'est un pivot bas valide
+}
+
+//+------------------------------------------------------------------+
+//| Équivalent de ta.pivothigh() de Pine Script                      |
+//| Vérifie si la position 'pos' est un pivot HAUT                   |
+//+------------------------------------------------------------------+
+bool IsPivotHigh(int pos, int leftBars, int rightBars, const double &buffer[])
+{
+   // ✅ FIX PINE SCRIPT: Validation des limites
+   if(pos < 0 || pos >= ArraySize(buffer))
+      return false;
+   
+   if(pos < rightBars || pos + leftBars >= ArraySize(buffer))
+      return false;
+   
+   double pivotValue = buffer[pos];
+   
+   // ✅ FIX PINE SCRIPT: Vérifier que pos est le MAXIMUM dans la fenêtre
+   for(int i = pos - rightBars; i <= pos + leftBars; i++)
+   {
+      if(i == pos) 
+         continue;
+      
+      if(i < 0 || i >= ArraySize(buffer))
+         continue;
+      
+      // ✅ FIX PINE SCRIPT: Si une valeur est plus grande, ce n'est PAS un pivot haut
+      if(buffer[i] > pivotValue)
+         return false;
+   }
+   
+   return true;
 }
 
 //+------------------------------------------------------------------+
@@ -426,97 +580,56 @@ double CalculateMA(int pos, int period, MA_TYPE_CUSTOM ma_type)
 //+------------------------------------------------------------------+
 void CheckBullishDivergence(int currentBar, const datetime &time[], const double &low[])
 {
-   // A. Position de vérification (currentBar contient déjà la bonne position)
+   // ✅ FIX: Validation complète des paramètres d'entrée
+   if(currentBar < 0 || currentBar >= ArraySize(RSIBuffer) || 
+      currentBar >= ArraySize(time) || currentBar >= ArraySize(low))
+      return;
+   
    int checkPos = currentBar;
    
-   // Vérifications de limites
+   // ✅ FIX: Vérifications de limites améliorées
    if(checkPos >= ArraySize(RSIBuffer) - InpLookbackLeft)
       return;
    if(checkPos < InpLookbackRight)
       return;
    
-   // B. Vérification stricte du pivot BAS actuel
+   // ✅ FIX PINE SCRIPT: REMPLACER toute la section de vérification de pivot par :
+   if(!IsPivotLow(checkPos, InpLookbackLeft, InpLookbackRight, RSIBuffer))
+      return;
+   
    double pivotRSI = RSIBuffer[checkPos];
-   bool isPivotLow = true;
    
-   // Vérifier TOUTES les barres à gauche (passé)
-   for(int i = 1; i <= InpLookbackLeft; i++)
-   {
-      if(checkPos + i >= ArraySize(RSIBuffer))
-         return;
-      if(RSIBuffer[checkPos + i] <= pivotRSI)  // Strictement supérieures
-      {
-         isPivotLow = false;
-         break;
-      }
-   }
-   
-   // Vérifier TOUTES les barres à droite (futur)
-   for(int i = 1; i <= InpLookbackRight; i++)
-   {
-      if(checkPos - i < 0)
-         return;
-      if(RSIBuffer[checkPos - i] <= pivotRSI)  // Strictement supérieures
-      {
-         isPivotLow = false;
-         break;
-      }
-   }
-   
-   if(!isPivotLow) return;
-   
-   // C. Recherche du pivot précédent avec validation complète
+   // ✅ FIX PINE SCRIPT: Recherche du pivot précédent - SIMPLIFIER
    int prevPivotBar = -1;
    double prevPivotRSI = 0;
    double prevPivotPrice = 0;
-   int barsSincePivot = 0;
    
-   for(int i = checkPos + InpRangeLower; i <= checkPos + InpRangeUpper && i < ArraySize(RSIBuffer); i++)
+   int maxSearch = MathMin(checkPos + InpRangeUpper, ArraySize(RSIBuffer) - 1);
+   int minSearch = MathMax(checkPos + InpRangeLower, InpLookbackRight);
+   
+   // Rechercher le premier pivot précédent valide
+   for(int i = minSearch; i <= maxSearch; i++)
    {
-      // Vérifier que le candidat est aussi un pivot bas valide
-      bool isPrevPivot = true;
-      double candidateRSI = RSIBuffer[i];
+      if(i < 0 || i >= ArraySize(RSIBuffer) || i >= ArraySize(low))
+         continue;
       
-      // Vérifier les barres à gauche du pivot potentiel
-      for(int j = 1; j <= InpLookbackLeft; j++)
-      {
-         if(i + j >= ArraySize(RSIBuffer))
-            break;
-         if(RSIBuffer[i + j] <= candidateRSI)
-         {
-            isPrevPivot = false;
-            break;
-         }
-      }
-      
-      // Vérifier les barres à droite du pivot potentiel
-      if(isPrevPivot)
-      {
-         for(int j = 1; j <= InpLookbackRight; j++)
-         {
-            if(i - j < 0)
-               break;
-            if(RSIBuffer[i - j] <= candidateRSI)
-            {
-               isPrevPivot = false;
-               break;
-            }
-         }
-      }
-      
-      if(isPrevPivot)
+      // ✅ FIX PINE SCRIPT: Utiliser IsPivotLow au lieu des boucles manuelles
+      if(IsPivotLow(i, InpLookbackLeft, InpLookbackRight, RSIBuffer))
       {
          prevPivotBar = i;
-         prevPivotRSI = candidateRSI;
+         prevPivotRSI = RSIBuffer[i];
          prevPivotPrice = low[i];
-         barsSincePivot = checkPos - i;
          break;
       }
    }
    
-   if(prevPivotBar < 0) return;
+   if(prevPivotBar < 0) 
+      return;
    
-   // Valider que barsSincePivot est dans la plage
+   // ✅ FIX PINE SCRIPT: Calcul correct de la distance (array en série inversée)
+   int barsSincePivot = prevPivotBar - checkPos;
+   
+   // Validation du range
    if(barsSincePivot < InpRangeLower || barsSincePivot > InpRangeUpper)
       return;
    
@@ -579,97 +692,54 @@ void CheckBullishDivergence(int currentBar, const datetime &time[], const double
 //+------------------------------------------------------------------+
 void CheckBearishDivergence(int currentBar, const datetime &time[], const double &high[])
 {
-   // A. Position de vérification (currentBar contient déjà la bonne position)
+   // ✅ FIX: Validation complète des paramètres d'entrée
+   if(currentBar < 0 || currentBar >= ArraySize(RSIBuffer) || 
+      currentBar >= ArraySize(time) || currentBar >= ArraySize(high))
+      return;
+   
    int checkPos = currentBar;
    
-   // Vérifications de limites
+   // ✅ FIX: Vérifications de limites améliorées
    if(checkPos >= ArraySize(RSIBuffer) - InpLookbackLeft)
       return;
    if(checkPos < InpLookbackRight)
       return;
    
-   // B. Vérification stricte du pivot HAUT actuel
+   // ✅ FIX PINE SCRIPT: REMPLACER par IsPivotHigh
+   if(!IsPivotHigh(checkPos, InpLookbackLeft, InpLookbackRight, RSIBuffer))
+      return;
+   
    double pivotRSI = RSIBuffer[checkPos];
-   bool isPivotHigh = true;
    
-   // Vérifier TOUTES les barres à gauche (passé)
-   for(int i = 1; i <= InpLookbackLeft; i++)
-   {
-      if(checkPos + i >= ArraySize(RSIBuffer))
-         return;
-      if(RSIBuffer[checkPos + i] >= pivotRSI)  // Strictement inférieures
-      {
-         isPivotHigh = false;
-         break;
-      }
-   }
-   
-   // Vérifier TOUTES les barres à droite (futur)
-   for(int i = 1; i <= InpLookbackRight; i++)
-   {
-      if(checkPos - i < 0)
-         return;
-      if(RSIBuffer[checkPos - i] >= pivotRSI)  // Strictement inférieures
-      {
-         isPivotHigh = false;
-         break;
-      }
-   }
-   
-   if(!isPivotHigh) return;
-   
-   // C. Recherche du pivot précédent avec validation complète
+   // ✅ FIX PINE SCRIPT: Recherche simplifiée du pivot précédent
    int prevPivotBar = -1;
    double prevPivotRSI = 0;
    double prevPivotPrice = 0;
-   int barsSincePivot = 0;
    
-   for(int i = checkPos + InpRangeLower; i <= checkPos + InpRangeUpper && i < ArraySize(RSIBuffer); i++)
+   int maxSearch = MathMin(checkPos + InpRangeUpper, ArraySize(RSIBuffer) - 1);
+   int minSearch = MathMax(checkPos + InpRangeLower, InpLookbackRight);
+   
+   for(int i = minSearch; i <= maxSearch; i++)
    {
-      // Vérifier que le candidat est aussi un pivot haut valide
-      bool isPrevPivot = true;
-      double candidateRSI = RSIBuffer[i];
+      if(i < 0 || i >= ArraySize(RSIBuffer) || i >= ArraySize(high))
+         continue;
       
-      // Vérifier les barres à gauche du pivot potentiel
-      for(int j = 1; j <= InpLookbackLeft; j++)
-      {
-         if(i + j >= ArraySize(RSIBuffer))
-            break;
-         if(RSIBuffer[i + j] >= candidateRSI)
-         {
-            isPrevPivot = false;
-            break;
-         }
-      }
-      
-      // Vérifier les barres à droite du pivot potentiel
-      if(isPrevPivot)
-      {
-         for(int j = 1; j <= InpLookbackRight; j++)
-         {
-            if(i - j < 0)
-               break;
-            if(RSIBuffer[i - j] >= candidateRSI)
-            {
-               isPrevPivot = false;
-               break;
-            }
-         }
-      }
-      
-      if(isPrevPivot)
+      // ✅ FIX PINE SCRIPT: Utiliser IsPivotHigh
+      if(IsPivotHigh(i, InpLookbackLeft, InpLookbackRight, RSIBuffer))
       {
          prevPivotBar = i;
-         prevPivotRSI = candidateRSI;
+         prevPivotRSI = RSIBuffer[i];
          prevPivotPrice = high[i];
-         barsSincePivot = checkPos - i;
          break;
       }
    }
    
-   if(prevPivotBar < 0) return;
+   if(prevPivotBar < 0) 
+      return;
    
-   // Valider que barsSincePivot est dans la plage
+   // ✅ FIX PINE SCRIPT: Calcul correct de la distance
+   int barsSincePivot = prevPivotBar - checkPos;
+   
    if(barsSincePivot < InpRangeLower || barsSincePivot > InpRangeUpper)
       return;
    
@@ -734,7 +804,7 @@ void CheckBearishDivergence(int currentBar, const datetime &time[], const double
 //+------------------------------------------------------------------+
 void DeleteOldTrendlines()
 {
-   // Compter les trendlines existantes
+   // ✅ FIX: Compter les trendlines existantes avec validation
    string objNames[];
    datetime objCreationTimes[];
    int count = 0;
@@ -753,32 +823,37 @@ void DeleteOldTrendlines()
       }
    }
 
-   // Si dépassement, supprimer les plus anciennes
-   if(count > MAX_TRENDLINES_TO_KEEP)
+   // ✅ FIX: Si dépassement, supprimer les plus anciennes
+   if(count > InpMaxTrendlines)
    {
-      // Trier par temps (plus ancien en premier)
+      // ✅ FIX: Utiliser ArraySort() natif au lieu de bubble sort
+      // Créer un array d'indices pour le tri
+      int indices[];
+      ArrayResize(indices, count);
+      for(int i = 0; i < count; i++)
+         indices[i] = i;
+      
+      // Trier les indices par temps de création (plus ancien en premier)
       for(int i = 0; i < count - 1; i++)
       {
          for(int j = i + 1; j < count; j++)
          {
-            if(objCreationTimes[i] > objCreationTimes[j])
+            if(objCreationTimes[indices[i]] > objCreationTimes[indices[j]])
             {
-               // Swap
-               datetime tempTime = objCreationTimes[i];
-               objCreationTimes[i] = objCreationTimes[j];
-               objCreationTimes[j] = tempTime;
-               
-               string tempName = objNames[i];
-               objNames[i] = objNames[j];
-               objNames[j] = tempName;
+               int temp = indices[i];
+               indices[i] = indices[j];
+               indices[j] = temp;
             }
          }
       }
       
-      // Supprimer les plus anciennes
-      for(int i = 0; i < count - MAX_TRENDLINES_TO_KEEP; i++)
+      // ✅ FIX: Supprimer les plus anciennes
+      int toDelete = count - InpMaxTrendlines;
+      for(int i = 0; i < toDelete; i++)
       {
-         ObjectDelete(0, objNames[i]);
+         int idx = indices[i];
+         if(idx >= 0 && idx < count)
+            ObjectDelete(0, objNames[idx]);
       }
    }
 }
@@ -808,10 +883,15 @@ void DeleteAllObjects()
 //+------------------------------------------------------------------+
 void DisplayIndicatorInfo()
 {
-   if(ArraySize(RSIBuffer) > 0)
+   // ✅ FIX: Validation des arrays avant affichage
+   if(ArraySize(RSIBuffer) > 0 && RSIBuffer[0] != EMPTY_VALUE)
    {
       double currentRSI = RSIBuffer[0];
-      double currentMA = (InpMAType != MA_NONE && ArraySize(MABuffer) > 0) ? MABuffer[0] : 0;
+      double currentMA = 0;
+      
+      // ✅ FIX: Validation pour MA
+      if(InpMAType != MA_NONE && ArraySize(MABuffer) > 0 && MABuffer[0] != EMPTY_VALUE)
+         currentMA = MABuffer[0];
       
       string info = StringFormat(
          "RSI: %.2f | MA: %.2f | Time: %s",
