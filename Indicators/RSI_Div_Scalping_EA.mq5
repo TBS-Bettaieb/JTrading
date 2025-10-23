@@ -15,13 +15,16 @@
 //| ✅ [PINE SCRIPT] Implémentation IsPivotLow/IsPivotHigh           |
 //| ✅ [PINE SCRIPT] Refactorisation détection divergences            |
 //| ✅ [CONFIG] Paramètres par défaut TradingView (RSI=3)             |
+//| ✅ [FEATURE] Ajout détection Hidden Divergences                   |
+//| ✅ [FEATURE] Buffers et plots pour Hidden Bullish/Bearish         |
+//| ✅ [FEATURE] Paramètres personnalisables Hidden Divergences       |
 //+------------------------------------------------------------------+
 #property copyright "RSI Divergence Trading System"
 #property link      ""
 #property version   "2.10"
 #property indicator_separate_window
-#property indicator_buffers 8
-#property indicator_plots   5
+#property indicator_buffers 10  // ✅ FIX HIDDEN DIV : 8 → 10 (ajout 2 buffers pour hidden div)
+#property indicator_plots   7   // ✅ FIX HIDDEN DIV : 5 → 7 (ajout 2 plots pour hidden div)
 
 // RSI line
 #property indicator_label1  "RSI"
@@ -55,6 +58,18 @@
 #property indicator_type5   DRAW_ARROW
 #property indicator_color5  clrWhite
 #property indicator_width5  2
+
+// ✅ FIX HIDDEN DIV : Hidden Divergence markers - Bullish
+#property indicator_label6  "Hidden Bull Div"
+#property indicator_type6   DRAW_ARROW
+#property indicator_color6  clrDodgerBlue
+#property indicator_width6  2
+
+// ✅ FIX HIDDEN DIV : Hidden Divergence markers - Bearish
+#property indicator_label7  "Hidden Bear Div"
+#property indicator_type7   DRAW_ARROW
+#property indicator_color7  clrOrange
+#property indicator_width7  2
 
 //--- Input parameters
 input group "═══ RSI Settings ═══"
@@ -93,6 +108,14 @@ input color  InpBullishColor  = clrLimeGreen;  // Bullish Divergence Color
 input color  InpBearishColor  = clrRed;        // Bearish Divergence Color
 input int    InpTrendlineWidth = 2;     // Trendline Width
 
+// ✅ FIX HIDDEN DIV : Nouveaux paramètres pour Hidden Divergences
+input group "═══ Hidden Divergence Settings ═══"
+input bool   InpShowHiddenDiv      = true;   // Show Hidden Divergences
+input color  InpHiddenBullColor    = clrDodgerBlue;   // Hidden Bullish Color
+input color  InpHiddenBearColor    = clrOrange;       // Hidden Bearish Color
+input int    InpHiddenTrendWidth   = 2;      // Hidden Trendline Width
+input ENUM_LINE_STYLE InpHiddenLineStyle = STYLE_DASH;  // Hidden Line Style
+
 //--- Indicator buffers
 double RSIBuffer[];
 double MABuffer[];
@@ -104,6 +127,10 @@ double DivergenceBuffer[];
 double UpBuffer[];
 double DownBuffer[];
 double StdDevBuffer[];
+
+// ✅ FIX HIDDEN DIV : Nouveaux buffers pour hidden divergences
+double HiddenBullDivBuffer[];
+double HiddenBearDivBuffer[];
 
 //--- Constantes
 const double DIVERGENCE_MARKER_OFFSET = 5.0;
@@ -160,8 +187,16 @@ int OnInit()
    SetIndexBuffer(6, DownBuffer, INDICATOR_CALCULATIONS);
    SetIndexBuffer(7, StdDevBuffer, INDICATOR_CALCULATIONS);
    
+   // ✅ FIX HIDDEN DIV : Mapping des nouveaux buffers
+   SetIndexBuffer(8, HiddenBullDivBuffer, INDICATOR_DATA);
+   SetIndexBuffer(9, HiddenBearDivBuffer, INDICATOR_DATA);
+   
    //--- Set arrow code for divergences
    PlotIndexSetInteger(4, PLOT_ARROW, 159);
+   
+   // ✅ FIX HIDDEN DIV : Configuration des arrows pour hidden divergences
+   PlotIndexSetInteger(5, PLOT_ARROW, 159);  // Hidden Bullish
+   PlotIndexSetInteger(6, PLOT_ARROW, 159);  // Hidden Bearish
    
    //--- Set empty values
    PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
@@ -169,6 +204,10 @@ int OnInit()
    PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, EMPTY_VALUE);
    PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, EMPTY_VALUE);
    PlotIndexSetDouble(4, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   
+   // ✅ FIX HIDDEN DIV : Empty values pour hidden divergences
+   PlotIndexSetDouble(5, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetDouble(6, PLOT_EMPTY_VALUE, EMPTY_VALUE);
    
    //--- Set indicator name
    IndicatorSetString(INDICATOR_SHORTNAME, "RSI_Div(" + string(InpRSIPeriod) + ")");
@@ -245,6 +284,10 @@ int OnCalculate(const int rates_total,
    ArraySetAsSeries(DownBuffer, true);
    ArraySetAsSeries(StdDevBuffer, true);
    
+   // ✅ FIX HIDDEN DIV : Arrays pour hidden divergences
+   ArraySetAsSeries(HiddenBullDivBuffer, true);
+   ArraySetAsSeries(HiddenBearDivBuffer, true);
+   
    // ✅ FIX: Optimisation calcul RSI - ne calculer que les nouvelles barres
    CalculateRSI(rates_total, prev_calculated, close);
    
@@ -266,8 +309,13 @@ int OnCalculate(const int rates_total,
             if(i >= 0 && i < ArraySize(RSIBuffer) && i < ArraySize(time) && 
                i < ArraySize(high) && i < ArraySize(low))
             {
+               // Regular Divergences (déjà présentes)
                CheckBullishDivergence(i, time, low);
                CheckBearishDivergence(i, time, high);
+               
+               // ✅ FIX HIDDEN DIV : Hidden Divergences
+               CheckHiddenBullishDivergence(i, time, low);
+               CheckHiddenBearishDivergence(i, time, high);
             }
          }
       }
@@ -301,6 +349,11 @@ void CalculateRSI(int rates_total, int prev_calculated, const double &close[])
       ArrayInitialize(BBUpperBuffer, EMPTY_VALUE);
       ArrayInitialize(BBLowerBuffer, EMPTY_VALUE);
       ArrayInitialize(DivergenceBuffer, EMPTY_VALUE);
+      
+      // ✅ FIX HIDDEN DIV : Initialisation des nouveaux buffers
+      ArrayInitialize(HiddenBullDivBuffer, EMPTY_VALUE);
+      ArrayInitialize(HiddenBearDivBuffer, EMPTY_VALUE);
+      
       firstRun = false;
    }
    
@@ -797,7 +850,235 @@ void CheckBearishDivergence(int currentBar, const datetime &time[], const double
    }
 }
 
+//+------------------------------------------------------------------+
+//| Check for HIDDEN bullish divergence                             |
+//| Hidden Bullish = Prix Higher Low + RSI Lower Low                |
+//| Signal : Continuation de tendance haussière                      |
+//+------------------------------------------------------------------+
+void CheckHiddenBullishDivergence(int currentBar, const datetime &time[], const double &low[])
+{
+   // ✅ FIX HIDDEN DIV : Vérifier si l'option est activée
+   if(!InpShowHiddenDiv)
+      return;
+   
+   // Validation complète des paramètres d'entrée
+   if(currentBar < 0 || currentBar >= ArraySize(RSIBuffer) || 
+      currentBar >= ArraySize(time) || currentBar >= ArraySize(low))
+      return;
+   
+   int checkPos = currentBar;
+   
+   // Vérifications de limites
+   if(checkPos >= ArraySize(RSIBuffer) - InpLookbackLeft)
+      return;
+   if(checkPos < InpLookbackRight)
+      return;
+   
+   // Vérifier que c'est un pivot bas sur le RSI
+   if(!IsPivotLow(checkPos, InpLookbackLeft, InpLookbackRight, RSIBuffer))
+      return;
+   
+   double pivotRSI = RSIBuffer[checkPos];
+   
+   // Recherche du pivot précédent
+   int prevPivotBar = -1;
+   double prevPivotRSI = 0;
+   double prevPivotPrice = 0;
+   
+   int maxSearch = MathMin(checkPos + InpRangeUpper, ArraySize(RSIBuffer) - 1);
+   int minSearch = MathMax(checkPos + InpRangeLower, InpLookbackRight);
+   
+   for(int i = minSearch; i <= maxSearch; i++)
+   {
+      if(i < 0 || i >= ArraySize(RSIBuffer) || i >= ArraySize(low))
+         continue;
+      
+      if(IsPivotLow(i, InpLookbackLeft, InpLookbackRight, RSIBuffer))
+      {
+         prevPivotBar = i;
+         prevPivotRSI = RSIBuffer[i];
+         prevPivotPrice = low[i];
+         break;
+      }
+   }
+   
+   if(prevPivotBar < 0) 
+      return;
+   
+   // Calcul de la distance
+   int barsSincePivot = prevPivotBar - checkPos;
+   
+   if(barsSincePivot < InpRangeLower || barsSincePivot > InpRangeUpper)
+      return;
+   
+   // ✅ CONDITIONS HIDDEN BULLISH (INVERSER par rapport à Regular)
+   double currentPrice = low[checkPos];
+   bool rsiLowerLow = pivotRSI < prevPivotRSI;      // RSI fait Lower Low (inversé)
+   bool priceHigherLow = currentPrice > prevPivotPrice;  // Prix fait Higher Low (inversé)
+   
+   if(rsiLowerLow && priceHigherLow)
+   {
+      Print("═══════════════════════════════════════════════");
+      Print("🔵 HIDDEN BULLISH DIVERGENCE DETECTED!");
+      Print("Previous Pivot: Bar ", prevPivotBar, " RSI=", DoubleToString(prevPivotRSI, 2));
+      Print("Current Pivot: Bar ", checkPos, " RSI=", DoubleToString(pivotRSI, 2));
+      Print("Bars Since: ", barsSincePivot);
+      Print("Price Low: ", DoubleToString(prevPivotPrice, _Digits),
+            " → ", DoubleToString(currentPrice, _Digits), " (Higher)");
+      Print("RSI Low: ", DoubleToString(prevPivotRSI, 2),
+            " → ", DoubleToString(pivotRSI, 2), " (Lower)");
+      Print("═══════════════════════════════════════════════");
+      
+      // Marquer la divergence
+      HiddenBullDivBuffer[checkPos] = pivotRSI - DIVERGENCE_MARKER_OFFSET;
+      
+      if(InpShowTrendlines)
+      {
+         // Dessin de la trendline
+         objectCounter++;
+         string objName = indicatorPrefix + "HBULL_" + IntegerToString(objectCounter);
+         
+         if(ObjectFind(0, objName) >= 0)
+            ObjectDelete(0, objName);
+         
+         int subwindow = ChartWindowFind(0, "RSI_Div(" + IntegerToString(InpRSIPeriod) + ")");
+         
+         if(subwindow < 0)
+         {
+            Print("⚠️ Erreur: Sous-fenêtre RSI non trouvée!");
+            return;
+         }
+         
+         if(ObjectCreate(0, objName, OBJ_TREND, subwindow, 
+                        time[prevPivotBar], prevPivotRSI,
+                        time[checkPos], pivotRSI))
+         {
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, InpHiddenBullColor);
+            ObjectSetInteger(0, objName, OBJPROP_WIDTH, InpHiddenTrendWidth);
+            ObjectSetInteger(0, objName, OBJPROP_STYLE, InpHiddenLineStyle);
+            ObjectSetInteger(0, objName, OBJPROP_RAY_RIGHT, false);
+            ObjectSetInteger(0, objName, OBJPROP_BACK, true);
+            ObjectSetInteger(0, objName, OBJPROP_SELECTABLE, true);
+            ObjectSetString(0, objName, OBJPROP_TOOLTIP, "Hidden Bullish Divergence");
+         }
+      }
+   }
+}
 
+//+------------------------------------------------------------------+
+//| Check for HIDDEN bearish divergence                             |
+//| Hidden Bearish = Prix Lower High + RSI Higher High              |
+//| Signal : Continuation de tendance baissière                      |
+//+------------------------------------------------------------------+
+void CheckHiddenBearishDivergence(int currentBar, const datetime &time[], const double &high[])
+{
+   // ✅ FIX HIDDEN DIV : Vérifier si l'option est activée
+   if(!InpShowHiddenDiv)
+      return;
+   
+   // Validation complète des paramètres d'entrée
+   if(currentBar < 0 || currentBar >= ArraySize(RSIBuffer) || 
+      currentBar >= ArraySize(time) || currentBar >= ArraySize(high))
+      return;
+   
+   int checkPos = currentBar;
+   
+   // Vérifications de limites
+   if(checkPos >= ArraySize(RSIBuffer) - InpLookbackLeft)
+      return;
+   if(checkPos < InpLookbackRight)
+      return;
+   
+   // Vérifier que c'est un pivot haut sur le RSI
+   if(!IsPivotHigh(checkPos, InpLookbackLeft, InpLookbackRight, RSIBuffer))
+      return;
+   
+   double pivotRSI = RSIBuffer[checkPos];
+   
+   // Recherche du pivot précédent
+   int prevPivotBar = -1;
+   double prevPivotRSI = 0;
+   double prevPivotPrice = 0;
+   
+   int maxSearch = MathMin(checkPos + InpRangeUpper, ArraySize(RSIBuffer) - 1);
+   int minSearch = MathMax(checkPos + InpRangeLower, InpLookbackRight);
+   
+   for(int i = minSearch; i <= maxSearch; i++)
+   {
+      if(i < 0 || i >= ArraySize(RSIBuffer) || i >= ArraySize(high))
+         continue;
+      
+      if(IsPivotHigh(i, InpLookbackLeft, InpLookbackRight, RSIBuffer))
+      {
+         prevPivotBar = i;
+         prevPivotRSI = RSIBuffer[i];
+         prevPivotPrice = high[i];
+         break;
+      }
+   }
+   
+   if(prevPivotBar < 0) 
+      return;
+   
+   // Calcul de la distance
+   int barsSincePivot = prevPivotBar - checkPos;
+   
+   if(barsSincePivot < InpRangeLower || barsSincePivot > InpRangeUpper)
+      return;
+   
+   // ✅ CONDITIONS HIDDEN BEARISH (INVERSER par rapport à Regular)
+   double currentPrice = high[checkPos];
+   bool rsiHigherHigh = pivotRSI > prevPivotRSI;         // RSI fait Higher High (inversé)
+   bool priceLowerHigh = currentPrice < prevPivotPrice;  // Prix fait Lower High (inversé)
+   
+   if(rsiHigherHigh && priceLowerHigh)
+   {
+      Print("═══════════════════════════════════════════════");
+      Print("🟠 HIDDEN BEARISH DIVERGENCE DETECTED!");
+      Print("Previous Pivot: Bar ", prevPivotBar, " RSI=", DoubleToString(prevPivotRSI, 2));
+      Print("Current Pivot: Bar ", checkPos, " RSI=", DoubleToString(pivotRSI, 2));
+      Print("Bars Since: ", barsSincePivot);
+      Print("Price High: ", DoubleToString(prevPivotPrice, _Digits),
+            " → ", DoubleToString(currentPrice, _Digits), " (Lower)");
+      Print("RSI High: ", DoubleToString(prevPivotRSI, 2),
+            " → ", DoubleToString(pivotRSI, 2), " (Higher)");
+      Print("═══════════════════════════════════════════════");
+      
+      // Marquer la divergence
+      HiddenBearDivBuffer[checkPos] = pivotRSI + DIVERGENCE_MARKER_OFFSET;
+      
+      if(InpShowTrendlines)
+      {
+         // Dessin de la trendline
+         objectCounter++;
+         string objName = indicatorPrefix + "HBEAR_" + IntegerToString(objectCounter);
+         
+         if(ObjectFind(0, objName) >= 0)
+            ObjectDelete(0, objName);
+         
+         int subwindow = ChartWindowFind(0, "RSI_Div(" + IntegerToString(InpRSIPeriod) + ")");
+         
+         if(subwindow < 0)
+         {
+            Print("⚠️ Erreur: Sous-fenêtre RSI non trouvée!");
+            return;
+         }
+         
+         if(ObjectCreate(0, objName, OBJ_TREND, subwindow, 
+                        time[prevPivotBar], prevPivotRSI,
+                        time[checkPos], pivotRSI))
+         {
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, InpHiddenBearColor);
+            ObjectSetInteger(0, objName, OBJPROP_WIDTH, InpHiddenTrendWidth);
+            ObjectSetInteger(0, objName, OBJPROP_STYLE, InpHiddenLineStyle);
+            ObjectSetInteger(0, objName, OBJPROP_RAY_RIGHT, false);
+            ObjectSetInteger(0, objName, OBJPROP_BACK, true);
+            ObjectSetInteger(0, objName, OBJPROP_SELECTABLE, true);
+            ObjectSetString(0, objName, OBJPROP_TOOLTIP, "Hidden Bearish Divergence");
+         }
+      }
+   }
+}
 
 //+------------------------------------------------------------------+
 //| Delete old trendlines intelligently                             |
