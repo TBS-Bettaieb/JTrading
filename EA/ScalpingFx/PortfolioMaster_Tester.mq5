@@ -363,19 +363,6 @@ void DisplayPerSymbolStats()
    Logger::Info("📊 PER-SYMBOL PERFORMANCE");
    Logger::Info("═══════════════════════════════════════════════════");
    
- // for(int i = 0; i < totalSymbols; i++)
- // {
- //    if(bots[i] != NULL)
- //    {
- //       string symbol = symbols[i];
- //       double profit = bots[i].GetTotalProfit();
- //       int positions = bots[i].GetTotalPositions();
- //       
- //       Print(symbol, ": P/L=$", DoubleToString(profit, 2), 
- //             " | Positions:", positions);
- //    }
- // }
-   
    Logger::Info("═══════════════════════════════════════════════════");
 }
 
@@ -457,17 +444,6 @@ void SaveTestConfiguration(double totalProfit, double profitPercent, double maxD
    
    content += "\n";
    content += "PER-SYMBOL BREAKDOWN:\n";
-  // for(int i = 0; i < totalSymbols; i++)
-  // {
-  //    if(bots[i] != NULL)
-  //    {
-  //       string symbol = symbols[i];
-  //       double profit = bots[i].GetTotalProfit();
-  //       int positions = bots[i].GetTotalPositions();
-  //       
-  //       content += symbol + ": P/L=$" + DoubleToString(profit, 2) + " | Positions:" + IntegerToString(positions) + "\n";
-  //    }
-  // }
    
    content += "\n";
    content += "====================================\n";

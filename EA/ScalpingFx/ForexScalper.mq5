@@ -7,9 +7,6 @@
 #property version   "3.00"
 #property strict
 
-//═══════════════════════════════════════════════════════════════════
-//   ████████╗ CONFIG BLOCK - MODIFY THIS FOR EACH CLONE ████████╗
-//═══════════════════════════════════════════════════════════════════
 
 // 🎯 STRATEGY IDENTITY
 #define STRATEGY_NAME          "Forex Scalper V1.1"
@@ -67,9 +64,6 @@
 #define DAY_BLOCK_MSG          "📅 TRADING PAUSED - Outside Trading Days"
 #define BOTH_BLOCK_MSG         "🚫 TRADING PAUSED - Outside Trading Schedule"
 
-//═══════════════════════════════════════════════════════════════════
-//   ████████╗ END OF CONFIG BLOCK ████████╗
-//═══════════════════════════════════════════════════════════════════
 
 // Include the bot engine (all logic is here)
 #include "core/ForexScalperBot.mqh"
