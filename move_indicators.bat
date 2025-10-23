@@ -9,7 +9,7 @@ set "SOURCE_DIR=%~dp0Indicators"
 
 REM --- Chemin de destination (modifiez si necessaire) ---
 REM Option 1: Chemin relatif (recommandé)
-set "DEST_DIR=%~dp0..\..\..\MQL5\Indicators\JTIndicators"
+set "DEST_DIR=%~dp0..\..\..\MQL5\Indicators\"
 
 REM Option 2: Chemin absolu (décommentez et modifiez si le relatif ne fonctionne pas)
 REM set "DEST_DIR=C:\Users\taieb\AppData\Roaming\MetaQuotes\Terminal\81A933A9AFC5DE3C23B15CAB19C63850\MQL5\Indicators\JTIndicators"

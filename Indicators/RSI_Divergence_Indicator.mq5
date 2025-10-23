@@ -19,13 +19,15 @@
 //| ✅ [FEATURE] Buffers et plots pour Hidden Bullish/Bearish         |
 //| ✅ [FEATURE] Paramètres personnalisables Hidden Divergences       |
 //| ✅ [EA INTEGRATION] Ajout 4 buffers de signaux pour l'EA          |
+//| ✅ [FIX] Correction erreur "Sous-fenêtre RSI non trouvée!" en mode testeur |
+//| ✅ [FIX] Correction détection divergences en temps réel (nouvelles barres) |
 //+------------------------------------------------------------------+
 #property copyright "RSI Divergence Trading System"
 #property link      ""
-#property version   "2.11"
+#property version   "2.14"
 #property indicator_separate_window
-#property indicator_buffers 14  // ✅ EA INTEGRATION: 10 → 14 (ajout 4 buffers de signaux)
-#property indicator_plots   7   // ✅ EA INTEGRATION: Reste 7 (les 4 nouveaux sont INDICATOR_CALCULATIONS)
+#property indicator_buffers 11  // ✅ EA INTEGRATION: 11 buffers total
+#property indicator_plots   8   // ✅ EA INTEGRATION: 7 plots visibles + 1 signal invisible (buffer 7)
 
 // RSI line
 #property indicator_label1  "RSI"
@@ -72,50 +74,40 @@
 #property indicator_color7  clrOrange
 #property indicator_width7  2
 
+// Signal buffer (invisible mais accessible par EA)
+#property indicator_label8  "Divergence Signal"
+#property indicator_type8   DRAW_NONE
+
 //--- Input parameters
-input group "═══ RSI Settings ═══"
-input int                InpRSIPeriod        = 3;               // RSI Length (config TradingView)
+// input group "═══ RSI Settings ═══"
+input int                InpRSIPeriod        = 3;               // RSI Length
 input ENUM_APPLIED_PRICE InpRSIAppliedPrice = PRICE_CLOSE;     // Source
 
-input group "═══ RSI Levels ═══"
-input bool   InpShowLevels      = true;      // Show Levels
+// input group "═══ RSI Levels ═══"
 input double InpUpperLevel      = 90.0;      // Upper Level
-input double InpMiddleLevel     = 50.0;      // Middle Level
 input double InpLowerLevel      = 10.0;      // Lower Level
-input color  InpLevelColor      = clrSilver; // Level Color
 
-input group "═══ Smoothing ═══"
-enum MA_TYPE_CUSTOM
-{
-   MA_NONE,           // None
-   MA_SMA,            // SMA
-   MA_SMA_BB,         // SMA + Bollinger Bands
-   MA_EMA,            // EMA
-   MA_SMMA,           // SMMA (RMA)
-   MA_LWMA,           // LWMA
-};
-
-input MA_TYPE_CUSTOM InpMAType     = MA_NONE;    // MA Type
-input int            InpMAPeriod   = 14;         // MA Length
-input double         InpBBStdDev   = 2.0;        // BB StdDev
-
-input group "═══ Divergence Settings ═══"
+// input group "═══ Divergence Settings ═══"
 input int    InpLookbackLeft  = 5;      // Lookback Left
 input int    InpLookbackRight = 5;      // Lookback Right
 input int    InpRangeLower    = 5;      // Range Lower
 input int    InpRangeUpper    = 60;     // Range Upper
-input bool   InpShowTrendlines = true;  // Show Divergence Trendlines
-input color  InpBullishColor  = clrLimeGreen;  // Bullish Divergence Color
-input color  InpBearishColor  = clrRed;        // Bearish Divergence Color
-input int    InpTrendlineWidth = 2;     // Trendline Width
 
-// ✅ FIX HIDDEN DIV : Nouveaux paramètres pour Hidden Divergences
-input group "═══ Hidden Divergence Settings ═══"
-input bool   InpShowHiddenDiv      = true;   // Show Hidden Divergences
-input color  InpHiddenBullColor    = clrDodgerBlue;   // Hidden Bullish Color
-input color  InpHiddenBearColor    = clrOrange;       // Hidden Bearish Color
-input int    InpHiddenTrendWidth   = 2;      // Hidden Trendline Width
-input ENUM_LINE_STYLE InpHiddenLineStyle = STYLE_DASH;  // Hidden Line Style
+//--- Constantes (paramètres en dur)
+const bool   SHOW_LEVELS = true;
+const double MIDDLE_LEVEL = 50.0;
+const color  LEVEL_COLOR = clrSilver;
+const bool   SHOW_TRENDLINES = true;
+const color  BULLISH_COLOR = clrLimeGreen;
+const color  BEARISH_COLOR = clrRed;
+const int    TRENDLINE_WIDTH = 2;
+const bool   SHOW_HIDDEN_DIV = true;
+const color  HIDDEN_BULL_COLOR = clrDodgerBlue;
+const color  HIDDEN_BEAR_COLOR = clrOrange;
+const int    HIDDEN_TREND_WIDTH = 2;
+const ENUM_LINE_STYLE HIDDEN_LINE_STYLE = STYLE_DASH;
+const int    MAX_TRENDLINES = 50;
+const int    MAX_BARS_CHECK = 100;
 
 //--- Indicator buffers
 double RSIBuffer[];
@@ -134,18 +126,12 @@ double HiddenBullDivBuffer[];
 double HiddenBearDivBuffer[];
 
 // ✅ EA INTEGRATION : Nouveaux buffers de signaux pour l'EA
-double RegularBullishSignal[];  // Buffer 10: 1.0 si Regular Bullish Div détectée, sinon 0
-double RegularBearishSignal[];  // Buffer 11: 1.0 si Regular Bearish Div détectée, sinon 0
-double HiddenBullishSignal[];   // Buffer 12: 1.0 si Hidden Bullish Div détectée, sinon 0
-double HiddenBearishSignal[];   // Buffer 13: 1.0 si Hidden Bearish Div détectée, sinon 0
+// ✅ NOUVEAU : Un seul buffer pour tous les signaux
+double DivergenceSignalBuffer[];  // Buffer 7: Codes: 0=Aucun, 1=RegBull, 2=RegBear, 3=HidBull, 4=HidBear
 
 //--- Constantes
 const double DIVERGENCE_MARKER_OFFSET = 5.0;
 
-// ✅ FIX: Paramètres configurables au lieu de constantes magiques
-input group "═══ Performance Settings ═══"
-input int InpMaxTrendlines = 50;      // Max Trendlines to Keep
-input int InpMaxBarsCheck = 100;      // Max Bars to Check for Divergences
 
 //--- Global variables
 string indicatorPrefix = "RSI_DIV_";
@@ -156,6 +142,17 @@ int objectCounter = 0;
 //+------------------------------------------------------------------+
 int OnInit()
 {
+      // ✅ AJOUTER CECI POUR DEBUG
+   Print("🔍 DEBUG - Paramètres reçus:");
+   Print("   InpRSIPeriod = ", InpRSIPeriod);
+   Print("   InpRSIAppliedPrice = ", InpRSIAppliedPrice);
+   Print("   InpUpperLevel = ", InpUpperLevel);
+   Print("   InpLowerLevel = ", InpLowerLevel);
+   Print("   InpLookbackLeft = ", InpLookbackLeft);
+   Print("   InpLookbackRight = ", InpLookbackRight);
+   Print("   InpRangeLower = ", InpRangeLower);
+   Print("   InpRangeUpper = ", InpRangeUpper);
+
    // Validation des paramètres
    if(InpRSIPeriod < 2)
    {
@@ -184,31 +181,35 @@ int OnInit()
    }
    
    //--- Indicator buffers mapping
+   // Buffers 0-4 : Affichage graphique
    SetIndexBuffer(0, RSIBuffer, INDICATOR_DATA);
    SetIndexBuffer(1, MABuffer, INDICATOR_DATA);
    SetIndexBuffer(2, BBUpperBuffer, INDICATOR_DATA);
    SetIndexBuffer(3, BBLowerBuffer, INDICATOR_DATA);
    SetIndexBuffer(4, DivergenceBuffer, INDICATOR_DATA);
+
+   // Buffers 5-6 : Hidden divergences (affichage)
+   SetIndexBuffer(5, HiddenBullDivBuffer, INDICATOR_DATA);
+   SetIndexBuffer(6, HiddenBearDivBuffer, INDICATOR_DATA);
+
+   // Buffer 7 : Signal pour EA (ACCESSIBLE - DOIT être INDICATOR_DATA)
+   SetIndexBuffer(7, DivergenceSignalBuffer, INDICATOR_DATA);
    
-   SetIndexBuffer(5, UpBuffer, INDICATOR_CALCULATIONS);
-   SetIndexBuffer(6, DownBuffer, INDICATOR_CALCULATIONS);
-   SetIndexBuffer(7, StdDevBuffer, INDICATOR_CALCULATIONS);
-   
-   // ✅ FIX HIDDEN DIV : Mapping des nouveaux buffers
-   SetIndexBuffer(8, HiddenBullDivBuffer, INDICATOR_DATA);
-   SetIndexBuffer(9, HiddenBearDivBuffer, INDICATOR_DATA);
-   
-   // ✅ EA INTEGRATION : Mapping des buffers de signaux pour l'EA
-   SetIndexBuffer(10, RegularBullishSignal, INDICATOR_CALCULATIONS);
-   SetIndexBuffer(11, RegularBearishSignal, INDICATOR_CALCULATIONS);
-   SetIndexBuffer(12, HiddenBullishSignal, INDICATOR_CALCULATIONS);
-   SetIndexBuffer(13, HiddenBearishSignal, INDICATOR_CALCULATIONS);
-   
-   // ✅ EA INTEGRATION : Initialisation des buffers de signaux
-   ArrayInitialize(RegularBullishSignal, 0.0);
-   ArrayInitialize(RegularBearishSignal, 0.0);
-   ArrayInitialize(HiddenBullishSignal, 0.0);
-   ArrayInitialize(HiddenBearishSignal, 0.0);
+   // Buffers 8-10 : Calculs internes (déplacés pour libérer buffer 7)
+   SetIndexBuffer(8, UpBuffer, INDICATOR_CALCULATIONS);
+   SetIndexBuffer(9, DownBuffer, INDICATOR_CALCULATIONS);
+   SetIndexBuffer(10, StdDevBuffer, INDICATOR_CALCULATIONS);
+
+   // ✅ Configuration du plot 8 (index 7) pour le signal invisible
+   PlotIndexSetInteger(7, PLOT_DRAW_TYPE, DRAW_NONE);  // Plot invisible
+   PlotIndexSetDouble(7, PLOT_EMPTY_VALUE, 0.0);       // Valeur vide = 0
+   PlotIndexSetString(7, PLOT_LABEL, "Signal");        // Label pour debug
+
+   // ✅ IMPORTANT : Initialiser APRÈS la configuration
+   ArrayInitialize(DivergenceSignalBuffer, 0.0);
+
+   // ✅ DEBUG : Ajouter log de confirmation
+   Print("✅ Buffer 7 (DivergenceSignalBuffer) configuré - Type: INDICATOR_DATA");
    
    //--- Set arrow code for divergences
    PlotIndexSetInteger(4, PLOT_ARROW, 159);
@@ -216,6 +217,8 @@ int OnInit()
    // ✅ FIX HIDDEN DIV : Configuration des arrows pour hidden divergences
    PlotIndexSetInteger(5, PLOT_ARROW, 159);  // Hidden Bullish
    PlotIndexSetInteger(6, PLOT_ARROW, 159);  // Hidden Bearish
+   
+   // ✅ EA INTEGRATION : Configuration du plot invisible pour signal (déjà fait plus haut)
    
    //--- Set empty values
    PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
@@ -234,22 +237,19 @@ int OnInit()
    //--- Set precision
    IndicatorSetInteger(INDICATOR_DIGITS, 2);
    
-   //--- Create RSI levels
-   if(InpShowLevels)
-   {
-      IndicatorSetInteger(INDICATOR_LEVELS, 3);
-      IndicatorSetDouble(INDICATOR_LEVELVALUE, 0, InpUpperLevel);
-      IndicatorSetDouble(INDICATOR_LEVELVALUE, 1, InpMiddleLevel);
-      IndicatorSetDouble(INDICATOR_LEVELVALUE, 2, InpLowerLevel);
-      
-      IndicatorSetInteger(INDICATOR_LEVELCOLOR, 0, InpLevelColor);
-      IndicatorSetInteger(INDICATOR_LEVELCOLOR, 1, InpLevelColor);
-      IndicatorSetInteger(INDICATOR_LEVELCOLOR, 2, InpLevelColor);
-      
-      IndicatorSetInteger(INDICATOR_LEVELSTYLE, 0, STYLE_DOT);
-      IndicatorSetInteger(INDICATOR_LEVELSTYLE, 1, STYLE_DOT);
-      IndicatorSetInteger(INDICATOR_LEVELSTYLE, 2, STYLE_DOT);
-   }
+   //--- Create RSI levels (toujours affichés)
+   IndicatorSetInteger(INDICATOR_LEVELS, 3);
+   IndicatorSetDouble(INDICATOR_LEVELVALUE, 0, InpUpperLevel);
+   IndicatorSetDouble(INDICATOR_LEVELVALUE, 1, MIDDLE_LEVEL);
+   IndicatorSetDouble(INDICATOR_LEVELVALUE, 2, InpLowerLevel);
+   
+   IndicatorSetInteger(INDICATOR_LEVELCOLOR, 0, LEVEL_COLOR);
+   IndicatorSetInteger(INDICATOR_LEVELCOLOR, 1, LEVEL_COLOR);
+   IndicatorSetInteger(INDICATOR_LEVELCOLOR, 2, LEVEL_COLOR);
+   
+   IndicatorSetInteger(INDICATOR_LEVELSTYLE, 0, STYLE_DOT);
+   IndicatorSetInteger(INDICATOR_LEVELSTYLE, 1, STYLE_DOT);
+   IndicatorSetInteger(INDICATOR_LEVELSTYLE, 2, STYLE_DOT);
    
    
    //--- Delete old objects
@@ -289,6 +289,8 @@ int OnCalculate(const int rates_total,
    if(rates_total < InpRSIPeriod + InpRangeUpper + 10)
       return(0);
    
+   // ✅ Test de communication supprimé pour éviter l'interférence avec les vrais signaux
+   
    // ✅ FIX: Cohérence indexation - tous les arrays en série inversée
    ArraySetAsSeries(time, true);
    ArraySetAsSeries(close, true);
@@ -307,11 +309,8 @@ int OnCalculate(const int rates_total,
    ArraySetAsSeries(HiddenBullDivBuffer, true);
    ArraySetAsSeries(HiddenBearDivBuffer, true);
    
-   // ✅ EA INTEGRATION : Arrays pour signaux EA
-   ArraySetAsSeries(RegularBullishSignal, true);
-   ArraySetAsSeries(RegularBearishSignal, true);
-   ArraySetAsSeries(HiddenBullishSignal, true);
-   ArraySetAsSeries(HiddenBearishSignal, true);
+   // ✅ EA INTEGRATION : Array pour signal de divergence encodé
+   ArraySetAsSeries(DivergenceSignalBuffer, true);
    
    // ✅ FIX: Optimisation calcul RSI - ne calculer que les nouvelles barres
    CalculateRSI(rates_total, prev_calculated, close);
@@ -319,26 +318,61 @@ int OnCalculate(const int rates_total,
    // ✅ FIX: Détection nouvelle barre robuste avec prev_calculated
    bool isNewBar = (prev_calculated == 0 || rates_total > prev_calculated);
    
+   // ✅ FIX: Suppression de la réinitialisation problématique
+   // Le buffer de signaux ne doit PAS être réinitialisé à chaque nouvelle barre
+   // car cela efface les signaux avant qu'ils ne soient détectés
+   
    if(isNewBar)
    {
       // Supprimer les anciennes trendlines AVANT de détecter les nouvelles
       DeleteOldTrendlines();
       
-      // ✅ FIX: Optimisation zone de recherche - limiter à 50 dernières barres
+      // Vérifier qu'on a assez de données
       if(rates_total > InpRangeLower + InpLookbackLeft + InpLookbackRight + 20)
       {
-         int limit = MathMin(InpMaxBarsCheck, rates_total - InpRangeUpper - InpLookbackLeft - 1);
-         for(int i = InpLookbackRight + 1; i <= limit; i++)
+         int startPos, endPos;
+         
+         // ✅ FIX CRITIQUE : Différencier premier chargement et nouvelles barres
+         if(prev_calculated == 0)
+         {
+            // PREMIER CHARGEMENT : Analyser toutes les barres historiques
+            startPos = InpLookbackRight + 1;
+            endPos = MathMin(MAX_BARS_CHECK, rates_total - InpRangeUpper - InpLookbackLeft - 1);
+            
+            Print("🔍 PREMIER CHARGEMENT - Analyse de ", startPos, " à ", endPos, " (", endPos - startPos + 1, " barres)");
+         }
+         else
+         {
+            // NOUVELLES BARRES : Analyser seulement les positions récemment confirmées
+            // Une barre devient un "pivot confirmé" quand elle a InpLookbackRight barres à sa droite
+            
+            // Nombre de nouvelles barres depuis le dernier calcul
+            int newBars = rates_total - prev_calculated;
+            
+            // Position de la barre la plus récente qui peut être un pivot confirmé
+            startPos = InpLookbackRight + 1;
+            
+            // Position de la barre la plus ancienne à vérifier
+            // On vérifie les barres qui viennent d'être confirmées + quelques barres supplémentaires
+            endPos = InpLookbackRight + newBars + InpLookbackLeft + 5;
+            
+            // Limiter pour éviter de tout recalculer
+            endPos = MathMin(endPos, startPos + 30);  // Maximum 30 barres à vérifier
+            
+         }
+         
+         // Parcourir les barres à vérifier
+         for(int i = startPos; i <= endPos; i++)
          {
             // ✅ FIX: Validation des indices avant appel des fonctions
             if(i >= 0 && i < ArraySize(RSIBuffer) && i < ArraySize(time) && 
                i < ArraySize(high) && i < ArraySize(low))
             {
-               // Regular Divergences (déjà présentes)
+               // Regular Divergences
                CheckBullishDivergence(i, time, low);
                CheckBearishDivergence(i, time, high);
                
-               // ✅ FIX HIDDEN DIV : Hidden Divergences
+               // Hidden Divergences
                CheckHiddenBullishDivergence(i, time, low);
                CheckHiddenBearishDivergence(i, time, high);
             }
@@ -349,8 +383,11 @@ int OnCalculate(const int rates_total,
    //--- Display information on chart
    DisplayIndicatorInfo();
    
+   // ✅ Debug du buffer de signaux supprimé pour réduire les logs
+   
    return(rates_total);
 }
+
 
 //+------------------------------------------------------------------+
 //| Calculate RSI and divergences                                    |
@@ -426,12 +463,12 @@ void CalculateRSI(int rates_total, int prev_calculated, const double &close[])
    else
    {
       // ✅ FIX: Seulement recalculer les nouvelles barres
-      start = rates_total - prev_calculated - 1;
+      start = rates_total - prev_calculated;
       if(start < 0) start = 0;
    }
    
    // Étape 2: Application de la formule RMA
-   for(int i = start - 1; i >= 0; i--)
+   for(int i = start; i >= 0; i--)
    {
       // ✅ FIX: Validation complète des indices
       if(i + 1 >= rates_total || i + 1 >= ArraySize(close) || i >= ArraySize(close) ||
@@ -455,131 +492,10 @@ void CalculateRSI(int rates_total, int prev_calculated, const double &close[])
          RSIBuffer[i] = 100.0 - (100.0 / (1.0 + UpBuffer[i] / DownBuffer[i]));
    }
    
-   // ✅ FIX: Calcul du lissage MA avec validation des paramètres
-   if(InpMAType != MA_NONE && rates_total > InpRSIPeriod + InpMAPeriod)
-   {
-      for(int i = 0; i < rates_total - InpRSIPeriod - InpMAPeriod; i++)
-      {
-         // ✅ FIX: Validation des indices avant calcul MA
-         if(i >= 0 && i < ArraySize(MABuffer))
-         {
-            MABuffer[i] = CalculateMA(i, InpMAPeriod, InpMAType);
-            
-            // Bollinger Bands si activé
-            if(InpMAType == MA_SMA_BB && i < ArraySize(BBUpperBuffer) && i < ArraySize(BBLowerBuffer))
-            {
-               double sum = 0;
-               for(int j = 0; j < InpMAPeriod; j++)
-               {
-                  // ✅ FIX: Validation des indices dans la boucle BB
-                  if(i + j >= 0 && i + j < ArraySize(RSIBuffer) && i < ArraySize(MABuffer))
-                  {
-                     double diff = RSIBuffer[i + j] - MABuffer[i];
-                     sum += diff * diff;
-                  }
-               }
-               if(i < ArraySize(StdDevBuffer))
-               {
-                  StdDevBuffer[i] = MathSqrt(sum / InpMAPeriod);
-                  BBUpperBuffer[i] = MABuffer[i] + InpBBStdDev * StdDevBuffer[i];
-                  BBLowerBuffer[i] = MABuffer[i] - InpBBStdDev * StdDevBuffer[i];
-               }
-            }
-         }
-      }
-   }
+   // MA désactivé - pas de calcul de lissage
    
 }
 
-//+------------------------------------------------------------------+
-//| Calculate Moving Average                                          |
-//+------------------------------------------------------------------+
-double CalculateMA(int pos, int period, MA_TYPE_CUSTOM ma_type)
-{
-   // ✅ FIX: Validation complète des paramètres d'entrée
-   if(pos < 0 || period <= 0 || pos >= ArraySize(RSIBuffer))
-      return EMPTY_VALUE;
-   
-   // ✅ FIX: Vérifier que pos + period ne dépasse pas la taille de l'array
-   if(pos + period > ArraySize(RSIBuffer))
-      return EMPTY_VALUE;
-   
-   double sum = 0;
-   
-   switch(ma_type)
-   {
-      case MA_SMA:
-      case MA_SMA_BB:
-         for(int i = 0; i < period; i++)
-         {
-            // ✅ FIX: Validation des indices dans la boucle
-            if(pos + i >= 0 && pos + i < ArraySize(RSIBuffer))
-               sum += RSIBuffer[pos + i];
-         }
-         return (period > 0) ? sum / period : EMPTY_VALUE;
-         
-      case MA_EMA:
-         // ✅ FIX: Validation des indices pour EMA
-         if(pos >= ArraySize(MABuffer) - period - 1 || pos + 1 >= ArraySize(MABuffer))
-         {
-            for(int i = 0; i < period; i++)
-            {
-               if(pos + i >= 0 && pos + i < ArraySize(RSIBuffer))
-                  sum += RSIBuffer[pos + i];
-            }
-            return (period > 0) ? sum / period : EMPTY_VALUE;
-         }
-         else
-         {
-            // ✅ FIX: Validation avant accès aux arrays
-            if(pos >= 0 && pos < ArraySize(RSIBuffer) && pos + 1 >= 0 && pos + 1 < ArraySize(MABuffer))
-            {
-               double alpha = 2.0 / (period + 1.0);
-               return alpha * RSIBuffer[pos] + (1 - alpha) * MABuffer[pos + 1];
-            }
-         }
-         break;
-         
-      case MA_SMMA:
-         // ✅ FIX: Validation des indices pour SMMA
-         if(pos >= ArraySize(MABuffer) - period - 1 || pos + 1 >= ArraySize(MABuffer))
-         {
-            for(int i = 0; i < period; i++)
-            {
-               if(pos + i >= 0 && pos + i < ArraySize(RSIBuffer))
-                  sum += RSIBuffer[pos + i];
-            }
-            return (period > 0) ? sum / period : EMPTY_VALUE;
-         }
-         else
-         {
-            // ✅ FIX: Validation avant accès aux arrays
-            if(pos >= 0 && pos < ArraySize(RSIBuffer) && pos + 1 >= 0 && pos + 1 < ArraySize(MABuffer))
-            {
-               return (MABuffer[pos + 1] * (period - 1) + RSIBuffer[pos]) / period;
-            }
-         }
-         break;
-         
-      case MA_LWMA:
-      {
-         double weightSum = 0;
-         for(int i = 0; i < period; i++)
-         {
-            // ✅ FIX: Validation des indices dans la boucle LWMA
-            if(pos + i >= 0 && pos + i < ArraySize(RSIBuffer))
-            {
-               int weight = period - i;
-               sum += RSIBuffer[pos + i] * weight;
-               weightSum += weight;
-            }
-         }
-         return (weightSum > 0) ? sum / weightSum : EMPTY_VALUE;
-      }
-   }
-   
-   return EMPTY_VALUE;
-}
 
 //+------------------------------------------------------------------+
 //| Équivalent de ta.pivotlow() de Pine Script                       |
@@ -665,6 +581,13 @@ void CheckBullishDivergence(int currentBar, const datetime &time[], const double
    
    int checkPos = currentBar;
    
+   // ✅ Vérifier qu'il n'y a pas déjà un signal (plus robuste)
+   if(DivergenceSignalBuffer[checkPos] != 0.0 && DivergenceSignalBuffer[checkPos] != EMPTY_VALUE)
+   {
+      Print("⚠️ Signal déjà présent en position ", checkPos, " : ", DivergenceSignalBuffer[checkPos]);
+      return;
+   }
+   
    // ✅ FIX: Vérifications de limites améliorées
    if(checkPos >= ArraySize(RSIBuffer) - InpLookbackLeft)
       return;
@@ -718,24 +641,18 @@ void CheckBullishDivergence(int currentBar, const datetime &time[], const double
    
    if(rsiHigherLow && priceLowerLow)
    {
-      Print("═══════════════════════════════════════════════");
-      Print("🟢 BULLISH DIVERGENCE DETECTED!");
-      Print("Previous Pivot: Bar ", prevPivotBar, " RSI=", DoubleToString(prevPivotRSI, 2));
-      Print("Current Pivot: Bar ", checkPos, " RSI=", DoubleToString(pivotRSI, 2));
-      Print("Bars Since: ", barsSincePivot);
-      Print("Price Low: ", DoubleToString(prevPivotPrice, _Digits),
-            " → ", DoubleToString(currentPrice, _Digits));
-      Print("RSI Low: ", DoubleToString(prevPivotRSI, 2),
-            " → ", DoubleToString(pivotRSI, 2));
-      Print("═══════════════════════════════════════════════");
+      Print("🟢 BULLISH DIV @ Bar[", checkPos, "] Signal=", 1.0);
       
       // Marquer la divergence
       DivergenceBuffer[checkPos] = pivotRSI - DIVERGENCE_MARKER_OFFSET;
       
-      // ✅ EA INTEGRATION : Signaler la divergence bullish régulière
-      RegularBullishSignal[checkPos] = 1.0;
+      // ✅ EA INTEGRATION : Enregistrer le signal : 1 = Regular Bullish
+      DivergenceSignalBuffer[checkPos] = 1.0;
       
-      if(InpShowTrendlines)
+      // ✅ Confirmation d'écriture dans le buffer
+      Print("📝 SIGNAL ÉCRIT: Buffer[", checkPos, "] = ", DivergenceSignalBuffer[checkPos], " (Bullish Regular)");
+      
+      if(SHOW_TRENDLINES)
       {
          // E. Dessin de la trendline
          objectCounter++;
@@ -746,18 +663,21 @@ void CheckBullishDivergence(int currentBar, const datetime &time[], const double
          
          int subwindow = ChartWindowFind(0, "RSI_Div(" + IntegerToString(InpRSIPeriod) + ")");
          
+         // ✅ FIX: En mode testeur, utiliser fenêtre 1 par défaut si pas trouvée
          if(subwindow < 0)
          {
-            Print("⚠️ Erreur: Sous-fenêtre RSI non trouvée!");
-            return;
+            if(MQLInfoInteger(MQL_TESTER))
+               subwindow = 1;  // Fenêtre 1 = première sous-fenêtre en testeur
+            else
+               return;  // En mode normal, abandonner si vraiment pas trouvée
          }
          
          if(ObjectCreate(0, objName, OBJ_TREND, subwindow, 
                         time[prevPivotBar], prevPivotRSI,  // Point 1 : pivot précédent
                         time[checkPos], pivotRSI))          // Point 2 : pivot actuel
          {
-            ObjectSetInteger(0, objName, OBJPROP_COLOR, InpBullishColor);
-            ObjectSetInteger(0, objName, OBJPROP_WIDTH, InpTrendlineWidth);
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, BULLISH_COLOR);
+            ObjectSetInteger(0, objName, OBJPROP_WIDTH, TRENDLINE_WIDTH);
             ObjectSetInteger(0, objName, OBJPROP_STYLE, STYLE_SOLID);
             ObjectSetInteger(0, objName, OBJPROP_RAY_RIGHT, false);  // Pas de prolongement
             ObjectSetInteger(0, objName, OBJPROP_BACK, true);        // Dessinée en arrière-plan
@@ -779,6 +699,13 @@ void CheckBearishDivergence(int currentBar, const datetime &time[], const double
       return;
    
    int checkPos = currentBar;
+   
+   // ✅ Vérifier qu'il n'y a pas déjà un signal (plus robuste)
+   if(DivergenceSignalBuffer[checkPos] != 0.0 && DivergenceSignalBuffer[checkPos] != EMPTY_VALUE)
+   {
+      Print("⚠️ Signal déjà présent en position ", checkPos, " : ", DivergenceSignalBuffer[checkPos]);
+      return;
+   }
    
    // ✅ FIX: Vérifications de limites améliorées
    if(checkPos >= ArraySize(RSIBuffer) - InpLookbackLeft)
@@ -831,24 +758,18 @@ void CheckBearishDivergence(int currentBar, const datetime &time[], const double
    
    if(rsiLowerHigh && priceHigherHigh)
    {
-      Print("═══════════════════════════════════════════════");
-      Print("🔴 BEARISH DIVERGENCE DETECTED!");
-      Print("Previous Pivot: Bar ", prevPivotBar, " RSI=", DoubleToString(prevPivotRSI, 2));
-      Print("Current Pivot: Bar ", checkPos, " RSI=", DoubleToString(pivotRSI, 2));
-      Print("Bars Since: ", barsSincePivot);
-      Print("Price High: ", DoubleToString(prevPivotPrice, _Digits),
-            " → ", DoubleToString(currentPrice, _Digits));
-      Print("RSI High: ", DoubleToString(prevPivotRSI, 2),
-            " → ", DoubleToString(pivotRSI, 2));
-      Print("═══════════════════════════════════════════════");
+      Print("🔴 BEARISH DIV @ Bar[", checkPos, "] Signal=", 2.0);
       
       // Marquer la divergence
       DivergenceBuffer[checkPos] = pivotRSI + DIVERGENCE_MARKER_OFFSET;
       
-      // ✅ EA INTEGRATION : Signaler la divergence bearish régulière
-      RegularBearishSignal[checkPos] = 1.0;
+      // ✅ EA INTEGRATION : Enregistrer le signal : 2 = Regular Bearish
+      DivergenceSignalBuffer[checkPos] = 2.0;
       
-      if(InpShowTrendlines)
+      // ✅ Confirmation d'écriture dans le buffer
+      Print("📝 SIGNAL ÉCRIT: Buffer[", checkPos, "] = ", DivergenceSignalBuffer[checkPos], " (Bearish Regular)");
+      
+      if(SHOW_TRENDLINES)
       {
          // E. Dessin de la trendline
          objectCounter++;
@@ -859,18 +780,21 @@ void CheckBearishDivergence(int currentBar, const datetime &time[], const double
          
          int subwindow = ChartWindowFind(0, "RSI_Div(" + IntegerToString(InpRSIPeriod) + ")");
          
+         // ✅ FIX: En mode testeur, utiliser fenêtre 1 par défaut si pas trouvée
          if(subwindow < 0)
          {
-            Print("⚠️ Erreur: Sous-fenêtre RSI non trouvée!");
-            return;
+            if(MQLInfoInteger(MQL_TESTER))
+               subwindow = 1;  // Fenêtre 1 = première sous-fenêtre en testeur
+            else
+               return;  // En mode normal, abandonner si vraiment pas trouvée
          }
          
          if(ObjectCreate(0, objName, OBJ_TREND, subwindow, 
                         time[prevPivotBar], prevPivotRSI,  // Point 1 : pivot précédent
                         time[checkPos], pivotRSI))          // Point 2 : pivot actuel
          {
-            ObjectSetInteger(0, objName, OBJPROP_COLOR, InpBearishColor);
-            ObjectSetInteger(0, objName, OBJPROP_WIDTH, InpTrendlineWidth);
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, BEARISH_COLOR);
+            ObjectSetInteger(0, objName, OBJPROP_WIDTH, TRENDLINE_WIDTH);
             ObjectSetInteger(0, objName, OBJPROP_STYLE, STYLE_SOLID);
             ObjectSetInteger(0, objName, OBJPROP_RAY_RIGHT, false);  // Pas de prolongement
             ObjectSetInteger(0, objName, OBJPROP_BACK, true);        // Dessinée en arrière-plan
@@ -889,7 +813,7 @@ void CheckBearishDivergence(int currentBar, const datetime &time[], const double
 void CheckHiddenBullishDivergence(int currentBar, const datetime &time[], const double &low[])
 {
    // ✅ FIX HIDDEN DIV : Vérifier si l'option est activée
-   if(!InpShowHiddenDiv)
+   if(!SHOW_HIDDEN_DIV)
       return;
    
    // Validation complète des paramètres d'entrée
@@ -898,6 +822,13 @@ void CheckHiddenBullishDivergence(int currentBar, const datetime &time[], const 
       return;
    
    int checkPos = currentBar;
+   
+   // ✅ Vérifier qu'il n'y a pas déjà un signal (plus robuste)
+   if(DivergenceSignalBuffer[checkPos] != 0.0 && DivergenceSignalBuffer[checkPos] != EMPTY_VALUE)
+   {
+      Print("⚠️ Signal déjà présent en position ", checkPos, " : ", DivergenceSignalBuffer[checkPos]);
+      return;
+   }
    
    // Vérifications de limites
    if(checkPos >= ArraySize(RSIBuffer) - InpLookbackLeft)
@@ -949,24 +880,18 @@ void CheckHiddenBullishDivergence(int currentBar, const datetime &time[], const 
    
    if(rsiLowerLow && priceHigherLow)
    {
-      Print("═══════════════════════════════════════════════");
-      Print("🔵 HIDDEN BULLISH DIVERGENCE DETECTED!");
-      Print("Previous Pivot: Bar ", prevPivotBar, " RSI=", DoubleToString(prevPivotRSI, 2));
-      Print("Current Pivot: Bar ", checkPos, " RSI=", DoubleToString(pivotRSI, 2));
-      Print("Bars Since: ", barsSincePivot);
-      Print("Price Low: ", DoubleToString(prevPivotPrice, _Digits),
-            " → ", DoubleToString(currentPrice, _Digits), " (Higher)");
-      Print("RSI Low: ", DoubleToString(prevPivotRSI, 2),
-            " → ", DoubleToString(pivotRSI, 2), " (Lower)");
-      Print("═══════════════════════════════════════════════");
+      Print("🔵 HIDDEN BULLISH DIV @ Bar[", checkPos, "] Signal=", 3.0);
       
       // Marquer la divergence
       HiddenBullDivBuffer[checkPos] = pivotRSI - DIVERGENCE_MARKER_OFFSET;
       
-      // ✅ EA INTEGRATION : Signaler la divergence bullish cachée
-      HiddenBullishSignal[checkPos] = 1.0;
+      // ✅ EA INTEGRATION : Enregistrer le signal : 3 = Hidden Bullish
+      DivergenceSignalBuffer[checkPos] = 3.0;
       
-      if(InpShowTrendlines)
+      // ✅ Confirmation d'écriture dans le buffer
+      Print("📝 SIGNAL ÉCRIT: Buffer[", checkPos, "] = ", DivergenceSignalBuffer[checkPos], " (Hidden Bullish)");
+      
+      if(SHOW_TRENDLINES)
       {
          // Dessin de la trendline
          objectCounter++;
@@ -977,19 +902,22 @@ void CheckHiddenBullishDivergence(int currentBar, const datetime &time[], const 
          
          int subwindow = ChartWindowFind(0, "RSI_Div(" + IntegerToString(InpRSIPeriod) + ")");
          
+         // ✅ FIX: En mode testeur, utiliser fenêtre 1 par défaut si pas trouvée
          if(subwindow < 0)
          {
-            Print("⚠️ Erreur: Sous-fenêtre RSI non trouvée!");
-            return;
+            if(MQLInfoInteger(MQL_TESTER))
+               subwindow = 1;  // Fenêtre 1 = première sous-fenêtre en testeur
+            else
+               return;  // En mode normal, abandonner si vraiment pas trouvée
          }
          
          if(ObjectCreate(0, objName, OBJ_TREND, subwindow, 
                         time[prevPivotBar], prevPivotRSI,
                         time[checkPos], pivotRSI))
          {
-            ObjectSetInteger(0, objName, OBJPROP_COLOR, InpHiddenBullColor);
-            ObjectSetInteger(0, objName, OBJPROP_WIDTH, InpHiddenTrendWidth);
-            ObjectSetInteger(0, objName, OBJPROP_STYLE, InpHiddenLineStyle);
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, HIDDEN_BULL_COLOR);
+            ObjectSetInteger(0, objName, OBJPROP_WIDTH, HIDDEN_TREND_WIDTH);
+            ObjectSetInteger(0, objName, OBJPROP_STYLE, HIDDEN_LINE_STYLE);
             ObjectSetInteger(0, objName, OBJPROP_RAY_RIGHT, false);
             ObjectSetInteger(0, objName, OBJPROP_BACK, true);
             ObjectSetInteger(0, objName, OBJPROP_SELECTABLE, true);
@@ -1007,7 +935,7 @@ void CheckHiddenBullishDivergence(int currentBar, const datetime &time[], const 
 void CheckHiddenBearishDivergence(int currentBar, const datetime &time[], const double &high[])
 {
    // ✅ FIX HIDDEN DIV : Vérifier si l'option est activée
-   if(!InpShowHiddenDiv)
+   if(!SHOW_HIDDEN_DIV)
       return;
    
    // Validation complète des paramètres d'entrée
@@ -1016,6 +944,13 @@ void CheckHiddenBearishDivergence(int currentBar, const datetime &time[], const 
       return;
    
    int checkPos = currentBar;
+   
+   // ✅ Vérifier qu'il n'y a pas déjà un signal (plus robuste)
+   if(DivergenceSignalBuffer[checkPos] != 0.0 && DivergenceSignalBuffer[checkPos] != EMPTY_VALUE)
+   {
+      Print("⚠️ Signal déjà présent en position ", checkPos, " : ", DivergenceSignalBuffer[checkPos]);
+      return;
+   }
    
    // Vérifications de limites
    if(checkPos >= ArraySize(RSIBuffer) - InpLookbackLeft)
@@ -1067,24 +1002,18 @@ void CheckHiddenBearishDivergence(int currentBar, const datetime &time[], const 
    
    if(rsiHigherHigh && priceLowerHigh)
    {
-      Print("═══════════════════════════════════════════════");
-      Print("🟠 HIDDEN BEARISH DIVERGENCE DETECTED!");
-      Print("Previous Pivot: Bar ", prevPivotBar, " RSI=", DoubleToString(prevPivotRSI, 2));
-      Print("Current Pivot: Bar ", checkPos, " RSI=", DoubleToString(pivotRSI, 2));
-      Print("Bars Since: ", barsSincePivot);
-      Print("Price High: ", DoubleToString(prevPivotPrice, _Digits),
-            " → ", DoubleToString(currentPrice, _Digits), " (Lower)");
-      Print("RSI High: ", DoubleToString(prevPivotRSI, 2),
-            " → ", DoubleToString(pivotRSI, 2), " (Higher)");
-      Print("═══════════════════════════════════════════════");
+      Print("🟠 HIDDEN BEARISH DIV @ Bar[", checkPos, "] Signal=", 4.0);
       
       // Marquer la divergence
       HiddenBearDivBuffer[checkPos] = pivotRSI + DIVERGENCE_MARKER_OFFSET;
       
-      // ✅ EA INTEGRATION : Signaler la divergence bearish cachée
-      HiddenBearishSignal[checkPos] = 1.0;
+      // ✅ EA INTEGRATION : Enregistrer le signal : 4 = Hidden Bearish
+      DivergenceSignalBuffer[checkPos] = 4.0;
       
-      if(InpShowTrendlines)
+      // ✅ Confirmation d'écriture dans le buffer
+      Print("📝 SIGNAL ÉCRIT: Buffer[", checkPos, "] = ", DivergenceSignalBuffer[checkPos], " (Hidden Bearish)");
+      
+      if(SHOW_TRENDLINES)
       {
          // Dessin de la trendline
          objectCounter++;
@@ -1095,19 +1024,22 @@ void CheckHiddenBearishDivergence(int currentBar, const datetime &time[], const 
          
          int subwindow = ChartWindowFind(0, "RSI_Div(" + IntegerToString(InpRSIPeriod) + ")");
          
+         // ✅ FIX: En mode testeur, utiliser fenêtre 1 par défaut si pas trouvée
          if(subwindow < 0)
          {
-            Print("⚠️ Erreur: Sous-fenêtre RSI non trouvée!");
-            return;
+            if(MQLInfoInteger(MQL_TESTER))
+               subwindow = 1;  // Fenêtre 1 = première sous-fenêtre en testeur
+            else
+               return;  // En mode normal, abandonner si vraiment pas trouvée
          }
          
          if(ObjectCreate(0, objName, OBJ_TREND, subwindow, 
                         time[prevPivotBar], prevPivotRSI,
                         time[checkPos], pivotRSI))
          {
-            ObjectSetInteger(0, objName, OBJPROP_COLOR, InpHiddenBearColor);
-            ObjectSetInteger(0, objName, OBJPROP_WIDTH, InpHiddenTrendWidth);
-            ObjectSetInteger(0, objName, OBJPROP_STYLE, InpHiddenLineStyle);
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, HIDDEN_BEAR_COLOR);
+            ObjectSetInteger(0, objName, OBJPROP_WIDTH, HIDDEN_TREND_WIDTH);
+            ObjectSetInteger(0, objName, OBJPROP_STYLE, HIDDEN_LINE_STYLE);
             ObjectSetInteger(0, objName, OBJPROP_RAY_RIGHT, false);
             ObjectSetInteger(0, objName, OBJPROP_BACK, true);
             ObjectSetInteger(0, objName, OBJPROP_SELECTABLE, true);
@@ -1142,7 +1074,7 @@ void DeleteOldTrendlines()
    }
 
    // ✅ FIX: Si dépassement, supprimer les plus anciennes
-   if(count > InpMaxTrendlines)
+   if(count > MAX_TRENDLINES)
    {
       // ✅ FIX: Utiliser ArraySort() natif au lieu de bubble sort
       // Créer un array d'indices pour le tri
@@ -1166,7 +1098,7 @@ void DeleteOldTrendlines()
       }
       
       // ✅ FIX: Supprimer les plus anciennes
-      int toDelete = count - InpMaxTrendlines;
+      int toDelete = count - MAX_TRENDLINES;
       for(int i = 0; i < toDelete; i++)
       {
          int idx = indices[i];
@@ -1205,11 +1137,7 @@ void DisplayIndicatorInfo()
    if(ArraySize(RSIBuffer) > 0 && RSIBuffer[0] != EMPTY_VALUE)
    {
       double currentRSI = RSIBuffer[0];
-      double currentMA = 0;
-      
-      // ✅ FIX: Validation pour MA
-      if(InpMAType != MA_NONE && ArraySize(MABuffer) > 0 && MABuffer[0] != EMPTY_VALUE)
-         currentMA = MABuffer[0];
+      double currentMA = 0;  // MA désactivé
       
       string info = StringFormat(
          "RSI: %.2f | MA: %.2f | Time: %s",

@@ -17,40 +17,17 @@
 
 #include <Trade\Trade.mqh>
 
-//--- Enums
-enum MA_TYPE_CUSTOM
-{
-   MA_NONE,           // None
-   MA_SMA,            // SMA
-   MA_SMA_BB,         // SMA + Bollinger Bands
-   MA_EMA,            // EMA
-   MA_SMMA,           // SMMA (RMA)
-   MA_LWMA,           // LWMA
-};
 
 //--- Input parameters
-input group "═══ Indicateur Settings ═══"
-input string InpIndicatorName = "RSI_Divergence_Indicator"; // Nom de l'indicateur
-input int    InpRSIPeriod = 3;                              // RSI Period (doit matcher l'indicateur)
-input int    InpLookbackLeft = 5;                           // Lookback Left (doit matcher l'indicateur)
-input int    InpLookbackRight = 5;                          // Lookback Right (doit matcher l'indicateur)
-input int    InpRangeLower = 5;                             // Range Lower (doit matcher l'indicateur)
-input int    InpRangeUpper = 60;                            // Range Upper (doit matcher l'indicateur)
-input bool   InpShowHiddenDiv = true;                       // Show Hidden Divergences (doit matcher l'indicateur)
-
 input group "═══ Trading Settings ═══"
 input bool   InpTradeRegularDiv = true;   // Trade Regular Divergences
 input bool   InpTradeHiddenDiv = false;   // Trade Hidden Divergences
-input double InpLotSize = 0.01;           // Lot Size
-input int    InpStopLoss = 50;            // Stop Loss (points)
-input int    InpTakeProfit = 100;         // Take Profit (points)
-input int    InpMagicNumber = 123456;     // Magic Number
-input string InpTradeComment = "RSI_Div"; // Trade Comment
 
-input group "═══ Risk Management ═══"
-input bool   InpUseTrailingStop = true;   // Use Trailing Stop
-input int    InpTrailingStop = 30;        // Trailing Stop (points)
-input int    InpTrailingStep = 5;         // Trailing Step (points)
+input group "═══ Money Management ═══"
+input double InpRiskPercent = 1.0;        // Risk per Trade (% of Balance)
+input double InpStopLossPercent = 0.10;   // Stop Loss (% of Price)
+input double InpRiskReward = 1.5;         // Risk:Reward Ratio
+input int    InpMagicNumber = 123456;     // Magic Number
 input int    InpMaxTrades = 1;            // Max Simultaneous Trades
 
 input group "═══ Filters ═══"
@@ -91,15 +68,21 @@ TradingStats stats;
 int OnInit()
 {
    // Validation des paramètres
-   if(InpLotSize <= 0)
+   if(InpRiskPercent <= 0 || InpRiskPercent > 10)
    {
-      Print("❌ Erreur: Lot Size doit être > 0");
+      Print("❌ Erreur: Risk Percent doit être entre 0.1 et 10%");
       return INIT_PARAMETERS_INCORRECT;
    }
    
-   if(InpStopLoss <= 0 || InpTakeProfit <= 0)
+   if(InpStopLossPercent <= 0 || InpStopLossPercent > 5)
    {
-      Print("❌ Erreur: Stop Loss et Take Profit doivent être > 0");
+      Print("❌ Erreur: Stop Loss Percent doit être entre 0.01 et 5%");
+      return INIT_PARAMETERS_INCORRECT;
+   }
+   
+   if(InpRiskReward <= 0 || InpRiskReward > 10)
+   {
+      Print("❌ Erreur: Risk Reward doit être entre 0.5 et 10");
       return INIT_PARAMETERS_INCORRECT;
    }
    
@@ -114,40 +97,27 @@ int OnInit()
    trade.SetDeviationInPoints(10);
    trade.SetTypeFilling(ORDER_FILLING_FOK);
    
-   // Charger l'indicateur
-   indicatorHandle = iCustom(_Symbol, _Period, InpIndicatorName,
-                            InpRSIPeriod,           // RSI Period
-                            PRICE_CLOSE,           // Applied Price
-                            true,                  // Show Levels
-                            90.0,                  // Upper Level
-                            50.0,                  // Middle Level
-                            10.0,                  // Lower Level
-                            clrSilver,             // Level Color
-                            MA_NONE,               // MA Type
-                            14,                    // MA Length
-                            2.0,                   // BB StdDev
-                            InpLookbackLeft,       // Lookback Left
-                            InpLookbackRight,      // Lookback Right
-                            InpRangeLower,         // Range Lower
-                            InpRangeUpper,         // Range Upper
-                            true,                  // Show Trendlines
-                            clrLimeGreen,          // Bullish Color
-                            clrRed,                // Bearish Color
-                            2,                     // Trendline Width
-                            InpShowHiddenDiv,      // Show Hidden Div
-                            clrDodgerBlue,         // Hidden Bull Color
-                            clrOrange,             // Hidden Bear Color
-                            2,                     // Hidden Trend Width
-                            STYLE_DASH,            // Hidden Line Style
-                            50,                    // Max Trendlines
-                            100);                  // Max Bars Check
-   
-   if(indicatorHandle == INVALID_HANDLE)
-   {
-      Print("❌ Erreur: Impossible de charger l'indicateur ", InpIndicatorName);
-      Print("Vérifiez que l'indicateur est compilé et dans le bon dossier");
-      return INIT_FAILED;
-   }
+// Charger l'indicateur avec les valeurs simplifiées
+indicatorHandle = iCustom(_Symbol, _Period, "RSI_Divergence_Indicator",
+                        3,                    // RSI Period
+                        PRICE_CLOSE,          // Applied Price
+                        // RSI Levels
+                        90.0,                 // Upper Level
+                        10.0,                 // Lower Level
+                        // Divergence Settings
+                        5,                    // Lookback Left
+                        5,                    // Lookback Right
+                        5,                    // Range Lower
+                        60);                  // Range Upper
+
+if(indicatorHandle == INVALID_HANDLE)
+{
+   Print("❌ Erreur: Impossible de charger l'indicateur RSI_Divergence_Indicator");
+   Print("   Vérifiez que l'indicateur est compilé et dans le dossier Indicators/");
+   Print("   Chemin utilisé: RSI_Divergence_Indicator");
+   Print("   Erreur code: ", GetLastError());
+   return INIT_FAILED;
+}
    
    // Initialiser les statistiques
    stats.totalTrades = 0;
@@ -164,6 +134,26 @@ int OnInit()
    Print("Timeframe: ", EnumToString(_Period));
    Print("Indicator Handle: ", indicatorHandle);
    Print("Magic Number: ", InpMagicNumber);
+   
+   Print("✅ Indicateur chargé, handle: ", indicatorHandle);
+   Print("⏳ Test de lecture du buffer 7 de signaux...");
+   
+   // Attendre un peu pour la synchronisation
+   Sleep(500);
+   
+   // Tester la lecture
+   double testSignal[];
+   ArraySetAsSeries(testSignal, true);
+   int testCopy = CopyBuffer(indicatorHandle, 7, 0, 1, testSignal);
+   
+   if(testCopy > 0)
+   {
+      Print("✅ Buffer 7 de signaux accessible, valeur actuelle: ", testSignal[0]);
+   }
+   else
+   {
+      Print("⚠️ Buffer pas encore prêt (normal au démarrage), code erreur: ", GetLastError());
+   }
    
    return(INIT_SUCCEEDED);
 }
@@ -187,14 +177,7 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   // Vérifier nouvelle barre
-   if(!IsNewBar())
-      return;
-   
-   // Gérer les positions ouvertes
-   ManageOpenPositions();
-   
-   // Vérifier les signaux
+   // Appeler à chaque tick pour détection immédiate des signaux
    CheckForSignals();
    
    // Afficher les informations
@@ -227,62 +210,125 @@ void CheckForSignals()
    if(CountOpenPositions() >= InpMaxTrades)
       return;
    
-   // Lire les buffers de signaux de l'indicateur
-   double bullSignal[], bearSignal[], hiddenBullSignal[], hiddenBearSignal[];
-   ArraySetAsSeries(bullSignal, true);
-   ArraySetAsSeries(bearSignal, true);
-   ArraySetAsSeries(hiddenBullSignal, true);
-   ArraySetAsSeries(hiddenBearSignal, true);
+   // ═══ PHASE 1 : VÉRIFICATIONS PRÉLIMINAIRES ═══
    
-   // Copier les buffers 10-13 de l'indicateur
-   if(CopyBuffer(indicatorHandle, 10, 0, 3, bullSignal) <= 0 ||
-      CopyBuffer(indicatorHandle, 11, 0, 3, bearSignal) <= 0 ||
-      CopyBuffer(indicatorHandle, 12, 0, 3, hiddenBullSignal) <= 0 ||
-      CopyBuffer(indicatorHandle, 13, 0, 3, hiddenBearSignal) <= 0)
+   // Vérifier que l'indicateur a terminé ses calculs
+   int barsCalculated = BarsCalculated(indicatorHandle);
+   if(barsCalculated <= 0)
+      return;
+   
+   // Vérifier qu'on a assez de barres
+   int availableBars = Bars(_Symbol, _Period);
+   if(barsCalculated < availableBars - 5)
+      return;
+   
+   // ═══ PHASE 2 : LECTURE DU BUFFER ═══
+   
+   double signalBuffer[];
+   ArraySetAsSeries(signalBuffer, true);
+   ArrayResize(signalBuffer, 2);  // Lire seulement 2 barres (actuelle et précédente)
+   ArrayInitialize(signalBuffer, 0.0);  // Initialiser à zéro
+   
+   // Lecture du buffer
+   ResetLastError();
+   int copied = CopyBuffer(indicatorHandle, 7, 0, 2, signalBuffer);
+   int lastError = GetLastError();
+   
+   if(copied <= 0)
    {
-      Print("⚠️ Erreur: Impossible de lire les buffers de l'indicateur");
+      Print("❌ Échec lecture buffer - Code erreur: ", lastError);
       return;
    }
    
-   // Vérifier les signaux Regular Bullish (nouveau signal)
-   if(InpTradeRegularDiv && bullSignal[1] == 1.0 && bullSignal[2] == 0.0)
+   // ═══ PHASE 3 : DÉTECTION IMMÉDIATE DU SIGNAL ═══
+   
+   // 🔍 DEBUG: État du buffer au moment de la lecture
+   Print("═══ DEBUG LECTURE SIGNAL ═══");
+   Print("Copied: ", copied, " barres");
+   Print("Buffer[0] (barre actuelle): ", signalBuffer[0]);
+   Print("Buffer[1] (barre précédente): ", signalBuffer[1]);
+   Print("Time[1]: ", TimeToString(iTime(_Symbol, _Period, 1)));
+   
+   // Lire UNIQUEMENT la barre [1] (dernière barre confirmée)
+   static datetime lastTradedBarTime = 0;  // Mémoriser la dernière barre tradée
+   
+   if(copied > 1)
    {
-      if(CheckTrendFilter(true) && !HasOpenPosition(POSITION_TYPE_BUY))
+      datetime barTime = iTime(_Symbol, _Period, 1);
+      Print("Last Traded Time: ", TimeToString(lastTradedBarTime));
+      Print("═══════════════════════════");
+      
+      // Vérifier que cette barre n'a PAS déjà été tradée
+      if(signalBuffer[1] != 0.0 && 
+         signalBuffer[1] != EMPTY_VALUE && 
+         signalBuffer[1] != 9.9 &&
+         barTime > lastTradedBarTime)
       {
-         OpenTrade(ORDER_TYPE_BUY, "Regular Bullish Divergence");
-         stats.lastSignal = "Regular Bullish";
+         int signalPosition = 1;
+         double foundSignal = signalBuffer[1];
+         lastTradedBarTime = barTime;  // Mémoriser pour éviter double trade
+         
+         Print("✅ NOUVEAU SIGNAL DÉTECTÉ - Barre[1] - Valeur: ", foundSignal, " Time: ", TimeToString(barTime));
+         
+         // Identifier le type de signal et trader en conséquence
+         string signalType = "";
+         bool isBuySignal = false;
+         
+         if(foundSignal == 1.0)  // Regular Bullish
+         {
+            if(!InpTradeRegularDiv) return;
+            signalType = "Regular Bullish Divergence";
+            isBuySignal = true;
+         }
+         else if(foundSignal == 2.0)  // Regular Bearish
+         {
+            if(!InpTradeRegularDiv) return;
+            signalType = "Regular Bearish Divergence";
+            isBuySignal = false;
+         }
+         else if(foundSignal == 3.0)  // Hidden Bullish
+         {
+            if(!InpTradeHiddenDiv) return;
+            signalType = "Hidden Bullish Divergence";
+            isBuySignal = true;
+         }
+         else if(foundSignal == 4.0)  // Hidden Bearish
+         {
+            if(!InpTradeHiddenDiv) return;
+            signalType = "Hidden Bearish Divergence";
+            isBuySignal = false;
+         }
+         else if(foundSignal == 9.9)  // Valeur de test
+         {
+            Print("🔧 Signal de TEST détecté (9.9) - Communication EA↔Indicateur OK ! (Buffer 7)");
+            return;
+         }
+         else
+         {
+            Print("⚠️ Signal inconnu: ", foundSignal);
+            return;
+         }
+         
+         // Vérifier les filtres et positions existantes
+         ENUM_POSITION_TYPE posType = isBuySignal ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
+         
+         if(!CheckTrendFilter(isBuySignal) || HasOpenPosition(posType))
+            return;
+         
+         // Ouvrir le trade
+         ENUM_ORDER_TYPE orderType = isBuySignal ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+         OpenTrade(orderType, signalType);
+         stats.lastSignal = signalType;
+         return;
+      }
+      else
+      {
+         Print("ℹ️ Aucun nouveau signal sur barre[1] ou signal déjà traité");
+         return;
       }
    }
    
-   // Vérifier les signaux Regular Bearish (nouveau signal)
-   if(InpTradeRegularDiv && bearSignal[1] == 1.0 && bearSignal[2] == 0.0)
-   {
-      if(CheckTrendFilter(false) && !HasOpenPosition(POSITION_TYPE_SELL))
-      {
-         OpenTrade(ORDER_TYPE_SELL, "Regular Bearish Divergence");
-         stats.lastSignal = "Regular Bearish";
-      }
-   }
-   
-   // Vérifier les signaux Hidden Bullish (nouveau signal)
-   if(InpTradeHiddenDiv && hiddenBullSignal[1] == 1.0 && hiddenBullSignal[2] == 0.0)
-   {
-      if(CheckTrendFilter(true) && !HasOpenPosition(POSITION_TYPE_BUY))
-      {
-         OpenTrade(ORDER_TYPE_BUY, "Hidden Bullish Divergence");
-         stats.lastSignal = "Hidden Bullish";
-      }
-   }
-   
-   // Vérifier les signaux Hidden Bearish (nouveau signal)
-   if(InpTradeHiddenDiv && hiddenBearSignal[1] == 1.0 && hiddenBearSignal[2] == 0.0)
-   {
-      if(CheckTrendFilter(false) && !HasOpenPosition(POSITION_TYPE_SELL))
-      {
-         OpenTrade(ORDER_TYPE_SELL, "Hidden Bearish Divergence");
-         stats.lastSignal = "Hidden Bearish";
-      }
-   }
+   return;
 }
 
 //+------------------------------------------------------------------+
@@ -326,24 +372,59 @@ void OpenTrade(ENUM_ORDER_TYPE orderType, string signalType)
 {
    double price, sl, tp;
    string symbol = _Symbol;
+   string comment = "RSI_Div";
+   
+   // Modifier le commentaire pour Hidden Divergences
+   if(StringFind(signalType, "Hidden") >= 0)
+      comment = "RSI_Div_H";
+   
+   // Obtenir le prix d'entrée
+   if(orderType == ORDER_TYPE_BUY)
+      price = SymbolInfoDouble(symbol, SYMBOL_ASK);
+   else
+      price = SymbolInfoDouble(symbol, SYMBOL_BID);
+   
+   // Calculer le Stop Loss en % du prix
+   double slDistance = price * InpStopLossPercent / 100.0;
    
    if(orderType == ORDER_TYPE_BUY)
-   {
-      price = SymbolInfoDouble(symbol, SYMBOL_ASK);
-      sl = (InpStopLoss > 0) ? price - InpStopLoss * _Point : 0;
-      tp = (InpTakeProfit > 0) ? price + InpTakeProfit * _Point : 0;
-   }
+      sl = price - slDistance;
    else
-   {
-      price = SymbolInfoDouble(symbol, SYMBOL_BID);
-      sl = (InpStopLoss > 0) ? price + InpStopLoss * _Point : 0;
-      tp = (InpTakeProfit > 0) ? price - InpTakeProfit * _Point : 0;
-   }
+      sl = price + slDistance;
+   
+   // Calculer le Take Profit basé sur le Risk:Reward ratio
+   double tpDistance = slDistance * InpRiskReward;
+   
+   if(orderType == ORDER_TYPE_BUY)
+      tp = price + tpDistance;
+   else
+      tp = price - tpDistance;
    
    // Normaliser les prix
    price = NormalizeDouble(price, _Digits);
    sl = NormalizeDouble(sl, _Digits);
    tp = NormalizeDouble(tp, _Digits);
+   
+   // Calculer la taille du lot basée sur le risque en %
+   double accountBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double riskAmount = accountBalance * InpRiskPercent / 100.0;
+   
+   // Calculer la valeur d'un point
+   double tickValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+   double tickSize = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
+   double pointValue = tickValue / tickSize * _Point;
+   
+   // Calculer le lot size
+   double slPoints = MathAbs(price - sl) / _Point;
+   double lotSize = riskAmount / (slPoints * pointValue);
+   
+   // Normaliser le lot size
+   double minLot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+   double maxLot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
+   double lotStep = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+   
+   lotSize = MathFloor(lotSize / lotStep) * lotStep;
+   lotSize = MathMax(minLot, MathMin(maxLot, lotSize));
    
    // Vérifier les limites de prix
    if(!CheckPriceLimits(price, sl, tp))
@@ -353,17 +434,18 @@ void OpenTrade(ENUM_ORDER_TYPE orderType, string signalType)
    }
    
    // Ouvrir la position
-   if(trade.PositionOpen(symbol, orderType, InpLotSize, price, sl, tp, InpTradeComment))
+   if(trade.PositionOpen(symbol, orderType, lotSize, price, sl, tp, comment))
    {
       stats.totalTrades++;
       stats.lastTradeTime = TimeCurrent();
       
       Print("✅ Trade ouvert: ", signalType);
       Print("Type: ", EnumToString(orderType));
-      Print("Lot: ", InpLotSize);
+      Print("Lot: ", DoubleToString(lotSize, 2), " (", DoubleToString(InpRiskPercent, 2), "% risque)");
       Print("Price: ", DoubleToString(price, _Digits));
-      if(sl > 0) Print("SL: ", DoubleToString(sl, _Digits));
-      if(tp > 0) Print("TP: ", DoubleToString(tp, _Digits));
+      Print("SL: ", DoubleToString(sl, _Digits), " (", DoubleToString(InpStopLossPercent, 2), "%)");
+      Print("TP: ", DoubleToString(tp, _Digits), " (RR 1:", DoubleToString(InpRiskReward, 1), ")");
+      Print("Risk: ", DoubleToString(riskAmount, 2), " ", AccountInfoString(ACCOUNT_CURRENCY));
    }
    else
    {
@@ -394,60 +476,6 @@ bool CheckPriceLimits(double price, double sl, double tp)
    return true;
 }
 
-//+------------------------------------------------------------------+
-//| Manage open positions                                            |
-//+------------------------------------------------------------------+
-void ManageOpenPositions()
-{
-   if(!InpUseTrailingStop)
-      return;
-   
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
-   {
-      if(PositionGetSymbol(i) != _Symbol)
-         continue;
-         
-      if(PositionGetInteger(POSITION_MAGIC) != InpMagicNumber)
-         continue;
-      
-      ulong ticket = PositionGetInteger(POSITION_TICKET);
-      ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-      double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
-      double currentPrice = (posType == POSITION_TYPE_BUY) ? 
-                           SymbolInfoDouble(_Symbol, SYMBOL_BID) : 
-                           SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      
-      double newSL = 0;
-      bool shouldModify = false;
-      
-      if(posType == POSITION_TYPE_BUY)
-      {
-         double trailPrice = currentPrice - InpTrailingStop * _Point;
-         if(trailPrice > openPrice && trailPrice > PositionGetDouble(POSITION_SL))
-         {
-            newSL = NormalizeDouble(trailPrice, _Digits);
-            shouldModify = true;
-         }
-      }
-      else
-      {
-         double trailPrice = currentPrice + InpTrailingStop * _Point;
-         if(trailPrice < openPrice && (PositionGetDouble(POSITION_SL) == 0 || trailPrice < PositionGetDouble(POSITION_SL)))
-         {
-            newSL = NormalizeDouble(trailPrice, _Digits);
-            shouldModify = true;
-         }
-      }
-      
-      if(shouldModify)
-      {
-         if(trade.PositionModify(ticket, newSL, PositionGetDouble(POSITION_TP)))
-         {
-            Print("✅ Trailing Stop modifié - Ticket: ", ticket, " New SL: ", DoubleToString(newSL, _Digits));
-         }
-      }
-   }
-}
 
 //+------------------------------------------------------------------+
 //| Count open positions                                             |
@@ -493,9 +521,11 @@ void DisplayTradingInfo()
       "Total Trades: %d | Win Rate: %.1f%%\n" +
       "Total Profit: %.2f %s\n" +
       "Last Signal: %s\n" +
-      "Magic: %d | Lot: %.2f\n" +
-      "SL: %d pts | TP: %d pts\n" +
-      "Trailing: %s (%d pts)\n" +
+      "═══ MONEY MANAGEMENT ═══\n" +
+      "Risk per Trade: %.2f%% (%.2f %s)\n" +
+      "Stop Loss: %.2f%% of Price\n" +
+      "Risk:Reward: 1:%.1f\n" +
+      "Magic: %d\n" +
       "Time: %s",
       _Symbol,
       EnumToString(_Period),
@@ -506,12 +536,12 @@ void DisplayTradingInfo()
       stats.totalProfit,
       AccountInfoString(ACCOUNT_CURRENCY),
       stats.lastSignal,
+      InpRiskPercent,
+      AccountInfoDouble(ACCOUNT_BALANCE) * InpRiskPercent / 100.0,
+      AccountInfoString(ACCOUNT_CURRENCY),
+      InpStopLossPercent,
+      InpRiskReward,
       InpMagicNumber,
-      InpLotSize,
-      InpStopLoss,
-      InpTakeProfit,
-      (InpUseTrailingStop) ? "ON" : "OFF",
-      InpTrailingStop,
       TimeToString(TimeCurrent(), TIME_DATE|TIME_MINUTES)
    );
    
