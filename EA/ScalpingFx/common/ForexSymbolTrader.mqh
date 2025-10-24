@@ -9,10 +9,11 @@
 #include <Trade\PositionInfo.mqh>
 #include <Trade\OrderInfo.mqh>
 #include "../../../EA/Shared/TradingEnums.mqh"
-#include "ForexCommissionManager.mqh"
+#include "../../../EA/Shared/ForexCommissionManager.mqh"
 #include "ForexSwingAnalyzer.mqh"
 #include "ForexTrendlineManager.mqh"
 #include "../../../EA/Shared/TrailingTP_System.mqh"
+#include "../../../EA/Shared/DynamicTrailingStop.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe ForexSymbolTrader - Gestion d'un symbole spécifique       |
@@ -73,19 +74,8 @@ private:
    // 🆕 Risk Multiplier
    double            m_currentRiskMultiplier; // Multiplicateur de risque actuel
    
-   // 🆕 Tracking des coûts par position
-   struct PositionCosts {
-      ulong ticket;
-      double totalCostPoints;
-      double breakEvenSL;
-      int dynamicTrigger;
-   };
-   PositionCosts m_positionCosts[];
-   
-   // 🆕 Nouveaux paramètres dynamiques
-   bool              m_useDynamicTSLTrigger;
-   double            m_tslCostMultiplier;
-   int               m_tslMinTriggerPoints;
+   // 🆕 Dynamic Trailing Stop Loss
+   CDynamicTrailingStop* m_dynamicTSL;
    
 public:
    //+------------------------------------------------------------------+
@@ -137,11 +127,15 @@ public:
       m_totalProfit = 0;
       m_currentRiskMultiplier = 1.0;
       
-      // 🆕 AJOUTER APRÈS les autres initialisations:
-      m_useDynamicTSLTrigger = useDynamicTSLTrigger;
-      m_tslCostMultiplier = tslCostMultiplier;
-      m_tslMinTriggerPoints = tslMinTriggerPoints;
-      ArrayResize(m_positionCosts, 0);
+      // 🆕 Initialiser le Dynamic Trailing Stop
+      m_dynamicTSL = new CDynamicTrailingStop(
+         tslPoints,
+         tslTriggerPoints,
+         useDynamicTSLTrigger,
+         tslCostMultiplier,
+         tslMinTriggerPoints
+      );
+      m_dynamicTSL.SetCommissionManager(&m_commissionManager);
       
       // Configurer l'objet de trading
       m_trade.SetExpertMagicNumber(magicNumber);
@@ -173,9 +167,7 @@ public:
       // Initialiser le gestionnaire des lignes TP/SL
       m_trendlineManager = new ForexTrendlineManager(symbol, magicNumber);
       
-      Print("✓ ForexSymbolTrader initialized for ", symbol, " | Magic: ", magicNumber,
-            " | Dynamic TSL: ", (m_useDynamicTSLTrigger ? "ON" : "OFF"),
-            " | Cost Multiplier: ", DoubleToString(m_tslCostMultiplier, 1));
+      Print("✓ ForexSymbolTrader initialized for ", symbol, " | Magic: ", magicNumber);
    }
    
    //+------------------------------------------------------------------+
@@ -196,6 +188,13 @@ public:
       {
          delete m_trendlineManager;
          m_trendlineManager = NULL;
+      }
+      
+      // Cleanup Dynamic TSL
+      if(m_dynamicTSL != NULL) 
+      {
+         delete m_dynamicTSL;
+         m_dynamicTSL = NULL;
       }
       
       Print("✓ ForexSymbolTrader destroyed for ", m_symbol);
@@ -267,134 +266,24 @@ public:
    //+------------------------------------------------------------------+
    void TrailStop()
    {
-      int stopLevel = (int)SymbolInfoInteger(m_symbol, SYMBOL_TRADE_STOPS_LEVEL);
-      double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
-      double minDistance = stopLevel * point;
-
-      if(stopLevel == 0)
+      if(m_dynamicTSL != NULL)
       {
-         int spread = (int)SymbolInfoInteger(m_symbol, SYMBOL_SPREAD);
-         minDistance = spread * point * 2.0;
-      }
-
-      double safetyMargin = MathMax(minDistance * 0.1, 5.0 * point);
-      minDistance += safetyMargin;
-
-      for(int i = PositionsTotal() - 1; i >= 0; i--)
-      {
-         ulong ticket = PositionGetTicket(i);
-         if(ticket <= 0) continue;
+         m_dynamicTSL.ApplyTrailing(m_symbol, m_magicNumber);
          
-         if(PositionGetString(POSITION_SYMBOL) != m_symbol) continue;
-         if(PositionGetInteger(POSITION_MAGIC) != m_magicNumber) continue;
-         
-         if(!m_position.SelectByTicket(ticket)) continue;
-         
-         // 🆕 Calculer ou récupérer les coûts
-         double totalCostPoints, breakEvenSL;
-         int effectiveTrigger;
-         
-         if(!GetPositionCosts(ticket, totalCostPoints, breakEvenSL, effectiveTrigger))
+         // Mettre à jour les lignes TP/SL après modification du TSL
+         if(m_trendlineManager != NULL)
          {
-            CalculatePositionCosts(ticket);
-            if(!GetPositionCosts(ticket, totalCostPoints, breakEvenSL, effectiveTrigger))
+            for(int i = PositionsTotal() - 1; i >= 0; i--)
             {
-               effectiveTrigger = m_tslTriggerPoints;
-            }
-         }
-         else
-         {
-            CalculatePositionCosts(ticket);
-            GetPositionCosts(ticket, totalCostPoints, breakEvenSL, effectiveTrigger);
-         }
-         
-         // 🆕 Utiliser le trigger dynamique ou fixe
-         int finalTrigger = m_useDynamicTSLTrigger ? effectiveTrigger : m_tslTriggerPoints;
-         
-         double currentSL = PositionGetDouble(POSITION_SL);
-         double currentPrice = PositionGetDouble(POSITION_PRICE_CURRENT);
-         double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
-         ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-         
-         double profitPoints = 0;
-         double newSL = 0;
-         
-         if(posType == POSITION_TYPE_BUY)
-         {
-            profitPoints = (currentPrice - openPrice) / point;
-            
-            if(profitPoints >= finalTrigger)
-            {
-               double trailingSL = currentPrice - (m_tslPoints * point);
-               newSL = MathMax(breakEvenSL, trailingSL);
+               ulong ticket = PositionGetTicket(i);
+               if(ticket <= 0) continue;
                
-               double actualDistance = currentPrice - newSL;
-               if(actualDistance < minDistance)
-               {
-                  newSL = currentPrice - minDistance;
-               }
+               if(PositionGetString(POSITION_SYMBOL) != m_symbol) continue;
+               if(PositionGetInteger(POSITION_MAGIC) != m_magicNumber) continue;
                
-               newSL = NormalizeDouble(newSL, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS));
-               
-               if(newSL > currentSL + point)
-               {
-                  if(m_trade.PositionModify(ticket, newSL, PositionGetDouble(POSITION_TP)))
-                  {
-                     Print("📈 TSL #", ticket, " [", m_symbol, "] BUY: ", 
-                           DoubleToString(currentSL, 5), " → ", DoubleToString(newSL, 5),
-                           " | Profit: ", DoubleToString(profitPoints, 1), " pts",
-                           " | Trigger: ", finalTrigger, " pts ",
-                           (m_useDynamicTSLTrigger ? "(DYNAMIC)" : "(FIXED)"),
-                           " | BE: ", DoubleToString(breakEvenSL, 5),
-                           " | Costs: ", DoubleToString(totalCostPoints, 1), " pts");
-                     
-                     if(m_trendlineManager != NULL)
-                     {
-                        m_trendlineManager.UpdatePositionLines(ticket, 
-                                                            PositionGetDouble(POSITION_TP), 
-                                                            newSL);
-                     }
-                  }
-               }
-            }
-         }
-         else if(posType == POSITION_TYPE_SELL)
-         {
-            profitPoints = (openPrice - currentPrice) / point;
-            
-            if(profitPoints >= finalTrigger)
-            {
-               double trailingSL = currentPrice + (m_tslPoints * point);
-               newSL = MathMin(breakEvenSL, trailingSL);
-               
-               double actualDistance = newSL - currentPrice;
-               if(actualDistance < minDistance)
-               {
-                  newSL = currentPrice + minDistance;
-               }
-               
-               newSL = NormalizeDouble(newSL, (int)SymbolInfoInteger(m_symbol, SYMBOL_DIGITS));
-               
-               if((newSL < currentSL - point) || currentSL == 0)
-               {
-                  if(m_trade.PositionModify(ticket, newSL, PositionGetDouble(POSITION_TP)))
-                  {
-                     Print("📉 TSL #", ticket, " [", m_symbol, "] SELL: ", 
-                           DoubleToString(currentSL, 5), " → ", DoubleToString(newSL, 5),
-                           " | Profit: ", DoubleToString(profitPoints, 1), " pts",
-                           " | Trigger: ", finalTrigger, " pts ",
-                           (m_useDynamicTSLTrigger ? "(DYNAMIC)" : "(FIXED)"),
-                           " | BE: ", DoubleToString(breakEvenSL, 5),
-                           " | Costs: ", DoubleToString(totalCostPoints, 1), " pts");
-                     
-                     if(m_trendlineManager != NULL)
-                     {
-                        m_trendlineManager.UpdatePositionLines(ticket, 
-                                                            PositionGetDouble(POSITION_TP), 
-                                                            newSL);
-                     }
-                  }
-               }
+               m_trendlineManager.UpdatePositionLines(ticket, 
+                                                   PositionGetDouble(POSITION_TP), 
+                                                   PositionGetDouble(POSITION_SL));
             }
          }
       }
@@ -544,115 +433,41 @@ public:
    }
    
    //+------------------------------------------------------------------+
-   //| 🆕 Calculer et stocker les coûts d'une position                 |
+   //| 🆕 Méthodes pour accéder au Dynamic TSL                          |
    //+------------------------------------------------------------------+
-   void CalculatePositionCosts(ulong ticket)
+   void SetDynamicTSLTrigger(bool enable)
    {
-      if(!m_position.SelectByTicket(ticket)) return;
-      
-      // Calculer les coûts
-      double commission = m_commissionManager.GetCommission(m_position);
-      double commissionPoints = m_commissionManager.CalculateCommissionInPoints(
-          m_position.Symbol(), 
-          commission, 
-          m_position.Volume()
-      );
-      
-      double spreadPoints = SymbolInfoInteger(m_symbol, SYMBOL_SPREAD);
-      
-      double swap = PositionGetDouble(POSITION_SWAP);
-      double swapPoints = 0;
-      if(swap < 0)
+      if(m_dynamicTSL != NULL)
       {
-         double tickValue = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_VALUE);
-         double volume = PositionGetDouble(POSITION_VOLUME);
-         double tickSize = SymbolInfoDouble(m_symbol, SYMBOL_TRADE_TICK_SIZE);
-         
-         if(tickValue > 0 && volume > 0)
-         {
-            swapPoints = MathAbs((swap / tickValue / volume) * (tickSize / m_point));
-         }
+         m_dynamicTSL.SetDynamicTrigger(enable);
       }
-      
-      double totalCostPoints = commissionPoints + spreadPoints + swapPoints;
-      
-      // Calculer le breakeven SL
-      double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
-      ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-      
-      double breakEvenSL = (posType == POSITION_TYPE_BUY) 
-         ? openPrice + (totalCostPoints * m_point)
-         : openPrice - (totalCostPoints * m_point);
-      
-      // Calculer le trigger dynamique
-      int dynamicTrigger = (int)(totalCostPoints * m_tslCostMultiplier);
-      dynamicTrigger = MathMax(dynamicTrigger, m_tslMinTriggerPoints);
-      
-      // Chercher si déjà existant
-      int index = -1;
-      for(int i = 0; i < ArraySize(m_positionCosts); i++)
-      {
-         if(m_positionCosts[i].ticket == ticket)
-         {
-            index = i;
-            break;
-         }
-      }
-      
-      // Ajouter ou mettre à jour
-      if(index == -1)
-      {
-         int size = ArraySize(m_positionCosts);
-         ArrayResize(m_positionCosts, size + 1);
-         index = size;
-         m_positionCosts[index].ticket = ticket;
-      }
-      
-      m_positionCosts[index].totalCostPoints = totalCostPoints;
-      m_positionCosts[index].breakEvenSL = breakEvenSL;
-      m_positionCosts[index].dynamicTrigger = dynamicTrigger;
-      
-      Print("💰 #", ticket, " [", m_symbol, "] Costs: ", DoubleToString(totalCostPoints, 1), " pts",
-            " | BE: ", DoubleToString(breakEvenSL, 5),
-            " | Dynamic Trigger: ", dynamicTrigger, " pts");
    }
    
-   //+------------------------------------------------------------------+
-   //| 🆕 Obtenir les informations de coûts d'une position             |
-   //+------------------------------------------------------------------+
-   bool GetPositionCosts(ulong ticket, double &totalCostPoints, double &breakEvenSL, int &dynamicTrigger)
+   void SetDynamicTSLCostMultiplier(double multiplier)
    {
-      for(int i = 0; i < ArraySize(m_positionCosts); i++)
+      if(m_dynamicTSL != NULL)
       {
-         if(m_positionCosts[i].ticket == ticket)
-         {
-            totalCostPoints = m_positionCosts[i].totalCostPoints;
-            breakEvenSL = m_positionCosts[i].breakEvenSL;
-            dynamicTrigger = m_positionCosts[i].dynamicTrigger;
-            return true;
-         }
+         m_dynamicTSL.SetCostMultiplier(multiplier);
       }
-      return false;
    }
    
-   //+------------------------------------------------------------------+
-   //| 🆕 Nettoyer les coûts d'une position fermée                     |
-   //+------------------------------------------------------------------+
-   void RemovePositionCosts(ulong ticket)
+   void SetDynamicTSLMinTriggerPoints(int points)
    {
-      for(int i = 0; i < ArraySize(m_positionCosts); i++)
+      if(m_dynamicTSL != NULL)
       {
-         if(m_positionCosts[i].ticket == ticket)
-         {
-            for(int j = i; j < ArraySize(m_positionCosts) - 1; j++)
-            {
-               m_positionCosts[j] = m_positionCosts[j + 1];
-            }
-            ArrayResize(m_positionCosts, ArraySize(m_positionCosts) - 1);
-            break;
-         }
+         m_dynamicTSL.SetMinTriggerPoints(points);
       }
    }
+   
+   string GetDynamicTSLDebugInfo()
+   {
+      if(m_dynamicTSL != NULL)
+      {
+         return m_dynamicTSL.GetDebugInfo();
+      }
+      return "Dynamic TSL not initialized";
+   }
+   
    
    //+------------------------------------------------------------------+
    //| 🆕 Ajuster le multiplicateur + ordres pending                    |
@@ -782,8 +597,11 @@ public:
    {
       if(!PositionSelectByTicket(ticket)) return;
       
-      // 🆕 AJOUTER CETTE LIGNE AU DÉBUT:
-      CalculatePositionCosts(ticket);
+      // 🆕 Calculer les coûts de position pour le TSL dynamique
+      if(m_dynamicTSL != NULL)
+      {
+         m_dynamicTSL.CalculatePositionCosts(ticket, m_symbol);
+      }
       
       // Créer les lignes TP/SL pour cette position
       if(m_trendlineManager != NULL)
@@ -828,8 +646,11 @@ public:
    //+------------------------------------------------------------------+
    void OnPositionClosed(ulong ticket)
    {
-      // 🆕 AJOUTER CETTE LIGNE AU DÉBUT:
-      RemovePositionCosts(ticket);
+      // 🆕 Nettoyer les coûts de position pour le TSL dynamique
+      if(m_dynamicTSL != NULL)
+      {
+         m_dynamicTSL.RemovePositionCosts(ticket);
+      }
       
       // Supprimer les lignes TP/SL pour cette position
       if(m_trendlineManager != NULL)

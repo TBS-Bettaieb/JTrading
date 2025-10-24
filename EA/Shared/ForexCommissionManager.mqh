@@ -4,7 +4,8 @@
 //+------------------------------------------------------------------+
 #property strict
 
-#include "../../../EA/Shared/Logger.mqh"
+#include "Logger.mqh"
+#include <Trade\PositionInfo.mqh>
 
 //+------------------------------------------------------------------+
 //| Classe helper pour gérer les commissions                         |
