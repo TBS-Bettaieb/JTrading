@@ -16,12 +16,21 @@
 #property version   "1.00"
 
 #include <Trade\Trade.mqh>
+#include <../Shared/TrailingTP_System.mqh>
 
+//--- Énumération pour la direction des trades
+enum ENUM_TRADE_DIRECTION
+{
+   TRADE_BOTH = 0,    // Both Buy and Sell
+   TRADE_BUY_ONLY,    // Buy Only
+   TRADE_SELL_ONLY    // Sell Only
+};
 
 //--- Input parameters
 input group "═══ Trading Settings ═══"
 input bool   InpTradeRegularDiv = true;   // Trade Regular Divergences
 input bool   InpTradeHiddenDiv = false;   // Trade Hidden Divergences
+input ENUM_TRADE_DIRECTION InpTradeDirection = TRADE_BOTH; // Trade Direction
 
 input group "═══ Money Management ═══"
 input double InpRiskPercent = 1.0;        // Risk per Trade (% of Balance)
@@ -34,6 +43,11 @@ input group "═══ Filters ═══"
 input bool   InpCheckTrend = false;       // Check Trend Filter
 input int    InpTrendMAPeriod = 50;       // Trend MA Period
 input ENUM_MA_METHOD InpTrendMAMethod = MODE_EMA; // Trend MA Method
+
+input group "═══ Trailing TP Settings ═══"
+input bool   InpEnableTrailingTP = true;                    // Enable Trailing TP
+input ENUM_TRAILING_TP_MODE InpTrailingMode = TRAILING_TP_STEPPED; // Trailing Mode
+input string InpCustomLevels = "50:0:0,75:50:25,100:75:50"; // Custom Levels (si CUSTOM)
 
 input group "═══ Display Settings ═══"
 input bool   InpShowInfo = true;          // Show Trading Info
@@ -61,6 +75,16 @@ struct TradingStats
 };
 
 TradingStats stats;
+
+//--- Structure de suivi des positions avec trailing
+struct PositionTrailing
+{
+   ulong ticket;
+   CTrailingTP* trailingSystem;
+   bool isActive;
+};
+
+PositionTrailing trailingPositions[];
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -91,6 +115,37 @@ int OnInit()
       Print("❌ Erreur: Max Trades doit être > 0");
       return INIT_PARAMETERS_INCORRECT;
    }
+   
+   // Valider les custom levels si mode CUSTOM
+   if(InpEnableTrailingTP && InpTrailingMode == TRAILING_TP_CUSTOM)
+   {
+      string errorMsg;
+      if(!CTrailingTPValidator::ValidateCustomLevelsString(InpCustomLevels, errorMsg))
+      {
+         Print("❌ Configuration Trailing TP invalide:");
+         Print(errorMsg);
+         return INIT_PARAMETERS_INCORRECT;
+      }
+      
+      Print("✅ Configuration Trailing TP validée:");
+      CTrailingTPValidator::PrintParsedLevels(InpCustomLevels);
+   }
+   
+   // Afficher la configuration de direction
+   Print("═══ CONFIGURATION DIRECTION ═══");
+   switch(InpTradeDirection)
+   {
+      case TRADE_BOTH:
+         Print("✅ Trading autorisé: BUY et SELL");
+         break;
+      case TRADE_BUY_ONLY:
+         Print("⬆️ Trading autorisé: BUY UNIQUEMENT");
+         break;
+      case TRADE_SELL_ONLY:
+         Print("⬇️ Trading autorisé: SELL UNIQUEMENT");
+         break;
+   }
+   Print("═══════════════════════════════");
    
    // Configuration du trade
    trade.SetExpertMagicNumber(InpMagicNumber);
@@ -166,6 +221,14 @@ void OnDeinit(const int reason)
    if(indicatorHandle != INVALID_HANDLE)
       IndicatorRelease(indicatorHandle);
    
+   // Libérer les objets trailing
+   for(int i = 0; i < ArraySize(trailingPositions); i++)
+   {
+      if(trailingPositions[i].trailingSystem != NULL)
+         delete trailingPositions[i].trailingSystem;
+   }
+   ArrayFree(trailingPositions);
+   
    Print("RSI Divergence EA stopped. Reason: ", reason);
    Print("Total Trades: ", stats.totalTrades);
    Print("Win Rate: ", DoubleToString(stats.winRate, 2), "%");
@@ -179,6 +242,10 @@ void OnTick()
 {
    // Appeler à chaque tick pour détection immédiate des signaux
    CheckForSignals();
+   
+   // Ajouter la mise à jour du trailing
+   if(InpEnableTrailingTP)
+      UpdateAllTrailingPositions();
    
    // Afficher les informations
    if(InpShowInfo)
@@ -226,12 +293,12 @@ void CheckForSignals()
    
    double signalBuffer[];
    ArraySetAsSeries(signalBuffer, true);
-   ArrayResize(signalBuffer, 2);  // Lire seulement 2 barres (actuelle et précédente)
+   ArrayResize(signalBuffer, 3);  // Lire 3 barres pour couvrir positions [0], [1], [2]
    ArrayInitialize(signalBuffer, 0.0);  // Initialiser à zéro
    
    // Lecture du buffer
    ResetLastError();
-   int copied = CopyBuffer(indicatorHandle, 7, 0, 2, signalBuffer);
+   int copied = CopyBuffer(indicatorHandle, 7, 0, 3, signalBuffer);
    int lastError = GetLastError();
    
    if(copied <= 0)
@@ -247,87 +314,118 @@ void CheckForSignals()
    Print("Copied: ", copied, " barres");
    Print("Buffer[0] (barre actuelle): ", signalBuffer[0]);
    Print("Buffer[1] (barre précédente): ", signalBuffer[1]);
+   Print("Buffer[2] (position cible): ", signalBuffer[2]);
    Print("Time[1]: ", TimeToString(iTime(_Symbol, _Period, 1)));
+   Print("Time[2]: ", TimeToString(iTime(_Symbol, _Period, 2)));
+   Print("🎯 Lecture ciblée à position [2] pour trade immédiat");
    
-   // Avec LookbackRight=1, le pivot est confirmé plus rapidement
-   // On peut détecter dès la barre[1] pour une réactivité maximale
-   static datetime lastTradedBarTime = 0;  // Mémoriser la dernière barre tradée
+   // ✅ CORRECTION : Lire les positions [1] ET [2] pour capturer tous les signaux
+   static datetime lastTradedBarTime = 0;
    
    if(copied > 1)
    {
-      // Essayer d'abord la barre[1] (plus réactive)
-      int signalPosition = 1;
-      datetime barTime = iTime(_Symbol, _Period, signalPosition);
       Print("Last Traded Time: ", TimeToString(lastTradedBarTime));
       Print("═══════════════════════════");
       
-      // Vérifier que cette barre n'a PAS déjà été tradée
-      if(signalBuffer[signalPosition] != 0.0 && 
-         signalBuffer[signalPosition] != EMPTY_VALUE && 
-         signalBuffer[signalPosition] != 9.9 &&
-         barTime > lastTradedBarTime)
+      // ✅ Vérifier d'abord la barre [2] (pivot confirmé avec LookbackRight=1)
+      // Puis la barre [1] en backup
+      
+      int signalPosition = -1;
+      double foundSignal = 0.0;
+      datetime barTime = 0;
+      
+      // ✅ TRADE IMMÉDIAT : Lire exactement à la position où le signal est écrit
+      // Avec LookbackRight=1, les pivots sont confirmés à position [InpLookbackRight + 1] = [2]
+      int targetPosition = 2;  // Position fixe correspondant à InpLookbackRight + 1
+      
+      if(targetPosition < ArraySize(signalBuffer))
       {
-         double foundSignal = signalBuffer[signalPosition];
-         lastTradedBarTime = barTime;  // Mémoriser pour éviter double trade
+         datetime currentBarTime = iTime(_Symbol, _Period, targetPosition);
          
-         Print("✅ NOUVEAU SIGNAL DÉTECTÉ - Barre[", signalPosition, "] - Valeur: ", foundSignal, " Time: ", TimeToString(barTime));
-         
-         // Identifier le type de signal et trader en conséquence
-         string signalType = "";
-         bool isBuySignal = false;
-         
-         if(foundSignal == 1.0)  // Regular Bullish
+         // Vérifier qu'il y a un signal ET que cette barre n'a pas déjà été tradée
+         if(signalBuffer[targetPosition] != 0.0 && 
+            signalBuffer[targetPosition] != EMPTY_VALUE && 
+            signalBuffer[targetPosition] != 9.9 &&
+            currentBarTime > lastTradedBarTime)
          {
-            if(!InpTradeRegularDiv) return;
-            signalType = "Regular Bullish Divergence";
-            isBuySignal = true;
+            signalPosition = targetPosition;
+            foundSignal = signalBuffer[targetPosition];
+            barTime = currentBarTime;
+            
+            Print("🎯 Signal trouvé à la position [", targetPosition, "] - Trade IMMÉDIAT");
          }
-         else if(foundSignal == 2.0)  // Regular Bearish
-         {
-            if(!InpTradeRegularDiv) return;
-            signalType = "Regular Bearish Divergence";
-            isBuySignal = false;
-         }
-         else if(foundSignal == 3.0)  // Hidden Bullish
-         {
-            if(!InpTradeHiddenDiv) return;
-            signalType = "Hidden Bullish Divergence";
-            isBuySignal = true;
-         }
-         else if(foundSignal == 4.0)  // Hidden Bearish
-         {
-            if(!InpTradeHiddenDiv) return;
-            signalType = "Hidden Bearish Divergence";
-            isBuySignal = false;
-         }
-         else if(foundSignal == 9.9)  // Valeur de test
-         {
-            Print("🔧 Signal de TEST détecté (9.9) - Communication EA↔Indicateur OK ! (Buffer 7)");
-            return;
-         }
-         else
-         {
-            Print("⚠️ Signal inconnu: ", foundSignal);
-            return;
-         }
-         
-         // Vérifier les filtres et positions existantes
-         ENUM_POSITION_TYPE posType = isBuySignal ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
-         
-         if(!CheckTrendFilter(isBuySignal) || HasOpenPosition(posType))
-            return;
-         
-         // Ouvrir le trade
-         ENUM_ORDER_TYPE orderType = isBuySignal ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
-         OpenTrade(orderType, signalType);
-         stats.lastSignal = signalType;
+      }
+      
+      // Si aucun signal trouvé
+      if(signalPosition == -1)
+      {
+         Print("ℹ️ Aucun nouveau signal à position [2] ou signal déjà traité");
+         return;
+      }
+      
+      // Signal trouvé !
+      lastTradedBarTime = barTime;
+      
+      Print("✅ NOUVEAU SIGNAL DÉTECTÉ - Barre[", signalPosition, "] - Valeur: ", foundSignal, " Time: ", TimeToString(barTime));
+      
+      // Identifier le type de signal et trader en conséquence
+      string signalType = "";
+      bool isBuySignal = false;
+      
+      if(foundSignal == 1.0)  // Regular Bullish
+      {
+         if(!InpTradeRegularDiv) return;
+         signalType = "Regular Bullish Divergence";
+         isBuySignal = true;
+      }
+      else if(foundSignal == 2.0)  // Regular Bearish
+      {
+         if(!InpTradeRegularDiv) return;
+         signalType = "Regular Bearish Divergence";
+         isBuySignal = false;
+      }
+      else if(foundSignal == 3.0)  // Hidden Bullish
+      {
+         if(!InpTradeHiddenDiv) return;
+         signalType = "Hidden Bullish Divergence";
+         isBuySignal = true;
+      }
+      else if(foundSignal == 4.0)  // Hidden Bearish
+      {
+         if(!InpTradeHiddenDiv) return;
+         signalType = "Hidden Bearish Divergence";
+         isBuySignal = false;
+      }
+      else if(foundSignal == 9.9)  // Valeur de test
+      {
+         Print("🔧 Signal de TEST détecté (9.9) - Communication EA↔Indicateur OK ! (Buffer 7)");
          return;
       }
       else
       {
-         Print("ℹ️ Aucun nouveau signal sur barre[1] ou signal déjà traité");
+         Print("⚠️ Signal inconnu: ", foundSignal);
          return;
       }
+      
+      // Vérifier la direction du trade
+      if(!IsTradeDirectionAllowed(isBuySignal))
+      {
+         Print("⚠️ Signal ", signalType, " ignoré - Direction non autorisée (Config: ", 
+               EnumToString(InpTradeDirection), ")");
+         return;
+      }
+
+      // Vérifier les filtres et positions existantes
+      ENUM_POSITION_TYPE posType = isBuySignal ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
+      
+      if(!CheckTrendFilter(isBuySignal) || HasOpenPosition(posType))
+         return;
+      
+      // Ouvrir le trade
+      ENUM_ORDER_TYPE orderType = isBuySignal ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+      OpenTrade(orderType, signalType);
+      stats.lastSignal = signalType;
+      return;
    }
    
    return;
@@ -365,6 +463,26 @@ bool CheckTrendFilter(bool isBuySignal)
       return currentPrice > currentMA;
    else
       return currentPrice < currentMA;
+}
+
+//+------------------------------------------------------------------+
+//| Check if trade direction is allowed                             |
+//+------------------------------------------------------------------+
+bool IsTradeDirectionAllowed(bool isBuySignal)
+{
+   // Si Both, toujours autoriser
+   if(InpTradeDirection == TRADE_BOTH)
+      return true;
+   
+   // Si Buy Only, autoriser uniquement les signaux d'achat
+   if(InpTradeDirection == TRADE_BUY_ONLY)
+      return isBuySignal;
+   
+   // Si Sell Only, autoriser uniquement les signaux de vente
+   if(InpTradeDirection == TRADE_SELL_ONLY)
+      return !isBuySignal;
+   
+   return false;
 }
 
 //+------------------------------------------------------------------+
@@ -442,12 +560,20 @@ void OpenTrade(ENUM_ORDER_TYPE orderType, string signalType)
       stats.lastTradeTime = TimeCurrent();
       
       Print("✅ Trade ouvert: ", signalType);
+      Print("Direction: ", (orderType == ORDER_TYPE_BUY ? "⬆️ BUY" : "⬇️ SELL"));
       Print("Type: ", EnumToString(orderType));
       Print("Lot: ", DoubleToString(lotSize, 2), " (", DoubleToString(InpRiskPercent, 2), "% risque)");
       Print("Price: ", DoubleToString(price, _Digits));
       Print("SL: ", DoubleToString(sl, _Digits), " (", DoubleToString(InpStopLossPercent, 2), "%)");
       Print("TP: ", DoubleToString(tp, _Digits), " (RR 1:", DoubleToString(InpRiskReward, 1), ")");
       Print("Risk: ", DoubleToString(riskAmount, 2), " ", AccountInfoString(ACCOUNT_CURRENCY));
+      
+      // Initialiser le trailing TP
+      if(InpEnableTrailingTP)
+      {
+         ulong ticket = trade.ResultOrder();
+         InitializeTrailingForPosition(ticket, price, sl, tp, orderType == ORDER_TYPE_BUY);
+      }
    }
    else
    {
@@ -516,9 +642,30 @@ void DisplayTradingInfo()
    // Mettre à jour les statistiques
    UpdateTradingStats();
    
+   // Informations sur le trailing TP
+   string trailingInfo = "";
+   if(InpEnableTrailingTP)
+   {
+      int activeTrailing = 0;
+      for(int i = 0; i < ArraySize(trailingPositions); i++)
+      {
+         if(trailingPositions[i].isActive)
+            activeTrailing++;
+      }
+      
+      trailingInfo = StringFormat(
+         "═══ TRAILING TP ═══\n" +
+         "Mode: %s\n" +
+         "Active: %d position(s)\n",
+         EnumToString(InpTrailingMode),
+         activeTrailing
+      );
+   }
+   
    string info = StringFormat(
       "=== RSI DIVERGENCE EA ===\n" +
       "Symbol: %s | TF: %s\n" +
+      "Direction: %s\n" +
       "Open Positions: %d/%d\n" +
       "Total Trades: %d | Win Rate: %.1f%%\n" +
       "Total Profit: %.2f %s\n" +
@@ -528,9 +675,11 @@ void DisplayTradingInfo()
       "Stop Loss: %.2f%% of Price\n" +
       "Risk:Reward: 1:%.1f\n" +
       "Magic: %d\n" +
+      "%s" +
       "Time: %s",
       _Symbol,
       EnumToString(_Period),
+      EnumToString(InpTradeDirection),
       CountOpenPositions(),
       InpMaxTrades,
       stats.totalTrades,
@@ -544,6 +693,7 @@ void DisplayTradingInfo()
       InpStopLossPercent,
       InpRiskReward,
       InpMagicNumber,
+      trailingInfo,
       TimeToString(TimeCurrent(), TIME_DATE|TIME_MINUTES)
    );
    
@@ -615,6 +765,74 @@ void UpdateTradingStats()
          stats.profitFactor = totalProfit / totalLoss;
       else
          stats.profitFactor = (totalProfit > 0) ? 999.0 : 0.0;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Initialize trailing for a position                              |
+//+------------------------------------------------------------------+
+void InitializeTrailingForPosition(ulong ticket, double entryPrice, double sl, double tp, bool isBuy)
+{
+   // Créer une nouvelle instance
+   CTrailingTP* trailing = new CTrailingTP(InpTrailingMode, InpCustomLevels);
+   
+   // Initialiser avec les données de la position
+   if(!trailing.Initialize(entryPrice, sl, tp, isBuy))
+   {
+      Print("❌ Échec initialisation Trailing TP pour ticket #", ticket);
+      delete trailing;
+      return;
+   }
+   
+   // Ajouter à la liste de suivi
+   int size = ArraySize(trailingPositions);
+   ArrayResize(trailingPositions, size + 1);
+   
+   trailingPositions[size].ticket = ticket;
+   trailingPositions[size].trailingSystem = trailing;
+   trailingPositions[size].isActive = true;
+   
+   Print("✅ Trailing TP activé pour position #", ticket, " - Mode: ", EnumToString(InpTrailingMode));
+}
+
+//+------------------------------------------------------------------+
+//| Update all trailing positions                                    |
+//+------------------------------------------------------------------+
+void UpdateAllTrailingPositions()
+{
+   for(int i = ArraySize(trailingPositions) - 1; i >= 0; i--)
+   {
+      if(!trailingPositions[i].isActive)
+         continue;
+      
+      ulong ticket = trailingPositions[i].ticket;
+      
+      // Vérifier si la position existe toujours
+      if(!PositionSelectByTicket(ticket))
+      {
+         // Position fermée - nettoyer
+         delete trailingPositions[i].trailingSystem;
+         trailingPositions[i].isActive = false;
+         continue;
+      }
+      
+      // Récupérer le prix actuel
+      double currentPrice = PositionGetDouble(POSITION_PRICE_CURRENT);
+      
+      // Mettre à jour le trailing
+      double newSL, newTP;
+      if(trailingPositions[i].trailingSystem.Update(currentPrice, newSL, newTP))
+      {
+         // Modifier la position
+         if(trade.PositionModify(ticket, newSL, newTP))
+         {
+            Print("✅ Position #", ticket, " modifiée - Nouveau SL: ", newSL, " | TP: ", newTP);
+         }
+         else
+         {
+            Print("⚠️ Échec modification position #", ticket, " - Erreur: ", trade.ResultRetcode());
+         }
+      }
    }
 }
 
