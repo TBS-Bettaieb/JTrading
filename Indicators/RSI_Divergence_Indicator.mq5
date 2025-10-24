@@ -88,10 +88,10 @@ input double InpUpperLevel      = 90.0;      // Upper Level
 input double InpLowerLevel      = 10.0;      // Lower Level
 
 // input group "═══ Divergence Settings ═══"
-input int    InpLookbackLeft  = 5;      // Lookback Left
+input int    InpLookbackLeft  = 3;      // Lookback Left (réduit pour test)
 input int    InpLookbackRight = 1;      // Lookback Right (délai réduit)
-input int    InpRangeLower    = 5;      // Range Lower
-input int    InpRangeUpper    = 60;     // Range Upper
+input int    InpRangeLower    = 3;      // Range Lower (réduit pour test)
+input int    InpRangeUpper    = 100;    // Range Upper (augmenté pour test)
 
 //--- Constantes (paramètres en dur)
 const bool   SHOW_LEVELS = true;
@@ -289,7 +289,20 @@ int OnCalculate(const int rates_total,
    if(rates_total < InpRSIPeriod + InpRangeUpper + 10)
       return(0);
    
-   // ✅ Test de communication supprimé pour éviter l'interférence avec les vrais signaux
+   // ✅ TEST: Créer un signal FORCÉ toutes les 20 barres pour diagnostic
+   static int testCounter = 0;
+   testCounter++;
+   
+   if(testCounter % 20 == 0 && rates_total > 50)
+   {
+      int testPos = 10;  // Position fixe
+      if(testPos < ArraySize(DivergenceSignalBuffer))
+      {
+         DivergenceSignalBuffer[testPos] = 1.0;  // Signal bullish forcé
+         Print("🔧 SIGNAL DE TEST FORCÉ en position [", testPos, "] - Valeur: 1.0");
+         Print("   Time: ", TimeToString(time[testPos]));
+      }
+   }
    
    // ✅ FIX: Cohérence indexation - tous les arrays en série inversée
    ArraySetAsSeries(time, true);
@@ -380,10 +393,44 @@ int OnCalculate(const int rates_total,
       }
    }
    
+   // ✅ DEBUG: Afficher l'état du buffer de signaux après détection
+   if(isNewBar && prev_calculated > 0)  // Seulement sur nouvelles barres
+   {
+      Print("═══ DEBUG INDICATEUR - État Buffer 7 ═══");
+      Print("rates_total: ", rates_total);
+      Print("prev_calculated: ", prev_calculated);
+      Print("Nouvelle barre détectée - Analyse des divergences");
+      
+      // Afficher les 10 dernières positions du buffer
+      int signalsFound = 0;
+      for(int debug_i = 0; debug_i < 10 && debug_i < ArraySize(DivergenceSignalBuffer); debug_i++)
+      {
+         if(DivergenceSignalBuffer[debug_i] != 0.0 && DivergenceSignalBuffer[debug_i] != EMPTY_VALUE)
+         {
+            signalsFound++;
+            Print("🎯 SIGNAL TROUVÉ: Buffer[", debug_i, "] = ", DivergenceSignalBuffer[debug_i], 
+                  " Time: ", TimeToString(time[debug_i]));
+         }
+      }
+      
+      if(signalsFound == 0)
+      {
+         Print("⚠️ AUCUN SIGNAL dans les 10 dernières positions");
+         // Afficher quelques valeurs pour debug
+         for(int debug_i = 0; debug_i < 5; debug_i++)
+         {
+            Print("   Buffer[", debug_i, "] = ", DivergenceSignalBuffer[debug_i]);
+         }
+      }
+      else
+      {
+         Print("✅ Total: ", signalsFound, " signal(s) trouvé(s)");
+      }
+      Print("═════════════════════════════════════");
+   }
+   
    //--- Display information on chart
    DisplayIndicatorInfo();
-   
-   // ✅ Debug du buffer de signaux supprimé pour réduire les logs
    
    return(rates_total);
 }
@@ -650,7 +697,11 @@ void CheckBullishDivergence(int currentBar, const datetime &time[], const double
       DivergenceSignalBuffer[checkPos] = 1.0;
       
       // ✅ Confirmation d'écriture dans le buffer
-      Print("📝 SIGNAL ÉCRIT: Buffer[", checkPos, "] = ", DivergenceSignalBuffer[checkPos], " (Bullish Regular)");
+      Print("✅✅✅ SIGNAL ÉCRIT À POSITION [", checkPos, "]");
+      Print("   Valeur: ", DivergenceSignalBuffer[checkPos]);
+      Print("   Time: ", TimeToString(time[checkPos]));
+      Print("   RSI: ", pivotRSI, " | Price: ", currentPrice);
+      Print("   Prev RSI: ", prevPivotRSI, " | Prev Price: ", prevPivotPrice);
       
       if(SHOW_TRENDLINES)
       {
@@ -767,7 +818,11 @@ void CheckBearishDivergence(int currentBar, const datetime &time[], const double
       DivergenceSignalBuffer[checkPos] = 2.0;
       
       // ✅ Confirmation d'écriture dans le buffer
-      Print("📝 SIGNAL ÉCRIT: Buffer[", checkPos, "] = ", DivergenceSignalBuffer[checkPos], " (Bearish Regular)");
+      Print("✅✅✅ SIGNAL ÉCRIT À POSITION [", checkPos, "]");
+      Print("   Valeur: ", DivergenceSignalBuffer[checkPos]);
+      Print("   Time: ", TimeToString(time[checkPos]));
+      Print("   RSI: ", pivotRSI, " | Price: ", currentPrice);
+      Print("   Prev RSI: ", prevPivotRSI, " | Prev Price: ", prevPivotPrice);
       
       if(SHOW_TRENDLINES)
       {

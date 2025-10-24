@@ -2,7 +2,7 @@
 //|                                              RSI_Divergence_EA.mq5 |
 //|                         RSI Divergence Expert Advisor              |
 //+------------------------------------------------------------------+
-//| CHANGELOG - Version 1.0                                          |
+//| CHANGELOG - Version 1.1                                          |
 //| ✅ [FEATURE] Lecture des signaux de l'indicateur RSI_Divergence_Indicator |
 //| ✅ [FEATURE] Trading automatique sur Regular et Hidden Divergences |
 //| ✅ [FEATURE] Money Management et Risk Management complets         |
@@ -10,10 +10,13 @@
 //| ✅ [FEATURE] Filtres de tendance optionnels                      |
 //| ✅ [FEATURE] Gestion des positions multiples                     |
 //| ✅ [FEATURE] Affichage des informations de trading               |
+//| ✅ [PERFORMANCE] Support indicateur optimisé NoGUI pour backtesting |
+//| ✅ [PERFORMANCE] Optimisation lecture buffer (2 barres au lieu de 3) |
+//| ✅ [PERFORMANCE] Vérifications statiques pour éviter recalculs    |
 //+------------------------------------------------------------------+
 #property copyright "RSI Divergence Trading System"
 #property link      ""
-#property version   "1.00"
+#property version   "1.10"
 
 #include <Trade\Trade.mqh>
 #include <../Shared/TrailingTP_System.mqh>
@@ -29,7 +32,7 @@ enum ENUM_TRADE_DIRECTION
 //--- Input parameters
 input group "═══ Trading Settings ═══"
 input bool   InpTradeRegularDiv = true;   // Trade Regular Divergences
-input bool   InpTradeHiddenDiv = false;   // Trade Hidden Divergences
+input bool   InpTradeHiddenDiv = true;    // Trade Hidden Divergences (activé pour test)
 input ENUM_TRADE_DIRECTION InpTradeDirection = TRADE_BOTH; // Trade Direction
 
 input group "═══ Money Management ═══"
@@ -48,6 +51,9 @@ input group "═══ Trailing TP Settings ═══"
 input bool   InpEnableTrailingTP = true;                    // Enable Trailing TP
 input ENUM_TRAILING_TP_MODE InpTrailingMode = TRAILING_TP_STEPPED; // Trailing Mode
 input string InpCustomLevels = "50:0:0,75:50:25,100:75:50"; // Custom Levels (si CUSTOM)
+
+input group "═══ Performance Settings ═══"
+input bool   InpUseOptimizedIndicator = true; // Use No-GUI Version (faster backtesting)
 
 input group "═══ Display Settings ═══"
 input bool   InpShowInfo = true;          // Show Trading Info
@@ -152,24 +158,29 @@ int OnInit()
    trade.SetDeviationInPoints(10);
    trade.SetTypeFilling(ORDER_FILLING_FOK);
    
-// Charger l'indicateur avec les valeurs simplifiées
-indicatorHandle = iCustom(_Symbol, _Period, "RSI_Divergence_Indicator",
+// Charger l'indicateur avec choix de version optimisée
+string indicatorName = InpUseOptimizedIndicator ? 
+                      "RSI_Divergence_Indicator_NoGUI" : 
+                      "RSI_Divergence_Indicator";
+
+indicatorHandle = iCustom(_Symbol, _Period, indicatorName,
                         3,                    // RSI Period
                         PRICE_CLOSE,          // Applied Price
                         // RSI Levels
                         90.0,                 // Upper Level
                         10.0,                 // Lower Level
-                        // Divergence Settings
-                        5,                    // Lookback Left
+                        // Divergence Settings (paramètres de test)
+                        3,                    // Lookback Left (réduit)
                         1,                    // Lookback Right (délai réduit)
-                        5,                    // Range Lower
-                        60);                  // Range Upper
+                        3,                    // Range Lower (réduit)
+                        100);                 // Range Upper (augmenté)
 
 if(indicatorHandle == INVALID_HANDLE)
 {
-   Print("❌ Erreur: Impossible de charger l'indicateur RSI_Divergence_Indicator");
+   Print("❌ Erreur: Impossible de charger l'indicateur ", indicatorName);
    Print("   Vérifiez que l'indicateur est compilé et dans le dossier Indicators/");
-   Print("   Chemin utilisé: RSI_Divergence_Indicator");
+   Print("   Chemin utilisé: ", indicatorName);
+   Print("   Version optimisée: ", (InpUseOptimizedIndicator ? "OUI" : "NON"));
    Print("   Erreur code: ", GetLastError());
    return INIT_FAILED;
 }
@@ -189,6 +200,7 @@ if(indicatorHandle == INVALID_HANDLE)
    Print("Timeframe: ", EnumToString(_Period));
    Print("Indicator Handle: ", indicatorHandle);
    Print("Magic Number: ", InpMagicNumber);
+   Print("Version optimisée: ", (InpUseOptimizedIndicator ? "OUI (NoGUI)" : "NON (Standard)"));
    
    Print("✅ Indicateur chargé, handle: ", indicatorHandle);
    Print("⏳ Test de lecture du buffer 7 de signaux...");
@@ -291,14 +303,29 @@ void CheckForSignals()
    
    // ═══ PHASE 2 : LECTURE DU BUFFER ═══
    
+   // ✅ ATTENDRE que l'indicateur ait calculé TOUTES les barres
+   int maxWait = 10;  // Maximum 10 tentatives
+   while(barsCalculated < availableBars - 2 && maxWait > 0)
+   {
+      Sleep(100);  // Attendre 100ms
+      barsCalculated = BarsCalculated(indicatorHandle);
+      maxWait--;
+   }
+
+   if(barsCalculated < availableBars - 5)
+   {
+      Print("⚠️ Indicateur pas prêt - Attente...");
+      return;
+   }
+   
    double signalBuffer[];
    ArraySetAsSeries(signalBuffer, true);
-   ArrayResize(signalBuffer, 3);  // Lire 3 barres pour couvrir positions [0], [1], [2]
+   ArrayResize(signalBuffer, 10);  // ✅ DEBUG: Lire 10 barres pour couvrir toutes les positions
    ArrayInitialize(signalBuffer, 0.0);  // Initialiser à zéro
    
    // Lecture du buffer
    ResetLastError();
-   int copied = CopyBuffer(indicatorHandle, 7, 0, 3, signalBuffer);
+   int copied = CopyBuffer(indicatorHandle, 7, 0, 10, signalBuffer);  // ✅ DEBUG: Lire 10 barres
    int lastError = GetLastError();
    
    if(copied <= 0)
@@ -309,57 +336,69 @@ void CheckForSignals()
    
    // ═══ PHASE 3 : DÉTECTION IMMÉDIATE DU SIGNAL ═══
    
-   // 🔍 DEBUG: État du buffer au moment de la lecture
-   Print("═══ DEBUG LECTURE SIGNAL ═══");
+   // ✅ DEBUG: Afficher l'état du buffer lu par l'EA
+   Print("═══ DEBUG EA - Lecture Buffer ═══");
+   Print("Bars calculated: ", barsCalculated);
+   Print("Available bars: ", availableBars);
    Print("Copied: ", copied, " barres");
-   Print("Buffer[0] (barre actuelle): ", signalBuffer[0]);
-   Print("Buffer[1] (barre précédente): ", signalBuffer[1]);
-   Print("Buffer[2] (position cible): ", signalBuffer[2]);
-   Print("Time[1]: ", TimeToString(iTime(_Symbol, _Period, 1)));
-   Print("Time[2]: ", TimeToString(iTime(_Symbol, _Period, 2)));
-   Print("🎯 Lecture ciblée à position [2] pour trade immédiat");
+
+   // Afficher TOUTES les valeurs lues
+   for(int debug_i = 0; debug_i < ArraySize(signalBuffer); debug_i++)
+   {
+      Print("EA Buffer[", debug_i, "] = ", signalBuffer[debug_i], 
+            " Time: ", TimeToString(iTime(_Symbol, _Period, debug_i)));
+   }
+
+   // Vérifier si l'indicateur a fini ses calculs
+   Print("Indicateur terminé? ", (barsCalculated >= availableBars - 5 ? "OUI" : "NON"));
+   Print("═════════════════════════════════");
    
-   // ✅ CORRECTION : Lire les positions [1] ET [2] pour capturer tous les signaux
+   // ✅ OPTIMISATION : Lire les positions [0] ET [1] pour capturer tous les signaux
    static datetime lastTradedBarTime = 0;
+   static int lastCheckedBar = 0;  // ✅ OPTIMISATION: Éviter les vérifications répétées
    
-   if(copied > 1)
+   int currentBar = Bars(_Symbol, _Period);
+   if(currentBar == lastCheckedBar) return;  // ✅ OPTIMISATION: Pas de nouvelle barre
+   lastCheckedBar = currentBar;
+   
+   if(copied > 0)
    {
       Print("Last Traded Time: ", TimeToString(lastTradedBarTime));
       Print("═══════════════════════════");
-      
-      // ✅ Vérifier d'abord la barre [2] (pivot confirmé avec LookbackRight=1)
-      // Puis la barre [1] en backup
       
       int signalPosition = -1;
       double foundSignal = 0.0;
       datetime barTime = 0;
       
-      // ✅ TRADE IMMÉDIAT : Lire exactement à la position où le signal est écrit
-      // Avec LookbackRight=1, les pivots sont confirmés à position [InpLookbackRight + 1] = [2]
-      int targetPosition = 2;  // Position fixe correspondant à InpLookbackRight + 1
-      
-      if(targetPosition < ArraySize(signalBuffer))
+      // ✅ DEBUG : PARCOURIR TOUTES LES POSITIONS POUR TROUVER LES SIGNAUX
+      for(int i = 0; i < ArraySize(signalBuffer); i++)
       {
-         datetime currentBarTime = iTime(_Symbol, _Period, targetPosition);
-         
-         // Vérifier qu'il y a un signal ET que cette barre n'a pas déjà été tradée
-         if(signalBuffer[targetPosition] != 0.0 && 
-            signalBuffer[targetPosition] != EMPTY_VALUE && 
-            signalBuffer[targetPosition] != 9.9 &&
-            currentBarTime > lastTradedBarTime)
+         if(signalBuffer[i] != 0.0 && signalBuffer[i] != EMPTY_VALUE)
          {
-            signalPosition = targetPosition;
-            foundSignal = signalBuffer[targetPosition];
-            barTime = currentBarTime;
+            datetime currentBarTime = iTime(_Symbol, _Period, i);
             
-            Print("🎯 Signal trouvé à la position [", targetPosition, "] - Trade IMMÉDIAT");
+            // Vérifier qu'on n'a pas déjà tradé cette barre
+            if(currentBarTime <= lastTradedBarTime)
+            {
+               Print("⚠️ Signal en position [", i, "] déjà traité - Time: ", TimeToString(currentBarTime));
+               continue;
+            }
+            
+            Print("🎯 SIGNAL TROUVÉ EN POSITION [", i, "] - Valeur: ", signalBuffer[i]);
+            Print("   Time: ", TimeToString(currentBarTime));
+            Print("   Last Traded: ", TimeToString(lastTradedBarTime));
+            
+            signalPosition = i;
+            foundSignal = signalBuffer[i];
+            barTime = currentBarTime;
+            break;  // Prendre le premier signal trouvé
          }
       }
       
       // Si aucun signal trouvé
       if(signalPosition == -1)
       {
-         Print("ℹ️ Aucun nouveau signal à position [2] ou signal déjà traité");
+         Print("ℹ️ Aucun nouveau signal ou signal déjà traité");
          return;
       }
       
