@@ -44,7 +44,8 @@ public:
                         int tslTriggerPoints,
                         bool useDynamicTrigger = true,
                         double tslCostMultiplier = 1.5,
-                        int tslMinTriggerPoints = 50)
+                        int tslMinTriggerPoints = 50,
+                        int slippagePoints = 10)
    {
       m_tslPoints = tslPoints;
       m_tslTriggerPoints = tslTriggerPoints;
@@ -57,13 +58,16 @@ public:
       
       // Configurer l'objet de trading
       m_trade.SetAsyncMode(false);
+      m_trade.SetDeviationInPoints(slippagePoints);
+      m_trade.SetTypeFilling(ORDER_FILLING_FOK);
       
       // Commission manager sera défini via SetCommissionManager()
       m_commissionManager = NULL;
       
       Print("✓ CDynamicTrailingStop initialized | TSL: ", m_tslPoints, " pts | Trigger: ", m_tslTriggerPoints, " pts",
             " | Dynamic: ", (m_useDynamicTrigger ? "ON" : "OFF"),
-            " | Cost Multiplier: ", DoubleToString(m_tslCostMultiplier, 1));
+            " | Cost Multiplier: ", DoubleToString(m_tslCostMultiplier, 1),
+            " | Slippage: ", slippagePoints, " pts");
    }
    
    //+------------------------------------------------------------------+
@@ -89,6 +93,17 @@ public:
    void CalculatePositionCosts(ulong ticket, string symbol)
    {
       if(!m_position.SelectByTicket(ticket)) return;
+      
+      // 🆕 Avertissement si Commission Manager n'est pas configuré
+      if(m_commissionManager == NULL)
+      {
+         static bool warningShown = false;
+         if(!warningShown)
+         {
+            Print("⚠️ [DynamicTrailingStop] Commission Manager not set - costs may be underestimated");
+            warningShown = true;
+         }
+      }
       
       double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
       
@@ -207,6 +222,9 @@ public:
    //+------------------------------------------------------------------+
    void ApplyTrailing(string symbol, int magicNumber)
    {
+      // ✅ CRITIQUE: Configurer le magic number pour isoler cet EA
+      m_trade.SetExpertMagicNumber(magicNumber);
+      
       int stopLevel = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL);
       double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
       double minDistance = stopLevel * point;

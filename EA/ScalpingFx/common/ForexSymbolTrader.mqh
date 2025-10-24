@@ -133,7 +133,8 @@ public:
          tslTriggerPoints,
          useDynamicTSLTrigger,
          tslCostMultiplier,
-         tslMinTriggerPoints
+         tslMinTriggerPoints,
+         m_slippagePoints
       );
       m_dynamicTSL.SetCommissionManager(&m_commissionManager);
       
