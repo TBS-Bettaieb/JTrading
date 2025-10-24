@@ -106,7 +106,7 @@ indicatorHandle = iCustom(_Symbol, _Period, "RSI_Divergence_Indicator",
                         10.0,                 // Lower Level
                         // Divergence Settings
                         5,                    // Lookback Left
-                        5,                    // Lookback Right
+                        1,                    // Lookback Right (délai réduit)
                         5,                    // Range Lower
                         60);                  // Range Upper
 
@@ -249,26 +249,28 @@ void CheckForSignals()
    Print("Buffer[1] (barre précédente): ", signalBuffer[1]);
    Print("Time[1]: ", TimeToString(iTime(_Symbol, _Period, 1)));
    
-   // Lire UNIQUEMENT la barre [1] (dernière barre confirmée)
+   // Avec LookbackRight=1, le pivot est confirmé plus rapidement
+   // On peut détecter dès la barre[1] pour une réactivité maximale
    static datetime lastTradedBarTime = 0;  // Mémoriser la dernière barre tradée
    
    if(copied > 1)
    {
-      datetime barTime = iTime(_Symbol, _Period, 1);
+      // Essayer d'abord la barre[1] (plus réactive)
+      int signalPosition = 1;
+      datetime barTime = iTime(_Symbol, _Period, signalPosition);
       Print("Last Traded Time: ", TimeToString(lastTradedBarTime));
       Print("═══════════════════════════");
       
       // Vérifier que cette barre n'a PAS déjà été tradée
-      if(signalBuffer[1] != 0.0 && 
-         signalBuffer[1] != EMPTY_VALUE && 
-         signalBuffer[1] != 9.9 &&
+      if(signalBuffer[signalPosition] != 0.0 && 
+         signalBuffer[signalPosition] != EMPTY_VALUE && 
+         signalBuffer[signalPosition] != 9.9 &&
          barTime > lastTradedBarTime)
       {
-         int signalPosition = 1;
-         double foundSignal = signalBuffer[1];
+         double foundSignal = signalBuffer[signalPosition];
          lastTradedBarTime = barTime;  // Mémoriser pour éviter double trade
          
-         Print("✅ NOUVEAU SIGNAL DÉTECTÉ - Barre[1] - Valeur: ", foundSignal, " Time: ", TimeToString(barTime));
+         Print("✅ NOUVEAU SIGNAL DÉTECTÉ - Barre[", signalPosition, "] - Valeur: ", foundSignal, " Time: ", TimeToString(barTime));
          
          // Identifier le type de signal et trader en conséquence
          string signalType = "";

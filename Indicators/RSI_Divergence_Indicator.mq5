@@ -89,7 +89,7 @@ input double InpLowerLevel      = 10.0;      // Lower Level
 
 // input group "═══ Divergence Settings ═══"
 input int    InpLookbackLeft  = 5;      // Lookback Left
-input int    InpLookbackRight = 5;      // Lookback Right
+input int    InpLookbackRight = 1;      // Lookback Right (délai réduit)
 input int    InpRangeLower    = 5;      // Range Lower
 input int    InpRangeUpper    = 60;     // Range Upper
 
