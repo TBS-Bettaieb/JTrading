@@ -1,0 +1,14 @@
+{
+  "name": "FVG_Indicator",
+  "type": "Indicator",
+  "source": ".\\Indicators\\FVG_Indicator.mq5",
+  "target": "..\\..\\MQL5\\Indicators\\FVG_Indicator.mq5",
+  "description": "Indicateur Fair Value Gap (FVG) pour l'analyse des gaps de prix",
+  "includeDependencies": true,
+  "dependencies": [
+    "RSI_Calculator.mqh",
+    "Pivot_Detector.mqh",
+    "Divergence_Detector.mqh",
+    "Divergence_Visualizer.mqh"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "FVG_Volume_Profile_CP",
+  "type": "Indicator",
+  "source": ".\\Indicators\\FVG_Volume_Profile_CP.mq5",
+  "target": "..\\..\\MQL5\\Indicators\\FVG_Volume_Profile_CP.mq5",
+  "description": "Indicateur FVG avec profil de volume et points de contrôle",
+  "includeDependencies": true,
+  "dependencies": [
+    "RSI_Calculator.mqh",
+    "Pivot_Detector.mqh",
+    "Divergence_Detector.mqh",
+    "Divergence_Visualizer.mqh"
+  ]
+}

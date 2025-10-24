@@ -20,9 +20,9 @@
 
 #include <Trade\Trade.mqh>
 #include <../Shared/TrailingTP_System.mqh>
-#include <Shared\RSI_Calculator.mqh>
-#include <Shared\Pivot_Detector.mqh>
-#include <Shared\Divergence_Detector.mqh>
+#include <..\Shared\RSI_Calculator.mqh>
+#include <..\Shared\Pivot_Detector.mqh>
+#include <..\Shared\Divergence_Detector.mqh>
 
 //--- Énumération pour la direction des trades
 enum ENUM_TRADE_DIRECTION
@@ -218,6 +218,9 @@ int OnInit()
    Print("Magic Number: ", InpMagicNumber);
    Print("Architecture: Modulaire avec classes MQH");
    
+   // Test des classes modulaires
+   DebugTestClasses();
+   
    return(INIT_SUCCEEDED);
 }
 
@@ -319,17 +322,32 @@ void CheckForSignals()
    ArrayResize(low, availableBars);
    ArrayResize(time, availableBars);
    
-   if(CopyClose(_Symbol, _Period, 0, availableBars, close) <= 0 ||
-      CopyHigh(_Symbol, _Period, 0, availableBars, high) <= 0 ||
-      CopyLow(_Symbol, _Period, 0, availableBars, low) <= 0 ||
-      CopyTime(_Symbol, _Period, 0, availableBars, time) <= 0)
+   int copiedClose = CopyClose(_Symbol, _Period, 0, availableBars, close);
+   int copiedHigh = CopyHigh(_Symbol, _Period, 0, availableBars, high);
+   int copiedLow = CopyLow(_Symbol, _Period, 0, availableBars, low);
+   int copiedTime = CopyTime(_Symbol, _Period, 0, availableBars, time);
+   
+   Print("🔍 COPY Results:");
+   Print("   Close: ", copiedClose, " / ", availableBars);
+   Print("   High: ", copiedHigh, " / ", availableBars);
+   Print("   Low: ", copiedLow, " / ", availableBars);
+   Print("   Time: ", copiedTime, " / ", availableBars);
+   
+   if(copiedClose <= 0 || copiedHigh <= 0 || copiedLow <= 0 || copiedTime <= 0)
    {
       Print("❌ Erreur: Impossible de copier les données de prix");
       return;
    }
    
+   // Vérifier que les arrays sont bien remplis
+   if(copiedClose > 0)
+   {
+      Print("   Close[0] = ", close[0]);
+      Print("   Close[", copiedClose-1, "] = ", close[copiedClose-1]);
+   }
+   
    // Calculer le RSI
-   if(!rsiCalculator.Calculate(availableBars, 0, close))
+   if(!rsiCalculator->Calculate(availableBars, 0, close))
    {
       Print("❌ Erreur: Échec du calcul RSI");
       return;
@@ -337,22 +355,37 @@ void CheckForSignals()
    
    // Obtenir le buffer RSI
    double rsiBuffer[];
-   if(!rsiCalculator.GetBuffer(rsiBuffer, 0, availableBars))
+   if(!rsiCalculator->GetBuffer(rsiBuffer, 0, availableBars))
    {
       Print("❌ Erreur: Impossible d'obtenir le buffer RSI");
       return;
+   }
+   
+   // Test RSI - Afficher les premières valeurs
+   Print("🔍 TEST RSI - Premières valeurs:");
+   for(int i = 0; i < MathMin(10, ArraySize(rsiBuffer)); i++)
+   {
+      Print("RSI[", i, "] = ", rsiBuffer[i]);
    }
    
    // Définir la zone de recherche des divergences
    int startPos = InpLookbackRight + 1;
    int endPos = MathMin(50, availableBars - InpRangeUpper - InpLookbackLeft - 1);
    
+   Print("🔍 ZONE DE RECHERCHE:");
+   Print("   startPos = ", startPos);
+   Print("   endPos = ", endPos);
+   Print("   availableBars = ", availableBars);
+   
    if(startPos > endPos)
+   {
+      Print("❌ Zone de recherche invalide: startPos > endPos");
       return;
+   }
    
    // Scanner les divergences
    SDivergenceResult results[];
-   int found = divergenceDetector.ScanDivergences(startPos, endPos, rsiBuffer, high, low, time, results);
+   int found = divergenceDetector->ScanDivergences(startPos, endPos, rsiBuffer, high, low, time, results);
    
    if(found > 0)
    {
@@ -839,6 +872,57 @@ void UpdateAllTrailingPositions()
          }
       }
    }
+}
+
+//+------------------------------------------------------------------+
+//| Test des classes modulaires pour débogage                        |
+//+------------------------------------------------------------------+
+void DebugTestClasses()
+{
+   Print("═══════════════════════════════════");
+   Print("🔍 DEBUG TEST DES CLASSES MODULAIRES");
+   Print("═══════════════════════════════════");
+   
+   // Test 1: Validation des instances
+   if(rsiCalculator == NULL)
+      Print("❌ rsiCalculator est NULL");
+   else
+      Print("✅ rsiCalculator initialisé - Période: ", rsiCalculator->GetPeriod());
+   
+   if(pivotDetector == NULL)
+      Print("❌ pivotDetector est NULL");
+   else
+      Print("✅ pivotDetector initialisé - Lookback: ", pivotDetector->GetLookbackLeft(), "/", pivotDetector->GetLookbackRight());
+   
+   if(divergenceDetector == NULL)
+      Print("❌ divergenceDetector est NULL");
+   else
+      Print("✅ divergenceDetector initialisé - Range: ", divergenceDetector->GetRangeLower(), "-", divergenceDetector->GetRangeUpper());
+   
+   // Test 2: Données de prix
+   int availableBars = Bars(_Symbol, _Period);
+   Print("📊 Données disponibles: ", availableBars, " barres");
+   
+   if(availableBars > 100)
+   {
+      double close[], high[], low[];
+      datetime time[];
+      
+      ArrayResize(close, 100);
+      ArrayResize(high, 100);
+      ArrayResize(low, 100);
+      ArrayResize(time, 100);
+      
+      int copied = CopyClose(_Symbol, _Period, 0, 100, close);
+      Print("📈 Prix copiés: ", copied, " valeurs");
+      if(copied > 0)
+      {
+         Print("   Close[0] = ", close[0]);
+         Print("   Close[", copied-1, "] = ", close[copied-1]);
+      }
+   }
+   
+   Print("═══════════════════════════════════");
 }
 
 //+------------------------------------------------------------------+

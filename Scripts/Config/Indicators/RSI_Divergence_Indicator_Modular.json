@@ -1,0 +1,14 @@
+{
+  "name": "RSI_Divergence_Indicator_Modular",
+  "type": "Indicator",
+  "source": ".\\Indicators\\RSI_Divergence_Indicator_Modular.mq5",
+  "target": "..\\..\\MQL5\\Indicators\\RSI_Divergence_Indicator_Modular.mq5",
+  "description": "Indicateur RSI Divergence modulaire avec architecture avancée",
+  "includeDependencies": true,
+  "dependencies": [
+    "RSI_Calculator.mqh",
+    "Pivot_Detector.mqh",
+    "Divergence_Detector.mqh",
+    "Divergence_Visualizer.mqh"
+  ]
+}

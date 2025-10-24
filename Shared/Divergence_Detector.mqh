@@ -191,18 +191,31 @@ bool CDivergenceDetector::CheckRegularBullish(int currentBar, const double &rsi[
    if(!m_pivotDetector.IsPivotLow(currentBar, rsi, time))
       return false;
    
+   Print("🔍 Checking Regular Bullish at pos ", currentBar);
+   Print("   Is Pivot Low? YES");
+   Print("   Current RSI: ", rsi[currentBar]);
+   
    double pivotRSI = rsi[currentBar];
    
    // Rechercher le pivot précédent
    SPivotInfo prevPivot;
-   if(!m_pivotDetector.FindPreviousPivotLow(currentBar, rsi, time, m_rangeLower, m_rangeUpper, prevPivot))
+   bool foundPrev = m_pivotDetector.FindPreviousPivotLow(currentBar, rsi, time, m_rangeLower, m_rangeUpper, prevPivot);
+   Print("   Found Previous Pivot? ", (foundPrev ? "YES" : "NO"));
+   if(foundPrev)
+   {
+      Print("   Prev RSI: ", prevPivot.value, " at pos ", prevPivot.position);
+   }
+   if(!foundPrev)
       return false;
    
    // Conditions de divergence bullish régulière
    double currentPrice = low[currentBar];
    bool rsiHigherLow = pivotRSI > prevPivot.value;
    bool priceLowerLow = (prevPivot.position >= 0 && prevPivot.position < ArraySize(low)) ? 
-                        (currentPrice < low[prevPivot.position]) : false;
+                       (currentPrice < low[prevPivot.position]) : false;
+   
+   Print("   RSI Higher Low? ", (rsiHigherLow ? "YES" : "NO"));
+   Print("   Price Lower Low? ", (priceLowerLow ? "YES" : "NO"));
    
    if(rsiHigherLow && priceLowerLow)
    {

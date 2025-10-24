@@ -291,9 +291,9 @@ bool CPivotDetector::FindPreviousPivotHigh(int currentPos, const double &buffer[
    if(rangeLower < 1 || rangeUpper < rangeLower)
       return false;
    
-   // Définir la zone de recherche
-   int maxSearch = MathMin(currentPos + rangeUpper, ArraySize(buffer) - 1);
-   int minSearch = MathMax(currentPos + rangeLower, m_lookbackRight);
+   // Définir la zone de recherche (vers le PASSÉ)
+   int maxSearch = MathMin(currentPos - rangeLower, ArraySize(buffer) - 1);
+   int minSearch = MathMax(currentPos - rangeUpper, m_lookbackRight);
    
    if(minSearch > maxSearch)
       return false;
@@ -327,9 +327,9 @@ bool CPivotDetector::FindPreviousPivotLow(int currentPos, const double &buffer[]
    if(rangeLower < 1 || rangeUpper < rangeLower)
       return false;
    
-   // Définir la zone de recherche
-   int maxSearch = MathMin(currentPos + rangeUpper, ArraySize(buffer) - 1);
-   int minSearch = MathMax(currentPos + rangeLower, m_lookbackRight);
+   // Définir la zone de recherche (vers le PASSÉ)
+   int maxSearch = MathMin(currentPos - rangeLower, ArraySize(buffer) - 1);
+   int minSearch = MathMax(currentPos - rangeUpper, m_lookbackRight);
    
    if(minSearch > maxSearch)
       return false;
