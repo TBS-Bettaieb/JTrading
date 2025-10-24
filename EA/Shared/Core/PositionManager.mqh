@@ -36,24 +36,20 @@ public:
    //+------------------------------------------------------------------+
    PositionManager(string symbol, int magicNumber, CTrade* trade)
    {
-      // FIXED: Vérification NULL des dépendances critiques
+      // 🔥 CRITIQUE: Vérification STRICTE - ARRÊTER l'EA si dépendance NULL
       if(trade == NULL)
       {
-         Logger::Error("CRITICAL: NULL dependency in PositionManager constructor");
-         Logger::Error("  - CTrade: NULL");
+         Logger::Error("❌ CRITICAL ERROR: NULL dependency in PositionManager constructor");
+         Logger::Error("   Symbol: " + symbol);
+         Logger::Error("   CTrade: NULL");
+         Logger::Error("   🛑 EA WILL STOP - Fix dependencies before continuing");
          
-         // Initialiser avec des valeurs sûres par défaut
-         m_symbol = symbol;
-         m_magicNumber = magicNumber;
-         m_trade = trade;
-         m_buyPositions = 0;
-         m_sellPositions = 0;
-         m_totalPositions = 0;
-         m_totalProfit = 0;
-         m_totalSwap = 0;
-         m_totalCommission = 0;
+         // 🛑 ARRÊTER L'EA - Ne pas continuer avec des dépendances NULL
+         ExpertRemove();
          return;
       }
+      
+      // ✅ Toutes les dépendances sont garanties non-NULL
       
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -129,7 +125,7 @@ public:
             {
                ulong ticket = m_position.Ticket();
                // FIXED: Vérifier NULL et utiliser -> pour les pointeurs
-               if(m_trade != NULL && m_trade.PositionClose(ticket))
+               if(m_trade.PositionClose(ticket))
                {
                   closedCount++;
                   Logger::Info("Position #" + IntegerToString(ticket) + " closed for " + m_symbol);
@@ -169,7 +165,7 @@ public:
             {
                ulong ticket = m_position.Ticket();
                // FIXED: Vérifier NULL et utiliser -> pour les pointeurs
-               if(m_trade != NULL && m_trade.PositionClose(ticket))
+               if(m_trade.PositionClose(ticket))
                {
                   closedCount++;
                   Logger::Info("Position #" + IntegerToString(ticket) + " (" + EnumToString(positionType) + ") closed for " + m_symbol);
@@ -210,7 +206,7 @@ public:
       }
       
       // FIXED: Vérifier NULL et utiliser -> pour les pointeurs
-      if(m_trade != NULL && m_trade.PositionClose(ticket))
+      if(m_trade.PositionClose(ticket))
       {
          Logger::Info("Position #" + IntegerToString(ticket) + " closed for " + m_symbol);
          UpdateCounters(); // Mettre à jour les compteurs après fermeture
@@ -242,7 +238,7 @@ public:
       }
       
       // FIXED: Vérifier NULL et utiliser -> pour les pointeurs
-      if(m_trade != NULL && m_trade.PositionModify(ticket, newSL, newTP))
+      if(m_trade.PositionModify(ticket, newSL, newTP))
       {
          Logger::Debug("Position #" + IntegerToString(ticket) + " modified | SL: " + DoubleToString(newSL, 5) + " | TP: " + DoubleToString(newTP, 5));
          return true;

@@ -142,14 +142,15 @@ public:
    }
    
    //+------------------------------------------------------------------+
-   //| Ajuster les volumes avec un multiplicateur                      |
+   //| 🚫 MÉTHODE DÉSACTIVÉE - Causait des duplications d'ordres       |
+   //| Le multiplicateur affecte uniquement les NOUVEAUX ordres        |
    //+------------------------------------------------------------------+
    int AdjustPositionSizes(double newMultiplier)
    {
-      if(m_adjustmentManager == NULL)
-         return 0;
-      
-      return m_adjustmentManager.AdjustOrderVolumes(m_currentRiskMultiplier, newMultiplier);
+      // MÉTHODE DÉSACTIVÉE - Causait des duplications d'ordres
+      // Le multiplicateur affecte uniquement les NOUVEAUX ordres
+      // Les positions existantes gardent leur volume original
+      return 0;
    }
    
    //+------------------------------------------------------------------+
