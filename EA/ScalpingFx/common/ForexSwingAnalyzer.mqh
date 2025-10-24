@@ -365,7 +365,8 @@ private:
    //+------------------------------------------------------------------+
    double SearchHighOnTimeframe(ENUM_TIMEFRAMES timeframe)
    {
-      double highestHigh = 0;
+      double bestHigh = 0;
+      int bestIndex = -1;
       
       for(int i = 0; i < 200; i++)
       {
@@ -373,17 +374,22 @@ private:
          
          if(i > m_barsN && iHighest(m_symbol, timeframe, MODE_HIGH, m_barsN*2+1, i-m_barsN) == i)
          {
-            if(high > highestHigh)
+            // AVANT: if(high > highestHigh) - LOGIQUE CASSÉE
+            // APRÈS: Vérifier si c'est le swing point le plus récent et valide
+            if(high > 0 && (bestIndex == -1 || i < bestIndex))
             {
-               // Stocker le point détecté
-               datetime barTime = iTime(m_symbol, timeframe, i);
-               AddHighPoint(high, barTime);
-               
-               return high;
+               bestHigh = high;
+               bestIndex = i;
             }
          }
-         
-         highestHigh = MathMax(high, highestHigh);
+      }
+      
+      // APRÈS: Retourner le swing point le plus récent trouvé
+      if(bestIndex >= 0)
+      {
+         datetime barTime = iTime(m_symbol, timeframe, bestIndex);
+         AddHighPoint(bestHigh, barTime);
+         return bestHigh;
       }
       
       return -1;
@@ -394,7 +400,8 @@ private:
    //+------------------------------------------------------------------+
    double SearchLowOnTimeframe(ENUM_TIMEFRAMES timeframe)
    {
-      double lowestLow = DBL_MAX;
+      double bestLow = 0;
+      int bestIndex = -1;
       
       for(int i = 0; i < 200; i++)
       {
@@ -402,17 +409,22 @@ private:
          
          if(i > m_barsN && iLowest(m_symbol, timeframe, MODE_LOW, m_barsN*2+1, i-m_barsN) == i)
          {
-            if(low < lowestLow)
+            // AVANT: if(low < lowestLow) - LOGIQUE CASSÉE  
+            // APRÈS: Vérifier si c'est le swing point le plus récent et valide
+            if(low > 0 && (bestIndex == -1 || i < bestIndex))
             {
-               // Stocker le point détecté
-               datetime barTime = iTime(m_symbol, timeframe, i);
-               AddLowPoint(low, barTime);
-               
-               return low;
+               bestLow = low;
+               bestIndex = i;
             }
          }
-         
-         lowestLow = MathMin(low, lowestLow);
+      }
+      
+      // APRÈS: Retourner le swing point le plus récent trouvé
+      if(bestIndex >= 0)
+      {
+         datetime barTime = iTime(m_symbol, timeframe, bestIndex);
+         AddLowPoint(bestLow, barTime);
+         return bestLow;
       }
       
       return -1;

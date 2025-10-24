@@ -26,19 +26,10 @@ string currentSymbol = "";
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   // 🔧 AJOUTER AU DÉBUT : Empêcher réinit si juste changement de timeframe
-   static bool alreadyInitialized = false;
-   static string lastSymbol = "";
-   
-   if(alreadyInitialized && lastSymbol == Symbol())
-   {
-      Logger::Info("⚠️ Chart timeframe changed - EA configuration unchanged");
-      return(INIT_SUCCEEDED);  // Ne pas réinitialiser
-   }
    
    // Initialize Logger first
-   Logger::Initialize(LOG_INFO, "[BreakoutScalper] ");
-   
+   Logger::Initialize(LOG_DEBUG, "[BreakoutScalper] ");
+   Logger::SetLevel(LOG_DEBUG);  // Force le niveau
    // Determine which symbol to use
    if(InpSymbolToTrade == "")
    {
@@ -112,7 +103,7 @@ int OnInit()
       return(INIT_FAILED);
    }
    
-   if(!bot.Initialize())
+   if(!bot.Initialize(true))  // skipLoggerInit = true
    {
       Logger::Error("❌ ERROR: Bot initialization failed");
       delete bot;
@@ -131,9 +122,16 @@ int OnInit()
    Logger::Info("Magic: " + IntegerToString(config.baseMagic));
    Logger::Info("Risk: " + DoubleToString(config.riskPercent, 1) + "%");
    
-   // 🔧 AJOUTER À LA FIN avant le return :
-   alreadyInitialized = true;
-   lastSymbol = currentSymbol;
+   // 🔍 LOG FINAL: Vérifier que le bot est bien créé
+   if(bot != NULL)
+   {
+      Logger::Success("✅ Bot object created successfully - Ready for trading!");
+   }
+   else
+   {
+      Logger::Error("❌ CRITICAL ERROR: Bot object is NULL after initialization!");
+   }
+   
    
    return(INIT_SUCCEEDED);
 }
@@ -160,13 +158,19 @@ void OnDeinit(const int reason)
 }
 
 //+------------------------------------------------------------------+
-//| Expert tick function                                             |
+//| Expert tick function - VERSION AVEC LOGS DE DEBUG               |
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   
+   // Vérifier si le bot existe
    if(bot != NULL)
    {
       bot.OnTick();
+   }
+   else
+   {
+      Logger::Error("❌ CopyForTestBreakoutScalper.OnTick: Bot is NULL - trading not possible!");
    }
 }
 
