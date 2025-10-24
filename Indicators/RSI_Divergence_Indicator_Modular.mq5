@@ -122,10 +122,10 @@ string indicatorPrefix = "RSI_DIV_Modular_";
 int objectCounter = 0;
 
 //--- Instances des classes modulaires
-#include <..\Shared\RSI_Calculator.mqh>
-#include <..\Shared\Pivot_Detector.mqh>
-#include <..\Shared\Divergence_Detector.mqh>
-#include <..\Shared\Divergence_Visualizer.mqh>
+#include <../Shared/RSI_Calculator.mqh>
+#include <../Shared/Pivot_Detector.mqh>
+#include <../Shared/Divergence_Detector.mqh>
+#include <../Shared/Divergence_Visualizer.mqh>
 
 CRSICalculator* rsiCalculator = NULL;
 CPivotDetector* pivotDetector = NULL;
@@ -368,14 +368,14 @@ int OnCalculate(const int rates_total,
    ArraySetAsSeries(DivergenceSignalBuffer, true);
    
    // Calculer RSI avec la classe modulaire
-   if(!rsiCalculator->Calculate(rates_total, prev_calculated, close))
+   if(!rsiCalculator.Calculate(rates_total, prev_calculated, close))
    {
       Print("❌ Erreur: Échec du calcul RSI");
       return(0);
    }
    
    // Obtenir le buffer RSI calculé
-   if(!rsiCalculator->GetBuffer(RSIBuffer, 0, rates_total))
+   if(!rsiCalculator.GetBuffer(RSIBuffer, 0, rates_total))
    {
       Print("❌ Erreur: Impossible d'obtenir le buffer RSI");
       return(0);
@@ -427,7 +427,7 @@ int OnCalculate(const int rates_total,
          
          // Scanner les divergences avec la classe modulaire
          SDivergenceResult results[];
-         int found = divergenceDetector->ScanDivergences(startPos, endPos, RSIBuffer, high, low, time, results);
+         int found = divergenceDetector.ScanDivergences(startPos, endPos, RSIBuffer, high, low, time, results);
          
          if(found > 0)
          {

@@ -77,7 +77,7 @@ private:
 
 public:
    // Constructeur
-   CDivergenceDetector(int rangeLower = 3, int rangeUpper = 100, CPivotDetector* pivotDetector = NULL);
+   CDivergenceDetector(int rangeLower = 3, int rangeUpper = 100, CPivotDetector* pivotDetectorPtr = NULL);
    
    // Destructeur
    ~CDivergenceDetector();
@@ -135,11 +135,11 @@ private:
 //+------------------------------------------------------------------+
 //| Constructeur                                                     |
 //+------------------------------------------------------------------+
-CDivergenceDetector::CDivergenceDetector(int rangeLower = 3, int rangeUpper = 100, CPivotDetector* pivotDetector = NULL)
+CDivergenceDetector::CDivergenceDetector(int rangeLower = 3, int rangeUpper = 100, CPivotDetector* pivotDetectorPtr = NULL)
 {
    m_rangeLower = rangeLower;
    m_rangeUpper = rangeUpper;
-   m_pivotDetector = pivotDetector;
+   m_pivotDetector = pivotDetectorPtr;
    m_lastProcessed = -1;
    m_initialized = false;
    MAX_DIVERGENCES = 1000;  // Initialiser la constante
@@ -588,9 +588,9 @@ void CDivergenceDetector::SetRange(int rangeLower, int rangeUpper)
 //+------------------------------------------------------------------+
 //| Définir le détecteur de pivots                                   |
 //+------------------------------------------------------------------+
-void CDivergenceDetector::SetPivotDetector(CPivotDetector* pivotDetector)
+void CDivergenceDetector::SetPivotDetector(CPivotDetector* newPivotDetector)
 {
-   m_pivotDetector = pivotDetector;
+   m_pivotDetector = newPivotDetector;
    Reset();
 }
 

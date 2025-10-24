@@ -347,7 +347,7 @@ void CheckForSignals()
    }
    
    // Calculer le RSI
-   if(!rsiCalculator->Calculate(availableBars, 0, close))
+   if(!rsiCalculator.Calculate(availableBars, 0, close))
    {
       Print("❌ Erreur: Échec du calcul RSI");
       return;
@@ -355,7 +355,7 @@ void CheckForSignals()
    
    // Obtenir le buffer RSI
    double rsiBuffer[];
-   if(!rsiCalculator->GetBuffer(rsiBuffer, 0, availableBars))
+   if(!rsiCalculator.GetBuffer(rsiBuffer, 0, availableBars))
    {
       Print("❌ Erreur: Impossible d'obtenir le buffer RSI");
       return;
@@ -385,7 +385,7 @@ void CheckForSignals()
    
    // Scanner les divergences
    SDivergenceResult results[];
-   int found = divergenceDetector->ScanDivergences(startPos, endPos, rsiBuffer, high, low, time, results);
+   int found = divergenceDetector.ScanDivergences(startPos, endPos, rsiBuffer, high, low, time, results);
    
    if(found > 0)
    {
@@ -744,9 +744,9 @@ void DisplayTradingInfo()
 void UpdateTradingStats()
 {
    // Calculer le profit total des positions fermées
-   double totalProfit = 0.0;
-   int winningTrades = 0;
-   int losingTrades = 0;
+   double closedProfit = 0.0;
+   int closedWinningTrades = 0;
+   int closedLosingTrades = 0;
    
    // Parcourir l'historique des trades
    HistorySelect(0, TimeCurrent());
@@ -764,22 +764,22 @@ void UpdateTradingStats()
       if(dealEntry != DEAL_ENTRY_OUT) continue; // Seulement les sorties
       
       double profit = HistoryDealGetDouble(ticket, DEAL_PROFIT);
-      totalProfit += profit;
+      closedProfit += profit;
       
       if(profit > 0)
-         winningTrades++;
+         closedWinningTrades++;
       else if(profit < 0)
-         losingTrades++;
+         closedLosingTrades++;
    }
    
-   stats.totalProfit = totalProfit;
-   stats.winningTrades = winningTrades;
-   stats.losingTrades = losingTrades;
+   stats.totalProfit = closedProfit;
+   stats.winningTrades = closedWinningTrades;
+   stats.losingTrades = closedLosingTrades;
    
-   int totalClosedTrades = winningTrades + losingTrades;
+   int totalClosedTrades = closedWinningTrades + closedLosingTrades;
    if(totalClosedTrades > 0)
    {
-      stats.winRate = (double)winningTrades / totalClosedTrades * 100.0;
+      stats.winRate = (double)closedWinningTrades / totalClosedTrades * 100.0;
       
       double totalLoss = 0.0;
       // Recalculer les pertes pour le profit factor
@@ -800,9 +800,9 @@ void UpdateTradingStats()
       }
       
       if(totalLoss > 0)
-         stats.profitFactor = totalProfit / totalLoss;
+         stats.profitFactor = closedProfit / totalLoss;
       else
-         stats.profitFactor = (totalProfit > 0) ? 999.0 : 0.0;
+         stats.profitFactor = (closedProfit > 0) ? 999.0 : 0.0;
    }
 }
 
@@ -887,17 +887,17 @@ void DebugTestClasses()
    if(rsiCalculator == NULL)
       Print("❌ rsiCalculator est NULL");
    else
-      Print("✅ rsiCalculator initialisé - Période: ", rsiCalculator->GetPeriod());
+      Print("✅ rsiCalculator initialisé - Période: ", rsiCalculator.GetPeriod());
    
    if(pivotDetector == NULL)
       Print("❌ pivotDetector est NULL");
    else
-      Print("✅ pivotDetector initialisé - Lookback: ", pivotDetector->GetLookbackLeft(), "/", pivotDetector->GetLookbackRight());
+      Print("✅ pivotDetector initialisé - Lookback: ", pivotDetector.GetLookbackLeft(), "/", pivotDetector.GetLookbackRight());
    
    if(divergenceDetector == NULL)
       Print("❌ divergenceDetector est NULL");
    else
-      Print("✅ divergenceDetector initialisé - Range: ", divergenceDetector->GetRangeLower(), "-", divergenceDetector->GetRangeUpper());
+      Print("✅ divergenceDetector initialisé - Range: ", divergenceDetector.GetRangeLower(), "-", divergenceDetector.GetRangeUpper());
    
    // Test 2: Données de prix
    int availableBars = Bars(_Symbol, _Period);
