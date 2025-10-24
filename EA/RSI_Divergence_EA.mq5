@@ -226,12 +226,12 @@ void CheckForSignals()
    
    double signalBuffer[];
    ArraySetAsSeries(signalBuffer, true);
-   ArrayResize(signalBuffer, 2);  // Lire seulement 2 barres (actuelle et précédente)
+   ArrayResize(signalBuffer, 3);  // Lire 3 barres pour couvrir positions [0], [1], [2]
    ArrayInitialize(signalBuffer, 0.0);  // Initialiser à zéro
    
    // Lecture du buffer
    ResetLastError();
-   int copied = CopyBuffer(indicatorHandle, 7, 0, 2, signalBuffer);
+   int copied = CopyBuffer(indicatorHandle, 7, 0, 3, signalBuffer);
    int lastError = GetLastError();
    
    if(copied <= 0)
@@ -247,87 +247,110 @@ void CheckForSignals()
    Print("Copied: ", copied, " barres");
    Print("Buffer[0] (barre actuelle): ", signalBuffer[0]);
    Print("Buffer[1] (barre précédente): ", signalBuffer[1]);
+   Print("Buffer[2] (position cible): ", signalBuffer[2]);
    Print("Time[1]: ", TimeToString(iTime(_Symbol, _Period, 1)));
+   Print("Time[2]: ", TimeToString(iTime(_Symbol, _Period, 2)));
+   Print("🎯 Lecture ciblée à position [2] pour trade immédiat");
    
-   // Avec LookbackRight=1, le pivot est confirmé plus rapidement
-   // On peut détecter dès la barre[1] pour une réactivité maximale
-   static datetime lastTradedBarTime = 0;  // Mémoriser la dernière barre tradée
+   // ✅ CORRECTION : Lire les positions [1] ET [2] pour capturer tous les signaux
+   static datetime lastTradedBarTime = 0;
    
    if(copied > 1)
    {
-      // Essayer d'abord la barre[1] (plus réactive)
-      int signalPosition = 1;
-      datetime barTime = iTime(_Symbol, _Period, signalPosition);
       Print("Last Traded Time: ", TimeToString(lastTradedBarTime));
       Print("═══════════════════════════");
       
-      // Vérifier que cette barre n'a PAS déjà été tradée
-      if(signalBuffer[signalPosition] != 0.0 && 
-         signalBuffer[signalPosition] != EMPTY_VALUE && 
-         signalBuffer[signalPosition] != 9.9 &&
-         barTime > lastTradedBarTime)
+      // ✅ Vérifier d'abord la barre [2] (pivot confirmé avec LookbackRight=1)
+      // Puis la barre [1] en backup
+      
+      int signalPosition = -1;
+      double foundSignal = 0.0;
+      datetime barTime = 0;
+      
+      // ✅ TRADE IMMÉDIAT : Lire exactement à la position où le signal est écrit
+      // Avec LookbackRight=1, les pivots sont confirmés à position [InpLookbackRight + 1] = [2]
+      int targetPosition = 2;  // Position fixe correspondant à InpLookbackRight + 1
+      
+      if(targetPosition < ArraySize(signalBuffer))
       {
-         double foundSignal = signalBuffer[signalPosition];
-         lastTradedBarTime = barTime;  // Mémoriser pour éviter double trade
+         datetime currentBarTime = iTime(_Symbol, _Period, targetPosition);
          
-         Print("✅ NOUVEAU SIGNAL DÉTECTÉ - Barre[", signalPosition, "] - Valeur: ", foundSignal, " Time: ", TimeToString(barTime));
-         
-         // Identifier le type de signal et trader en conséquence
-         string signalType = "";
-         bool isBuySignal = false;
-         
-         if(foundSignal == 1.0)  // Regular Bullish
+         // Vérifier qu'il y a un signal ET que cette barre n'a pas déjà été tradée
+         if(signalBuffer[targetPosition] != 0.0 && 
+            signalBuffer[targetPosition] != EMPTY_VALUE && 
+            signalBuffer[targetPosition] != 9.9 &&
+            currentBarTime > lastTradedBarTime)
          {
-            if(!InpTradeRegularDiv) return;
-            signalType = "Regular Bullish Divergence";
-            isBuySignal = true;
+            signalPosition = targetPosition;
+            foundSignal = signalBuffer[targetPosition];
+            barTime = currentBarTime;
+            
+            Print("🎯 Signal trouvé à la position [", targetPosition, "] - Trade IMMÉDIAT");
          }
-         else if(foundSignal == 2.0)  // Regular Bearish
-         {
-            if(!InpTradeRegularDiv) return;
-            signalType = "Regular Bearish Divergence";
-            isBuySignal = false;
-         }
-         else if(foundSignal == 3.0)  // Hidden Bullish
-         {
-            if(!InpTradeHiddenDiv) return;
-            signalType = "Hidden Bullish Divergence";
-            isBuySignal = true;
-         }
-         else if(foundSignal == 4.0)  // Hidden Bearish
-         {
-            if(!InpTradeHiddenDiv) return;
-            signalType = "Hidden Bearish Divergence";
-            isBuySignal = false;
-         }
-         else if(foundSignal == 9.9)  // Valeur de test
-         {
-            Print("🔧 Signal de TEST détecté (9.9) - Communication EA↔Indicateur OK ! (Buffer 7)");
-            return;
-         }
-         else
-         {
-            Print("⚠️ Signal inconnu: ", foundSignal);
-            return;
-         }
-         
-         // Vérifier les filtres et positions existantes
-         ENUM_POSITION_TYPE posType = isBuySignal ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
-         
-         if(!CheckTrendFilter(isBuySignal) || HasOpenPosition(posType))
-            return;
-         
-         // Ouvrir le trade
-         ENUM_ORDER_TYPE orderType = isBuySignal ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
-         OpenTrade(orderType, signalType);
-         stats.lastSignal = signalType;
+      }
+      
+      // Si aucun signal trouvé
+      if(signalPosition == -1)
+      {
+         Print("ℹ️ Aucun nouveau signal à position [2] ou signal déjà traité");
+         return;
+      }
+      
+      // Signal trouvé !
+      lastTradedBarTime = barTime;
+      
+      Print("✅ NOUVEAU SIGNAL DÉTECTÉ - Barre[", signalPosition, "] - Valeur: ", foundSignal, " Time: ", TimeToString(barTime));
+      
+      // Identifier le type de signal et trader en conséquence
+      string signalType = "";
+      bool isBuySignal = false;
+      
+      if(foundSignal == 1.0)  // Regular Bullish
+      {
+         if(!InpTradeRegularDiv) return;
+         signalType = "Regular Bullish Divergence";
+         isBuySignal = true;
+      }
+      else if(foundSignal == 2.0)  // Regular Bearish
+      {
+         if(!InpTradeRegularDiv) return;
+         signalType = "Regular Bearish Divergence";
+         isBuySignal = false;
+      }
+      else if(foundSignal == 3.0)  // Hidden Bullish
+      {
+         if(!InpTradeHiddenDiv) return;
+         signalType = "Hidden Bullish Divergence";
+         isBuySignal = true;
+      }
+      else if(foundSignal == 4.0)  // Hidden Bearish
+      {
+         if(!InpTradeHiddenDiv) return;
+         signalType = "Hidden Bearish Divergence";
+         isBuySignal = false;
+      }
+      else if(foundSignal == 9.9)  // Valeur de test
+      {
+         Print("🔧 Signal de TEST détecté (9.9) - Communication EA↔Indicateur OK ! (Buffer 7)");
          return;
       }
       else
       {
-         Print("ℹ️ Aucun nouveau signal sur barre[1] ou signal déjà traité");
+         Print("⚠️ Signal inconnu: ", foundSignal);
          return;
       }
+      
+      // Vérifier les filtres et positions existantes
+      ENUM_POSITION_TYPE posType = isBuySignal ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
+      
+      if(!CheckTrendFilter(isBuySignal) || HasOpenPosition(posType))
+         return;
+      
+      // Ouvrir le trade
+      ENUM_ORDER_TYPE orderType = isBuySignal ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+      OpenTrade(orderType, signalType);
+      stats.lastSignal = signalType;
+      return;
    }
    
    return;
