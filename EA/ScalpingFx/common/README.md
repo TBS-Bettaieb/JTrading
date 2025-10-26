@@ -22,7 +22,6 @@ Ce dossier contient tous les composants partagés du système BreakoutScalper, o
 ### 📁 `analysis/` - Analyse technique et signaux
 
 - **`SwingAnalyzer.mqh`** : Analyseur de swing points générique
-- **`ForexSwingAnalyzer.mqh`** : Analyseur de swing points spécialisé Forex
 - **`SignalDetectionManager.mqh`** : Détection des signaux de trading
 
 ### 📁 `status/` - Statut et monitoring

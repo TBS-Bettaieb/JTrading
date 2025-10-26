@@ -8,7 +8,6 @@
 #include "../../../Shared/TradingEnums.mqh"
 #include "../../../Shared/Logger.mqh"
 #include "../status/BreakoutScalperStatus.mqh"
-#include "../analysis/ForexSwingAnalyzer.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe SymbolDisplay - Gestion de l'affichage        |
@@ -19,7 +18,6 @@ private:
    string            m_symbol;
    int               m_magicNumber;
    SymbolStatus* m_statusManager;
-   ForexSwingAnalyzer* m_swingAnalyzer;
    
    // Paramètres de trading pour affichage
    double            m_riskPercent;
@@ -35,7 +33,6 @@ public:
    SymbolDisplay(string symbol,
                             int magicNumber,
                             SymbolStatus* statusManager,
-                            ForexSwingAnalyzer* swingAnalyzer,
                             double riskPercent,
                             int tpPoints,
                             int slPoints,
@@ -45,7 +42,6 @@ public:
       m_symbol = symbol;
       m_magicNumber = magicNumber;
       m_statusManager = statusManager;
-      m_swingAnalyzer = swingAnalyzer;
       m_riskPercent = riskPercent;
       m_tpPoints = tpPoints;
       m_slPoints = slPoints;
@@ -67,16 +63,6 @@ public:
       Print("✓ SymbolDisplay destroyed for ", m_symbol);
    }
    
-   //+------------------------------------------------------------------+
-   //| Rafraîchir l'affichage des lignes swing                         |
-   //+------------------------------------------------------------------+
-   void RefreshSwingDisplay()
-   {
-      if(m_swingAnalyzer != NULL)
-      {
-         m_swingAnalyzer.RefreshSwingDisplay();
-      }
-   }
    
    //+------------------------------------------------------------------+
    //| Mettre à jour les informations du graphique                     |
