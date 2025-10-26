@@ -39,7 +39,6 @@ config/ → (aucune dépendance interne)
 trading/ → (aucune dépendance interne)
 analysis/ → status/
 status/ → (aucune dépendance interne)
-display/ → status/, analysis/
 examples/ → analysis/
 ```
 
