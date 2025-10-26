@@ -10,12 +10,12 @@
 #include <Trade\OrderInfo.mqh>
 #include "../../../EA/Shared/TradingEnums.mqh"
 #include "../../../EA/Shared/ForexCommissionManager.mqh"
-#include "../common/ForexSwingAnalyzer.mqh"
-#include "../common/ForexTrendlineManager.mqh"
-#include "../common/ForexOrderManager.mqh"
-#include "../common/BreakoutScalperStatus.mqh"
-#include "../common/ForexTrailingManager.mqh"
-#include "../common/BreakoutScalperTraderDisplay.mqh"
+#include "../common/SwingAnalyzer.mqh"
+#include "../common/TrendlineManager.mqh"
+#include "../common/OrderManager.mqh"
+#include "../common/SymbolStatus.mqh"
+#include "../common/TrailingManager.mqh"
+#include "../common/SymbolDisplay.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe BreakoutScalperTrader - Gestion d'un symbole spécifique       |
@@ -52,23 +52,23 @@ private:
    COrderInfo        m_order;               // Gestion des ordres
    
    ForexCommissionManager m_commissionManager;  // Gestionnaire de commission
-   ForexSwingAnalyzer m_swingAnalyzer;      // Analyseur de swing points
-   ForexTrendlineManager* m_trendlineManager; // Gestionnaire des lignes TP/SL
+   SwingAnalyzer m_swingAnalyzer;      // Analyseur de swing points
+   TrendlineManager* m_trendlineManager; // Gestionnaire des lignes TP/SL
    
    // 🆕 Trailing Manager (TP + TSL unifiés)
-   ForexTrailingManager* m_trailingManager;
+   TrailingManager* m_trailingManager;
    
    // 🆕 Risk Multiplier
    double            m_currentRiskMultiplier; // Multiplicateur de risque actuel
    
    // 🆕 Order Manager
-   ForexOrderManager* m_orderManager;
+   OrderManager* m_orderManager;
    
    // 🆕 Status Manager
-   BreakoutScalperStatus* m_statusManager;
+   SymbolStatus* m_statusManager;
    
    // 🆕 Display Manager
-   BreakoutScalperTraderDisplay* m_displayManager;
+   SymbolDisplay* m_displayManager;
    
 public:
    //+------------------------------------------------------------------+
@@ -123,13 +123,13 @@ public:
       m_trade.SetAsyncMode(false);
       
       // Initialiser l'analyseur de swing
-      m_swingAnalyzer = ForexSwingAnalyzer(symbol, timeframe, magicNumber, barsN);
+      m_swingAnalyzer = SwingAnalyzer(symbol, timeframe, magicNumber, barsN);
       
       // Initialiser le gestionnaire des lignes TP/SL
-      m_trendlineManager = new ForexTrendlineManager(symbol, magicNumber);
+      m_trendlineManager = new TrendlineManager(symbol, magicNumber);
       
       // Initialiser le gestionnaire des ordres
-      m_orderManager = new ForexOrderManager(
+      m_orderManager = new OrderManager(
          symbol, magicNumber, timeframe, strategyMode,
          tpPoints, slPoints, expirationBars, orderDistPoints,
          entryOffsetPoints, slippagePoints, m_tradeComment,
@@ -137,7 +137,7 @@ public:
       );
       
       // 🆕 Initialiser le Trailing Manager (TP + TSL)
-      m_trailingManager = new ForexTrailingManager(
+      m_trailingManager = new TrailingManager(
          symbol,
          magicNumber,
          useTrailingTP,
@@ -153,10 +153,10 @@ public:
       );
       
       // Initialiser le gestionnaire du statut
-      m_statusManager = new BreakoutScalperStatus(symbol, magicNumber, timeframe);
+      m_statusManager = new SymbolStatus(symbol, magicNumber, timeframe);
       
       // 🆕 Initialiser le Display Manager
-      m_displayManager = new BreakoutScalperTraderDisplay(
+      m_displayManager = new SymbolDisplay(
          symbol,
          magicNumber,
          m_statusManager,
