@@ -10,12 +10,12 @@
 #include <Trade\OrderInfo.mqh>
 #include "../../../EA/Shared/TradingEnums.mqh"
 #include "../../../EA/Shared/ForexCommissionManager.mqh"
-#include "ForexSwingAnalyzer.mqh"
-#include "ForexTrendlineManager.mqh"
-#include "ForexOrderManager.mqh"
-#include "ForexSymbolStatus.mqh"
-#include "ForexTrailingManager.mqh"
-#include "ForexSymbolTraderDisplay.mqh"
+#include "../common/ForexSwingAnalyzer.mqh"
+#include "../common/ForexTrendlineManager.mqh"
+#include "../common/ForexOrderManager.mqh"
+#include "../common/ForexSymbolStatus.mqh"
+#include "../common/ForexTrailingManager.mqh"
+#include "../common/ForexSymbolTraderDisplay.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe ForexSymbolTrader - Gestion d'un symbole spécifique       |

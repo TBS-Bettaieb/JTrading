@@ -12,8 +12,8 @@
 #include "../../../EA/Shared/NewsFilterManager.mqh"
 #include "../../../EA/Shared/Logger.mqh"
 #include "../common/BotConfig.mqh"
-#include "../common/ForexSymbolTrader.mqh"
-#include "../common/ForexSymbolManager.mqh"
+#include "ForexSymbolTrader.mqh"
+#include "ForexSymbolManager.mqh"
 #include "../common/RiskMultiplierManager.mqh"
 
 //+------------------------------------------------------------------+
