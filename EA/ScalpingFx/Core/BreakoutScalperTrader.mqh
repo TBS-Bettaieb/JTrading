@@ -338,17 +338,6 @@ public:
       }
    }
    
-   //+------------------------------------------------------------------+
-   //| Obtenir les informations de statut pour l'affichage             |
-   //+------------------------------------------------------------------+
-   string GetStatusInfo()
-   {
-      if(m_statusManager != NULL)
-      {
-         return m_statusManager.GetStatusInfo();
-      }
-      return m_symbol + ": ERROR";
-   }
    
    //+------------------------------------------------------------------+
    //| Obtenir le profit total pour ce symbole                         |
@@ -385,49 +374,6 @@ public:
       }
    }
    
-   //+------------------------------------------------------------------+
-   //| 🆕 Afficher les informations de trading                          |
-   //+------------------------------------------------------------------+
-   void DisplayTradingInfo()
-   {
-      if(m_displayManager != NULL)
-      {
-         m_displayManager.DisplayTradingInfo();
-      }
-   }
-   
-   //+------------------------------------------------------------------+
-   //| 🆕 Afficher les paramètres d'entrée                              |
-   //+------------------------------------------------------------------+
-   void DisplayInputs()
-   {
-      if(m_displayManager != NULL)
-      {
-         m_displayManager.DisplayInputs();
-      }
-   }
-   
-   //+------------------------------------------------------------------+
-   //| 🆕 Afficher les résultats                                        |
-   //+------------------------------------------------------------------+
-   void DisplayResults()
-   {
-      if(m_displayManager != NULL)
-      {
-         m_displayManager.DisplayResults();
-      }
-   }
-   
-   //+------------------------------------------------------------------+
-   //| 🆕 Dessiner un trade sur le graphique                           |
-   //+------------------------------------------------------------------+
-   void DrawTrade(datetime time, double price, bool isBuy)
-   {
-      if(m_displayManager != NULL)
-      {
-         m_displayManager.DrawTrade(time, price, isBuy);
-      }
-   }
    
    //+------------------------------------------------------------------+
    //| 🆕 Définir le multiplicateur actuel                              |
@@ -445,41 +391,6 @@ public:
       return m_currentRiskMultiplier;
    }
    
-   //+------------------------------------------------------------------+
-   //| 🆕 Méthodes pour accéder au Trailing Manager                     |
-   //+------------------------------------------------------------------+
-   void SetDynamicTSLTrigger(bool enable)
-   {
-      if(m_trailingManager != NULL)
-      {
-         m_trailingManager.SetDynamicTSLTrigger(enable);
-      }
-   }
-   
-   void SetDynamicTSLCostMultiplier(double multiplier)
-   {
-      if(m_trailingManager != NULL)
-      {
-         m_trailingManager.SetDynamicTSLCostMultiplier(multiplier);
-      }
-   }
-   
-   void SetDynamicTSLMinTriggerPoints(int points)
-   {
-      if(m_trailingManager != NULL)
-      {
-         m_trailingManager.SetDynamicTSLMinTriggerPoints(points);
-      }
-   }
-   
-   string GetDynamicTSLDebugInfo()
-   {
-      if(m_trailingManager != NULL)
-      {
-         return m_trailingManager.GetDynamicTSLDebugInfo();
-      }
-      return "Trailing Manager not initialized";
-   }
    
    
    //+------------------------------------------------------------------+
