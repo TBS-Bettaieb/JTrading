@@ -15,6 +15,7 @@
 #include "ForexOrderManager.mqh"
 #include "ForexSymbolStatus.mqh"
 #include "ForexTrailingManager.mqh"
+#include "ForexSymbolTraderDisplay.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe ForexSymbolTrader - Gestion d'un symbole spécifique       |
@@ -65,6 +66,9 @@ private:
    
    // 🆕 Status Manager
    ForexSymbolStatus* m_statusManager;
+   
+   // 🆕 Display Manager
+   ForexSymbolTraderDisplay* m_displayManager;
    
 public:
    //+------------------------------------------------------------------+
@@ -151,6 +155,19 @@ public:
       // Initialiser le gestionnaire du statut
       m_statusManager = new ForexSymbolStatus(symbol, magicNumber, timeframe);
       
+      // 🆕 Initialiser le Display Manager
+      m_displayManager = new ForexSymbolTraderDisplay(
+         symbol,
+         magicNumber,
+         m_statusManager,
+         GetPointer(m_swingAnalyzer),
+         riskPercent,
+         tpPoints,
+         slPoints,
+         strategyMode,
+         timeframe
+      );
+      
       Print("✓ ForexSymbolTrader initialized for ", symbol, " | Magic: ", magicNumber);
    }
    
@@ -185,6 +202,13 @@ public:
       {
          delete m_statusManager;
          m_statusManager = NULL;
+      }
+      
+      // Cleanup Display Manager
+      if(m_displayManager != NULL) 
+      {
+         delete m_displayManager;
+         m_displayManager = NULL;
       }
       
       Print("✓ ForexSymbolTrader destroyed for ", m_symbol);
@@ -355,7 +379,54 @@ public:
    //+------------------------------------------------------------------+
    void RefreshSwingDisplay()
    {
-      m_swingAnalyzer.RefreshSwingDisplay();
+      if(m_displayManager != NULL)
+      {
+         m_displayManager.RefreshSwingDisplay();
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| 🆕 Afficher les informations de trading                          |
+   //+------------------------------------------------------------------+
+   void DisplayTradingInfo()
+   {
+      if(m_displayManager != NULL)
+      {
+         m_displayManager.DisplayTradingInfo();
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| 🆕 Afficher les paramètres d'entrée                              |
+   //+------------------------------------------------------------------+
+   void DisplayInputs()
+   {
+      if(m_displayManager != NULL)
+      {
+         m_displayManager.DisplayInputs();
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| 🆕 Afficher les résultats                                        |
+   //+------------------------------------------------------------------+
+   void DisplayResults()
+   {
+      if(m_displayManager != NULL)
+      {
+         m_displayManager.DisplayResults();
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| 🆕 Dessiner un trade sur le graphique                           |
+   //+------------------------------------------------------------------+
+   void DrawTrade(datetime time, double price, bool isBuy)
+   {
+      if(m_displayManager != NULL)
+      {
+         m_displayManager.DrawTrade(time, price, isBuy);
+      }
    }
    
    //+------------------------------------------------------------------+
