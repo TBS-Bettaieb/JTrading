@@ -44,22 +44,30 @@ public:
                       int expirationBars, ENUM_TIMEFRAMES timeframe, 
                       int slippagePoints, string comment)
    {
-      // 🔥 CRITIQUE: Vérification STRICTE - ARRÊTER l'EA si dépendance NULL
+      // FIXED: Vérification NULL des dépendances critiques
       if(trade == NULL || volumeManager == NULL || validator == NULL)
       {
-         Logger::Error("❌ CRITICAL ERROR: NULL dependency in PendingOrderManager constructor");
-         Logger::Error("   Symbol: " + symbol);
-         Logger::Error("   CTrade: " + (trade == NULL ? "NULL" : "OK"));
-         Logger::Error("   VolumeManager: " + (volumeManager == NULL ? "NULL" : "OK"));
-         Logger::Error("   TradingValidator: " + (validator == NULL ? "NULL" : "OK"));
-         Logger::Error("   🛑 EA WILL STOP - Fix dependencies before continuing");
+         Logger::Error("CRITICAL: NULL dependency in PendingOrderManager constructor");
+         Logger::Error("  - CTrade: " + (trade == NULL ? "NULL" : "OK"));
+         Logger::Error("  - VolumeManager: " + (volumeManager == NULL ? "NULL" : "OK"));
+         Logger::Error("  - TradingValidator: " + (validator == NULL ? "NULL" : "OK"));
          
-         // 🛑 ARRÊTER L'EA - Ne pas continuer avec des dépendances NULL
-         ExpertRemove();
+         // Initialiser avec des valeurs sûres par défaut
+         m_symbol = symbol;
+         m_magicNumber = magicNumber;
+         m_trade = trade;
+         m_volumeManager = volumeManager;
+         m_validator = validator;
+         m_expirationBars = 0;
+         m_timeframe = PERIOD_CURRENT;
+         m_slippagePoints = 0;
+         m_comment = "";
+         m_buyOrders = 0;
+         m_sellOrders = 0;
+         m_totalOrders = 0;
          return;
       }
       
-      // ✅ Toutes les dépendances sont garanties non-NULL
       m_symbol = symbol;
       m_magicNumber = magicNumber;
       m_trade = trade;
@@ -136,7 +144,7 @@ public:
       // Valider l'ordre
       string errorMsg;
       // ✅ CORRECTION: Vérification NULL + syntaxe correcte
-      if(!m_validator.ValidateOrder(price, sl, tp, ORDER_TYPE_BUY_STOP, errorMsg))
+      if(m_validator != NULL && !m_validator.ValidateOrder(price, sl, tp, ORDER_TYPE_BUY_STOP, errorMsg))
       {
          Logger::Error("❌ Buy Stop validation failed: " + errorMsg);
          Logger::Error("❌ Validation failed - Paramètres:");
@@ -149,7 +157,7 @@ public:
       // Normaliser le volume
       // ✅ CORRECTION: Vérification NULL + syntaxe correcte
       double normalizedVolume = m_volumeManager != NULL ? m_volumeManager.NormalizeVolume(volume) : volume;
-      if(!m_validator.ValidateVolume(normalizedVolume, errorMsg))
+      if(m_validator != NULL && !m_validator.ValidateVolume(normalizedVolume, errorMsg))
       {
          Logger::Error("❌ Volume validation failed: " + errorMsg);
          Logger::Error("❌ Volume original: " + DoubleToString(volume, 2) + " | Normalisé: " + DoubleToString(normalizedVolume, 2));
@@ -172,7 +180,7 @@ public:
       
       // Créer l'ordre
       // ✅ CORRECTION: Vérification NULL + syntaxe correcte
-      if(m_trade.BuyStop(normalizedVolume, price, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_comment))
+      if(m_trade != NULL && m_trade.BuyStop(normalizedVolume, price, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_comment))
       {
          ulong ticket = m_trade.ResultOrder();
          Logger::Info("✅ Buy Stop order created #" + IntegerToString(ticket) + " | Price: " + DoubleToString(price, 5) + " | Volume: " + DoubleToString(normalizedVolume, 2));
@@ -216,7 +224,7 @@ public:
       // Valider l'ordre
       string errorMsg;
       // FIXED: Utiliser -> pour les pointeurs au lieu de .
-      if(!m_validator.ValidateOrder(price, sl, tp, ORDER_TYPE_SELL_STOP, errorMsg))
+      if(m_validator != NULL && !m_validator.ValidateOrder(price, sl, tp, ORDER_TYPE_SELL_STOP, errorMsg))
       {
          Logger::Error("❌ Sell Stop validation failed: " + errorMsg);
          Logger::Error("❌ Validation failed - Paramètres:");
@@ -229,7 +237,7 @@ public:
       // Normaliser le volume
       // ✅ CORRECTION: Vérification NULL + syntaxe correcte
       double normalizedVolume = m_volumeManager != NULL ? m_volumeManager.NormalizeVolume(volume) : volume;
-      if(!m_validator.ValidateVolume(normalizedVolume, errorMsg))
+      if(m_validator != NULL && !m_validator.ValidateVolume(normalizedVolume, errorMsg))
       {
          Logger::Error("❌ Volume validation failed: " + errorMsg);
          Logger::Error("❌ Volume original: " + DoubleToString(volume, 2) + " | Normalisé: " + DoubleToString(normalizedVolume, 2));
@@ -252,7 +260,7 @@ public:
       
       // Créer l'ordre
       // ✅ CORRECTION: Vérification NULL + syntaxe correcte
-      if(m_trade.SellStop(normalizedVolume, price, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_comment))
+      if(m_trade != NULL && m_trade.SellStop(normalizedVolume, price, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_comment))
       {
          ulong ticket = m_trade.ResultOrder();
          Logger::Info("✅ Sell Stop order created #" + IntegerToString(ticket) + " | Price: " + DoubleToString(price, 5) + " | Volume: " + DoubleToString(normalizedVolume, 2));
@@ -284,7 +292,7 @@ public:
       // Valider l'ordre
       string errorMsg;
       // FIXED: Utiliser -> pour les pointeurs au lieu de .
-      if(!m_validator.ValidateOrder(price, sl, tp, ORDER_TYPE_BUY_LIMIT, errorMsg))
+      if(m_validator != NULL && !m_validator.ValidateOrder(price, sl, tp, ORDER_TYPE_BUY_LIMIT, errorMsg))
       {
          Logger::Error("Buy Limit validation failed: " + errorMsg);
          return 0;
@@ -293,7 +301,7 @@ public:
       // Normaliser le volume
       // ✅ CORRECTION: Vérification NULL + syntaxe correcte
       double normalizedVolume = m_volumeManager != NULL ? m_volumeManager.NormalizeVolume(volume) : volume;
-      if(!m_validator.ValidateVolume(normalizedVolume, errorMsg))
+      if(m_validator != NULL && !m_validator.ValidateVolume(normalizedVolume, errorMsg))
       {
          Logger::Error("Volume validation failed: " + errorMsg);
          return 0;
@@ -304,7 +312,7 @@ public:
       
       // Créer l'ordre
       // ✅ CORRECTION: Vérification NULL + syntaxe correcte
-      if(m_trade.BuyLimit(normalizedVolume, price, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_comment))
+      if(m_trade != NULL && m_trade.BuyLimit(normalizedVolume, price, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_comment))
       {
          ulong ticket = m_trade.ResultOrder();
          Logger::Info("Buy Limit order created #" + IntegerToString(ticket) + " | Price: " + DoubleToString(price, 5) + " | Volume: " + DoubleToString(normalizedVolume, 2));
@@ -327,7 +335,7 @@ public:
       // Valider l'ordre
       string errorMsg;
       // FIXED: Utiliser -> pour les pointeurs au lieu de .
-      if(!m_validator.ValidateOrder(price, sl, tp, ORDER_TYPE_SELL_LIMIT, errorMsg))
+      if(m_validator != NULL && !m_validator.ValidateOrder(price, sl, tp, ORDER_TYPE_SELL_LIMIT, errorMsg))
       {
          Logger::Error("Sell Limit validation failed: " + errorMsg);
          return 0;
@@ -336,7 +344,7 @@ public:
       // Normaliser le volume
       // ✅ CORRECTION: Vérification NULL + syntaxe correcte
       double normalizedVolume = m_volumeManager != NULL ? m_volumeManager.NormalizeVolume(volume) : volume;
-      if(!m_validator.ValidateVolume(normalizedVolume, errorMsg))
+      if(m_validator != NULL && !m_validator.ValidateVolume(normalizedVolume, errorMsg))
       {
          Logger::Error("Volume validation failed: " + errorMsg);
          return 0;
@@ -347,7 +355,7 @@ public:
       
       // Créer l'ordre
       // ✅ CORRECTION: Vérification NULL + syntaxe correcte
-      if(m_trade.SellLimit(normalizedVolume, price, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_comment))
+      if(m_trade != NULL && m_trade.SellLimit(normalizedVolume, price, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_comment))
       {
          ulong ticket = m_trade.ResultOrder();
          Logger::Info("Sell Limit order created #" + IntegerToString(ticket) + " | Price: " + DoubleToString(price, 5) + " | Volume: " + DoubleToString(normalizedVolume, 2));
@@ -380,7 +388,7 @@ public:
       }
       
       // ✅ CORRECTION: Vérification NULL + syntaxe correcte
-      if(m_trade.OrderDelete(ticket))
+      if(m_trade != NULL && m_trade.OrderDelete(ticket))
       {
          Logger::Info("Order #" + IntegerToString(ticket) + " deleted for " + m_symbol);
          UpdateCounters();
@@ -409,7 +417,7 @@ public:
             if(OrderGetString(ORDER_SYMBOL) == m_symbol && OrderGetInteger(ORDER_MAGIC) == m_magicNumber)
             {
                // ✅ CORRECTION: Vérification NULL + syntaxe correcte
-               if(m_trade.OrderDelete(ticket))
+               if(m_trade != NULL && m_trade.OrderDelete(ticket))
                {
                   deletedCount++;
                   Logger::Info("Order #" + IntegerToString(ticket) + " deleted for " + m_symbol);
@@ -454,14 +462,14 @@ public:
       // Valider les nouveaux paramètres
       string errorMsg;
       // FIXED: Utiliser -> pour les pointeurs au lieu de .
-      if(!m_validator.ValidateOrder(newPrice, newSL, newTP, orderType, errorMsg))
+      if(m_validator != NULL && !m_validator.ValidateOrder(newPrice, newSL, newTP, orderType, errorMsg))
       {
          Logger::Error("Order modification validation failed: " + errorMsg);
          return false;
       }
       
       // ✅ CORRECTION: Vérification NULL + syntaxe correcte
-      if(m_trade.OrderModify(ticket, newPrice, newSL, newTP, ORDER_TIME_SPECIFIED, m_order.TimeExpiration()))
+      if(m_trade != NULL && m_trade.OrderModify(ticket, newPrice, newSL, newTP, ORDER_TIME_SPECIFIED, m_order.TimeExpiration()))
       {
          Logger::Info("Order #" + IntegerToString(ticket) + " modified | Price: " + DoubleToString(newPrice, 5) + 
                      " | SL: " + DoubleToString(newSL, 5) + " | TP: " + DoubleToString(newTP, 5));
@@ -499,7 +507,7 @@ public:
       // Valider le volume
       string errorMsg;
       // FIXED: Utiliser -> pour les pointeurs au lieu de .
-      if(!m_validator.ValidateVolume(normalizedVolume, errorMsg))
+      if(m_validator != NULL && !m_validator.ValidateVolume(normalizedVolume, errorMsg))
       {
          Logger::Error("Volume validation failed: " + errorMsg);
          return false;
@@ -514,7 +522,7 @@ public:
       
       // Supprimer l'ancien ordre
       // ✅ CORRECTION: Vérification NULL + syntaxe correcte
-      if(!m_trade.OrderDelete(ticket))
+      if(m_trade == NULL || !m_trade.OrderDelete(ticket))
       {
          Logger::Error("Failed to delete order #" + IntegerToString(ticket) + " for volume adjustment | Error: " + IntegerToString(GetLastError()));
          return false;

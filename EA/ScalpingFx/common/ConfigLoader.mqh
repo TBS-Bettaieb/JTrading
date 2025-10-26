@@ -52,7 +52,7 @@ public:
    {
       BotConfig config = m_config;
       config.symbolsList = symbol; // Single symbol for this instance
-      // Magic number will be generated in ForexScalperBot.CreateSymbolTraders()
+      config.baseMagic = GenerateMagicNumber(m_config.baseMagic, symbol);
       return config;
    }
    

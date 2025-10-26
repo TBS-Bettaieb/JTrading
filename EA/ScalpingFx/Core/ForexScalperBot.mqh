@@ -172,16 +172,30 @@ public:
    }
    
    //+------------------------------------------------------------------+
-   //| Main tick handler - VERSION CORRIGÉE SANS RACE CONDITION        |
-   //| Suppression de l'ajustement automatique qui causait la duplication |
+   //| Main tick handler - VERSION RESTAURÉE POUR PERFORMANCE          |
+   //| Reproduit EXACTEMENT l'ordre d'exécution de l'ancienne version  |
    //+------------------------------------------------------------------+
    void OnTick()
    {
       // ========== ÉTAPE 1: VALIDATION MINIMALE ==========
       // ✅ OPTIMISATION: Validation silencieuse (pas de logs à chaque tick)
       if(m_coordinator == NULL) return;
+      
+      // ========== ÉTAPE 2: VÉRIFIER CHANGEMENT RISK MULTIPLIER AVANT RÉCUPÉRATION ==========
+      // ✅ Détecter changement AVANT récupération (comportement ancienne version)
+      if(m_riskMultiplierManager != NULL && m_riskMultiplierManager.HasStatusChanged())
+      {
+         double newMultiplier = m_riskMultiplierManager.GetCurrentMultiplier();
+         AdjustAllPositionSizes(newMultiplier);
+      }
 
-      // ========== ÉTAPE 2: CALCULER PERMISSIONS DE TRADING ==========
+      // ========== ÉTAPE 3: RÉCUPÉRER MULTIPLICATEUR ACTUEL ==========
+      // ✅ Récupérer après ajustement des positions existantes
+      double currentRiskMultiplier = 1.0;
+      if(m_riskMultiplierManager != NULL)
+         currentRiskMultiplier = m_riskMultiplierManager.GetCurrentMultiplier();
+
+      // ========== ÉTAPE 4: CALCULER PERMISSIONS DE TRADING ==========
       bool timeAllowed = m_timeManager.IsTradingAllowed();
       bool newsAllowed = !m_config.useNewsFilter || 
                          (m_newsFilterManager != NULL && 
@@ -189,7 +203,7 @@ public:
 
       bool tradingAllowed = timeAllowed && newsAllowed;
 
-      // ========== ÉTAPE 3: VÉRIFIER CHANGEMENT STATUT NEWS ==========
+      // ========== ÉTAPE 5: VÉRIFIER CHANGEMENT STATUT NEWS ==========
       // ✅ Logs seulement lors de changement de statut
       if(m_newsFilterManager != NULL && m_newsFilterManager.HasStatusChanged())
       {
@@ -198,16 +212,10 @@ public:
             Logger::Info("📰 NEWS ALERT: " + newsStatus);
       }
       
-      // ========== ÉTAPE 4: RÉCUPÉRER MULTIPLICATEUR ACTUEL ==========
-      // ✅ Récupérer le multiplicateur pour les NOUVEAUX ordres uniquement
-      double currentRiskMultiplier = 1.0;
-      if(m_riskMultiplierManager != NULL)
-         currentRiskMultiplier = m_riskMultiplierManager.GetCurrentMultiplier();
-      
-      // ========== ÉTAPE 5: TRAITER CHAQUE SYMBOLE INDIVIDUELLEMENT ==========
-      // 🔥 CORRECTION: Plus d'ajustement automatique des positions existantes
+      // ========== ÉTAPE 6: TRAITER CHAQUE SYMBOLE INDIVIDUELLEMENT ==========
+      // 🔥 CRITIQUE: Reproduit EXACTEMENT l'ordre d'exécution de l'ancienne version
       // Pour CHAQUE symbole dans l'ordre PRÉCIS:
-      // 1. SetRiskMultiplier(currentMultiplier) - pour NOUVEAUX ordres uniquement
+      // 1. SetRiskMultiplier(currentMultiplier)
       // 2. OnTick() [si tradingAllowed]
       // 3. TrailStop() [TOUJOURS]
       // 4. ApplyTrailingTP() [TOUJOURS]
@@ -216,62 +224,35 @@ public:
       {
          string symbol = m_symbols[i];
          
-         // 🔥 DEBUG: Tracer l'ordre d'exécution (tous les 1000 ticks)
-         if(m_tickCount % 1000 == 0)
-         {
-            Logger::Debug("=== Processing " + symbol + " ===");
-         }
-         
-         // 1. ✅ APPLIQUER MULTIPLICATEUR POUR NOUVEAUX ORDRES UNIQUEMENT
+         // 1. ✅ APPLIQUER MULTIPLICATEUR IMMÉDIATEMENT (comme ancienne version)
          m_coordinator.SetSymbolRiskMultiplier(symbol, currentRiskMultiplier);
-         if(m_tickCount % 1000 == 0)
-         {
-            Logger::Debug("1. Multiplier x" + DoubleToString(currentRiskMultiplier, 2) + " applied to " + symbol);
-         }
          
          // 2. ✅ NOUVELLES ENTRÉES (seulement si autorisé)
          if(tradingAllowed)
          {
             m_coordinator.ProcessSymbolTick(symbol);
-            if(m_tickCount % 1000 == 0)
-            {
-               Logger::Debug("2. ProcessSymbolTick executed for " + symbol);
-            }
          }
          else
          {
             // ✅ ANNULER ordres pending pour ce symbole si !tradingAllowed
             m_coordinator.CancelSymbolPendingOrders(symbol);
-            if(m_tickCount % 1000 == 0)
-            {
-               Logger::Debug("2. CancelSymbolPendingOrders executed for " + symbol);
-            }
          }
          
          // 3. ✅ TRAILING STOP TOUJOURS (même si !tradingAllowed)
          m_coordinator.TrailSymbolStop(symbol);
-         if(m_tickCount % 1000 == 0)
-         {
-            Logger::Debug("3. TrailSymbolStop executed for " + symbol);
-         }
          
          // 4. ✅ TRAILING TP TOUJOURS (même si !tradingAllowed)
          m_coordinator.ApplySymbolTrailingTP(symbol);
-         if(m_tickCount % 1000 == 0)
-         {
-            Logger::Debug("4. ApplySymbolTrailingTP executed for " + symbol);
-            Logger::Debug("=== Done " + symbol + " ===");
-         }
       }
       
-      // ========== ÉTAPE 6: VALIDATION (optionnelle, tous les 1000 ticks) ==========
+      // ========== ÉTAPE 7: VALIDATION (optionnelle, tous les 1000 ticks) ==========
       m_tickCount++;
       if(m_tickCount % 1000 == 0)
       {
          ValidateExecutionOrder(currentRiskMultiplier);
       }
       
-      // ========== ÉTAPE 7: UPDATE CHART ==========
+      // ========== ÉTAPE 8: UPDATE CHART ==========
       UpdateChartInfo();
    }
    
@@ -370,17 +351,26 @@ private:
    }
    
    //+------------------------------------------------------------------+
-   //| 🚫 MÉTHODE DÉSACTIVÉE - Causait des duplications d'ordres       |
-   //| Le multiplicateur affecte uniquement les NOUVEAUX ordres        |
+   //| 🆕 Ajuster toutes les positions via le coordinateur             |
    //+------------------------------------------------------------------+
-   /*
    void AdjustAllPositionSizes(double multiplier)
    {
-      // MÉTHODE DÉSACTIVÉE - Causait des duplications d'ordres
-      // Le multiplicateur affecte uniquement les NOUVEAUX ordres
-      // Les positions existantes gardent leur volume original
+      Logger::Info("═══════════════════════════════════════");
+      Logger::Info("🔄 AJUSTEMENT DES POSITIONS - Multiplier: x" + DoubleToString(multiplier, 2));
+      Logger::Info("═══════════════════════════════════════");
+      
+      if(m_coordinator != NULL)
+      {
+         int adjustedCount = m_coordinator.AdjustAllSymbols(1.0, multiplier, "Risk multiplier change");
+         
+         if(adjustedCount > 0)
+            Logger::Info("✅ " + IntegerToString(adjustedCount) + " order(s) adjusted across all symbols");
+         else
+            Logger::Info("ℹ️ No orders to adjust");
+      }
+      
+      Logger::Info("═══════════════════════════════════════");
    }
-   */
    
    //+------------------------------------------------------------------+
    //| 🆕 Update chart information using coordinator                    |
@@ -508,14 +498,6 @@ private:
       if(m_coordinator != NULL)
       {
          Logger::Info("🎛️ COORDINATOR: " + m_coordinator.GetDetailedInfo());
-         
-         // 🔥 NOUVEAU: Valider les optimisations de performance
-         string performanceReport = m_coordinator.ValidatePerformanceOptimizations();
-         Logger::Info(performanceReport);
-         
-         // 🔥 NOUVEAU: Tester l'ordre d'exécution par symbole
-         string executionTestReport = m_coordinator.TestSymbolExecutionOrder();
-         Logger::Info(executionTestReport);
       }
       
       Logger::Info("═══════════════════════════════════════");

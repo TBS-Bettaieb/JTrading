@@ -211,9 +211,6 @@ public:
    //+------------------------------------------------------------------+
    virtual bool HasTradingSignal() override
    {
-      // ✅ DOUBLE VÉRIFICATION : Recompter avant de chercher un signal
-      UpdateCounters();
-      
       // Vérifier les positions/ordres existants
       if(m_buyTotal > 0 && m_sellTotal > 0)
       {
@@ -267,17 +264,6 @@ public:
    //+------------------------------------------------------------------+
    virtual void ProcessTradingSignal() override
    {
-      // 🛡️ LOG DE SÉCURITÉ : Vérifier l'état avant de créer des ordres
-      Logger::Debug("🔍 ProcessTradingSignal [" + m_symbol + "] - BuyTotal: " + 
-                    IntegerToString(m_buyTotal) + " | SellTotal: " + IntegerToString(m_sellTotal));
-      
-      // Vérification redondante pour éviter les ordres multiples
-      if(m_buyTotal > 0 && m_sellTotal > 0)
-      {
-         Logger::Warning("⚠️ Positions/ordres déjà existants des deux côtés, skip signal");
-         return;
-      }
-      
       if(m_strategyMode == STRATEGY_BREAKOUT)
       {
          
@@ -606,9 +592,7 @@ private:
       m_buyTotal = 0;
       m_sellTotal = 0;
       
-      bool usedManagers = false;
-      
-      // Essayer d'utiliser les managers injectés
+      // Compter les positions
       if(m_positionManager != NULL)
       {
          m_positionManager.UpdateCounters();
@@ -616,9 +600,13 @@ private:
          int sellPositions = m_positionManager.GetSellPositions();
          m_buyTotal += buyPositions;
          m_sellTotal += sellPositions;
-         usedManagers = true;
+      }
+      else
+      {
+         Logger::Warning("⚠️ UpdateCounters: PositionManager is NULL for " + m_symbol);
       }
       
+      // Compter les ordres en attente
       if(m_orderManager != NULL)
       {
          m_orderManager.UpdateCounters();
@@ -626,41 +614,10 @@ private:
          int sellOrders = m_orderManager.GetSellOrders();
          m_buyTotal += buyOrders;
          m_sellTotal += sellOrders;
-         usedManagers = true;
       }
-      
-      // 🆕 FALLBACK : Si les managers sont NULL, compter directement
-      if(!usedManagers)
+      else
       {
-         Logger::Warning("⚠️ UpdateCounters: Managers NULL - Using fallback counting for " + m_symbol);
-         
-         // Compter directement les positions
-         for(int i = PositionsTotal() - 1; i >= 0; i--)
-         {
-            ulong ticket = PositionGetTicket(i);
-            if(ticket <= 0) continue;
-            if(PositionGetString(POSITION_SYMBOL) != m_symbol) continue;
-            if(PositionGetInteger(POSITION_MAGIC) != m_magicNumber) continue;
-            
-            ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-            if(posType == POSITION_TYPE_BUY) m_buyTotal++;
-            if(posType == POSITION_TYPE_SELL) m_sellTotal++;
-         }
-         
-         // Compter directement les ordres pending
-         for(int i = OrdersTotal() - 1; i >= 0; i--)
-         {
-            ulong ticket = OrderGetTicket(i);
-            if(ticket <= 0) continue;
-            if(OrderGetString(ORDER_SYMBOL) != m_symbol) continue;
-            if(OrderGetInteger(ORDER_MAGIC) != m_magicNumber) continue;
-            
-            ENUM_ORDER_TYPE orderType = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
-            if(orderType == ORDER_TYPE_BUY_STOP || orderType == ORDER_TYPE_BUY_LIMIT) 
-               m_buyTotal++;
-            if(orderType == ORDER_TYPE_SELL_STOP || orderType == ORDER_TYPE_SELL_LIMIT) 
-               m_sellTotal++;
-         }
+         Logger::Warning("⚠️ UpdateCounters: OrderManager is NULL for " + m_symbol);
       }
    }
    
