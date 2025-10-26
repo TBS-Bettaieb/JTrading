@@ -121,7 +121,7 @@ public:
          );
       }
       
-      double spreadPoints = (double)SymbolInfoInteger(symbol, SYMBOL_SPREAD);
+      double spreadPoints = SymbolInfoInteger(symbol, SYMBOL_SPREAD);
       
       double swap = PositionGetDouble(POSITION_SWAP);
       double swapPoints = 0;
