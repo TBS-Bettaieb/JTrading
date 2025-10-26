@@ -8,6 +8,8 @@
 #include <Trade/Trade.mqh>
 #include "../../Shared/Logger.mqh"
 #include "../../Shared/TradingUtils.mqh"
+#include "../../Shared/DynamicTrailingStop.mqh"
+#include "../../Shared/ForexCommissionManager.mqh"
 #include "../Logic/RSI_Calculator.mqh"
 #include "../Logic/RSI_AlignmentDetector.mqh"
 #include "../Logic/EntryRulesValidator.mqh"
@@ -30,7 +32,13 @@ private:
    CRSIAlignmentDetector* m_alignDetector;
    CEntryRulesValidator* m_entryValidator;
    
+   // Trailing Stop Dynamique
    bool m_useTrailingStop;
+   bool m_useDynamicTrailing;
+   CDynamicTrailingStop* m_dynamicTSL;
+   ForexCommissionManager* m_commissionManager;
+   
+   // Paramètres TSL classique (fallback)
    int m_tslTriggerPoints;
    int m_tslPoints;
    
@@ -50,7 +58,8 @@ public:
    //--- Constructor
    CTripleRSITrader(string symbol, int magic, ENUM_TIMEFRAMES tf,
                     double risk, int slPoints, double tpRatio,
-                    bool useTrailing, int tslTrigger, int tslPoints,
+                    bool useTrailing, bool useDynamicTrailing,
+                    int tslTrigger, int tslPoints,
                     int rsiP1, int rsiP2, int rsiP3,
                     int oversold, int overbought,
                     bool useAlerts = true, bool sendNotif = false)
@@ -62,6 +71,7 @@ public:
       m_slPoints = slPoints;
       m_tpRatio = tpRatio;
       m_useTrailingStop = useTrailing;
+      m_useDynamicTrailing = useDynamicTrailing;
       m_tslTriggerPoints = tslTrigger;
       m_tslPoints = tslPoints;
       m_useAlerts = useAlerts;
@@ -92,7 +102,30 @@ public:
       m_alignDetector = new CRSIAlignmentDetector(oversold, overbought);
       m_entryValidator = new CEntryRulesValidator();
       
-      Logger::Info("TripleRSI Trader created for " + symbol + " (Magic: " + IntegerToString(magic) + ")");
+      // Initialiser le TSL dynamique si activé
+      if(m_useDynamicTrailing)
+      {
+         m_commissionManager = new ForexCommissionManager();
+         m_dynamicTSL = new CDynamicTrailingStop(
+            m_tslPoints,           // Distance TSL
+            m_tslTriggerPoints,   // Trigger par défaut
+            true,                  // Activer trigger dynamique
+            1.5,                   // Multiplicateur coûts (1.5x)
+            50,                    // Trigger minimum en points
+            10                     // Slippage
+         );
+         m_dynamicTSL.SetCommissionManager(m_commissionManager);
+         
+         Logger::Info("Dynamic Trailing Stop initialized for " + symbol);
+      }
+      else
+      {
+         m_dynamicTSL = NULL;
+         m_commissionManager = NULL;
+      }
+      
+      Logger::Info("TripleRSI Trader created for " + symbol + " (Magic: " + IntegerToString(magic) + 
+                   ") | Dynamic TSL: " + (m_useDynamicTrailing ? "ON" : "OFF"));
    }
    
    //--- Destructor
@@ -115,6 +148,19 @@ public:
       { 
          delete m_entryValidator; 
          m_entryValidator = NULL;
+      }
+      
+      // Nettoyer le TSL dynamique
+      if(m_dynamicTSL != NULL)
+      {
+         delete m_dynamicTSL;
+         m_dynamicTSL = NULL;
+      }
+      
+      if(m_commissionManager != NULL)
+      {
+         delete m_commissionManager;
+         m_commissionManager = NULL;
       }
       
       Logger::Debug("TripleRSI Trader destroyed for " + m_symbol);
@@ -208,6 +254,17 @@ public:
       if(result)
       {
          m_lastTradeTime = TimeCurrent();
+         
+         // Calculer les coûts pour le TSL dynamique
+         if(m_useDynamicTrailing && m_dynamicTSL != NULL)
+         {
+            ulong ticket = m_trade.ResultOrder();
+            if(ticket > 0)
+            {
+               m_dynamicTSL.CalculatePositionCosts(ticket, m_symbol);
+            }
+         }
+         
          Logger::Signal(true, "BUY opened: " + m_symbol + 
                         " | Lot=" + DoubleToString(lotSize, 2) +
                         " | Entry=" + DoubleToString(currentPrice, 5) +
@@ -263,6 +320,17 @@ public:
       if(result)
       {
          m_lastTradeTime = TimeCurrent();
+         
+         // Calculer les coûts pour le TSL dynamique
+         if(m_useDynamicTrailing && m_dynamicTSL != NULL)
+         {
+            ulong ticket = m_trade.ResultOrder();
+            if(ticket > 0)
+            {
+               m_dynamicTSL.CalculatePositionCosts(ticket, m_symbol);
+            }
+         }
+         
          Logger::Signal(false, "SELL opened: " + m_symbol + 
                         " | Lot=" + DoubleToString(lotSize, 2) +
                         " | Entry=" + DoubleToString(currentPrice, 5) +
@@ -367,6 +435,16 @@ public:
    //--- Traiter trailing stop
    void ProcessTrailingStop()
    {
+      if(!m_useTrailingStop) return;
+      
+      // Utiliser le TSL dynamique si activé
+      if(m_useDynamicTrailing && m_dynamicTSL != NULL)
+      {
+         m_dynamicTSL.ApplyTrailing(m_symbol, m_magic);
+         return;
+      }
+      
+      // Fallback vers TSL classique
       double entryPrice, slPrice, tpPrice, profit;
       ENUM_POSITION_TYPE type;
       
@@ -374,7 +452,7 @@ public:
          return;
       
       double currentPrice;
-      double newSL = slPrice; // Initialiser avec la valeur actuelle
+      double newSL = slPrice;
       bool shouldModify = false;
       
       if(type == POSITION_TYPE_BUY)
@@ -382,12 +460,10 @@ public:
          currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
          double profitPoints = (currentPrice - entryPrice) / SymbolInfoDouble(m_symbol, SYMBOL_POINT);
          
-         // Vérifier si le trailing doit être activé
          if(profitPoints >= m_tslTriggerPoints)
          {
             newSL = currentPrice - (m_tslPoints * SymbolInfoDouble(m_symbol, SYMBOL_POINT));
             
-            // Vérifier si le nouveau SL est meilleur que l'actuel
             if(newSL > slPrice)
             {
                shouldModify = true;
@@ -399,12 +475,10 @@ public:
          currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_ASK);
          double profitPoints = (entryPrice - currentPrice) / SymbolInfoDouble(m_symbol, SYMBOL_POINT);
          
-         // Vérifier si le trailing doit être activé
          if(profitPoints >= m_tslTriggerPoints)
          {
             newSL = currentPrice + (m_tslPoints * SymbolInfoDouble(m_symbol, SYMBOL_POINT));
             
-            // Vérifier si le nouveau SL est meilleur que l'actuel
             if(newSL < slPrice)
             {
                shouldModify = true;
@@ -412,18 +486,17 @@ public:
          }
       }
       
-      
       if(shouldModify)
       {
-         ulong ticket = PositionGetTicket(0); // Position actuelle
+         ulong ticket = PositionGetTicket(0);
          if(m_trade.PositionModify(ticket, newSL, tpPrice))
          {
-            Logger::Info("Trailing stop updated for " + m_symbol + 
+            Logger::Info("Classic TSL updated for " + m_symbol + 
                         " | New SL: " + DoubleToString(newSL, 5));
          }
          else
          {
-            Logger::Error("Failed to update trailing stop for " + m_symbol + 
+            Logger::Error("Failed to update classic TSL for " + m_symbol + 
                          " | Error: " + IntegerToString(m_trade.ResultRetcode()));
          }
       }
@@ -460,6 +533,14 @@ public:
       info += "Risk: " + DoubleToString(m_riskPercent, 1) + "%\n";
       info += "TP Ratio: " + DoubleToString(m_tpRatio, 1) + "x\n";
       info += "Trailing: " + (m_useTrailingStop ? "ON" : "OFF") + "\n";
+      info += "Dynamic TSL: " + (m_useDynamicTrailing ? "ON" : "OFF") + "\n";
+      
+      // Infos TSL dynamique
+      if(m_useDynamicTrailing && m_dynamicTSL != NULL)
+      {
+         info += "TSL Tracked Positions: " + IntegerToString(m_dynamicTSL.GetTrackedPositionsCount()) + "\n";
+         info += "TSL Cost Multiplier: " + DoubleToString(m_dynamicTSL.GetCostMultiplier(), 1) + "\n";
+      }
       
       if(HasPosition())
       {

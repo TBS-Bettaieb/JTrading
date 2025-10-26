@@ -225,7 +225,8 @@ private:
          m_symbolTraders[i] = new CTripleRSITrader(
             m_symbols[i], symbolMagic, m_config.timeframe,
             m_config.riskPercent, m_config.slPoints, m_config.tpRatio,
-            m_config.useTrailingStop, m_config.tslTriggerPoints, m_config.tslPoints,
+            m_config.useTrailingStop, m_config.useDynamicTrailing,
+            m_config.tslTriggerPoints, m_config.tslPoints,
             m_config.rsiPeriod1, m_config.rsiPeriod2, m_config.rsiPeriod3,
             m_config.rsiOversold, m_config.rsiOverbought,
             m_config.useAlerts, m_config.sendNotifications

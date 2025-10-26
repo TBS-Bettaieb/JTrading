@@ -31,8 +31,11 @@ struct TripleRSIConfig
    int               slPoints;          // SL en points
    double            tpRatio;          // Ratio TP/SL (ex: 2.0 = 1:2)
    bool              useTrailingStop;  // Activer trailing stop
+   bool              useDynamicTrailing; // Activer TSL dynamique
    int               tslTriggerPoints; // Déclenchement trailing
    int               tslPoints;        // Distance trailing
+   double            tslCostMultiplier; // Multiplicateur coûts TSL
+   int               tslMinTriggerPoints; // Trigger minimum TSL
    
    // Entry validation
    int               barsLookback;     // Barres pour calcul SL (5)
@@ -63,8 +66,11 @@ struct TripleRSIConfig
       slPoints = 100;
       tpRatio = 2.0;
       useTrailingStop = true;
+      useDynamicTrailing = true;
       tslTriggerPoints = 50;
       tslPoints = 30;
+      tslCostMultiplier = 1.5;
+      tslMinTriggerPoints = 50;
       
       barsLookback = 5;
       
@@ -124,6 +130,12 @@ struct TripleRSIConfig
       {
          Logger::Info("TSL: " + IntegerToString(tslTriggerPoints) + "/" + 
                       IntegerToString(tslPoints) + " pts");
+         Logger::Info("Dynamic TSL: " + (useDynamicTrailing ? "ON" : "OFF"));
+         if(useDynamicTrailing)
+         {
+            Logger::Info("TSL Cost Multiplier: " + DoubleToString(tslCostMultiplier, 1));
+            Logger::Info("TSL Min Trigger: " + IntegerToString(tslMinTriggerPoints) + " pts");
+         }
       }
       Logger::Info("================================");
    }

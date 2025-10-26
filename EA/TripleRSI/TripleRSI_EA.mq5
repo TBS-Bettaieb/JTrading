@@ -28,8 +28,11 @@ input double InpTPRatio = 2.0;      // Ratio Take Profit (x SL)
 
 input group "=== TRAILING STOP ==="
 input bool InpUseTrailing = true;   // Activer Trailing Stop
+input bool InpUseDynamicTrailing = true;    // Activer TSL Dynamique
 input int InpTSLTrigger = 50;       // Déclenchement (points)
 input int InpTSLDistance = 30;      // Distance (points)
+input double InpTSLCostMultiplier = 1.5;    // Multiplicateur coûts TSL
+input int InpTSLMinTriggerPoints = 50;     // Trigger minimum TSL (points)
 
 input group "=== ALERTES ==="
 input bool InpUseAlerts = true;     // Activer alertes
@@ -85,8 +88,11 @@ int OnInit()
    config.slPoints = InpSLPoints;
    config.tpRatio = InpTPRatio;
    config.useTrailingStop = InpUseTrailing;
+   config.useDynamicTrailing = InpUseDynamicTrailing;
    config.tslTriggerPoints = InpTSLTrigger;
    config.tslPoints = InpTSLDistance;
+   config.tslCostMultiplier = InpTSLCostMultiplier;
+   config.tslMinTriggerPoints = InpTSLMinTriggerPoints;
    config.barsLookback = 5;
    config.useAlerts = InpUseAlerts;
    config.sendNotifications = InpSendNotif;
