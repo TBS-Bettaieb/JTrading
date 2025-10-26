@@ -172,8 +172,7 @@ public:
    }
    
    //+------------------------------------------------------------------+
-   //| Main tick handler - VERSION RESTAURÉE POUR PERFORMANCE          |
-   //| Reproduit EXACTEMENT l'ordre d'exécution de l'ancienne version  |
+   //| Main tick handler - VERSION OPTIMISÉE POUR PERFORMANCE          |
    //+------------------------------------------------------------------+
    void OnTick()
    {
@@ -195,7 +194,11 @@ public:
       if(m_riskMultiplierManager != NULL)
          currentRiskMultiplier = m_riskMultiplierManager.GetCurrentMultiplier();
 
-      // ========== ÉTAPE 4: CALCULER PERMISSIONS DE TRADING ==========
+      // ========== ÉTAPE 4: METTRE À JOUR MULTIPLICATEUR DANS COORDINATEUR ==========
+      // ✅ Mettre à jour pour nouveaux ordres
+      m_coordinator.SetGlobalRiskMultiplier(currentRiskMultiplier);
+
+      // ========== ÉTAPE 5: CALCULER PERMISSIONS DE TRADING ==========
       bool timeAllowed = m_timeManager.IsTradingAllowed();
       bool newsAllowed = !m_config.useNewsFilter || 
                          (m_newsFilterManager != NULL && 
@@ -203,7 +206,7 @@ public:
 
       bool tradingAllowed = timeAllowed && newsAllowed;
 
-      // ========== ÉTAPE 5: VÉRIFIER CHANGEMENT STATUT NEWS ==========
+      // ========== ÉTAPE 6: VÉRIFIER CHANGEMENT STATUT NEWS ==========
       // ✅ Logs seulement lors de changement de statut
       if(m_newsFilterManager != NULL && m_newsFilterManager.HasStatusChanged())
       {
@@ -212,45 +215,23 @@ public:
             Logger::Info("📰 NEWS ALERT: " + newsStatus);
       }
       
-      // ========== ÉTAPE 6: TRAITER CHAQUE SYMBOLE INDIVIDUELLEMENT ==========
-      // 🔥 CRITIQUE: Reproduit EXACTEMENT l'ordre d'exécution de l'ancienne version
-      // Pour CHAQUE symbole dans l'ordre PRÉCIS:
-      // 1. SetRiskMultiplier(currentMultiplier)
-      // 2. OnTick() [si tradingAllowed]
-      // 3. TrailStop() [TOUJOURS]
-      // 4. ApplyTrailingTP() [TOUJOURS]
+      // ========== ÉTAPE 7: TRAITER TOUS LES SYMBOLES ==========
+      // ✅ CRITIQUE: Reproduit EXACTEMENT le comportement de l'ancienne version
       
-      for(int i = 0; i < m_totalSymbols; i++)
+      // A. NOUVELLES ENTRÉES (seulement si autorisé)
+      if(tradingAllowed)
       {
-         string symbol = m_symbols[i];
-         
-         // 1. ✅ APPLIQUER MULTIPLICATEUR IMMÉDIATEMENT (comme ancienne version)
-         m_coordinator.SetSymbolRiskMultiplier(symbol, currentRiskMultiplier);
-         
-         // 2. ✅ NOUVELLES ENTRÉES (seulement si autorisé)
-         if(tradingAllowed)
-         {
-            m_coordinator.ProcessSymbolTick(symbol);
-         }
-         else
-         {
-            // ✅ ANNULER ordres pending pour ce symbole si !tradingAllowed
-            m_coordinator.CancelSymbolPendingOrders(symbol);
-         }
-         
-         // 3. ✅ TRAILING STOP TOUJOURS (même si !tradingAllowed)
-         m_coordinator.TrailSymbolStop(symbol);
-         
-         // 4. ✅ TRAILING TP TOUJOURS (même si !tradingAllowed)
-         m_coordinator.ApplySymbolTrailingTP(symbol);
+         ProcessTradingLogic();  // Appelle m_coordinator.OnTick()
+      }
+      else
+      {
+         // B. ✅ ANNULER SYSTÉMATIQUEMENT tous ordres pending si !tradingAllowed
+         m_coordinator.CancelAllPendingOrders();
       }
       
-      // ========== ÉTAPE 7: VALIDATION (optionnelle, tous les 1000 ticks) ==========
-      m_tickCount++;
-      if(m_tickCount % 1000 == 0)
-      {
-         ValidateExecutionOrder(currentRiskMultiplier);
-      }
+      // C. ✅ TOUJOURS GÉRER LES POSITIONS OUVERTES (trailing stops, trailing TP)
+      // Indépendamment de tradingAllowed, comme dans l'ancienne version
+      m_coordinator.ManageOpenPositions();
       
       // ========== ÉTAPE 8: UPDATE CHART ==========
       UpdateChartInfo();
@@ -700,61 +681,6 @@ private:
       }
       
       return true;
-   }
-   
-   //+------------------------------------------------------------------+
-   //| 🔥 NOUVEAU: Valider l'ordre d'exécution pour debug              |
-   //+------------------------------------------------------------------+
-   void ValidateExecutionOrder(double expectedMultiplier)
-   {
-      Logger::Info("═══════════════════════════════════════");
-      Logger::Info("🔍 VALIDATION EXECUTION ORDER - Tick " + IntegerToString(m_tickCount));
-      Logger::Info("═══════════════════════════════════════");
-      
-      int trailingExecutedCount = 0;
-      int multiplierAppliedCount = 0;
-      
-      for(int i = 0; i < m_totalSymbols; i++)
-      {
-         string symbol = m_symbols[i];
-         
-         // Vérifier que le multiplicateur est appliqué
-         double actualMultiplier = m_coordinator.GetSymbolRiskMultiplier(symbol);
-         if(MathAbs(actualMultiplier - expectedMultiplier) <= 0.001)
-         {
-            multiplierAppliedCount++;
-            Logger::Debug("✅ Multiplier x" + DoubleToString(actualMultiplier, 2) + " correctly applied to " + symbol);
-         }
-         else
-         {
-            Logger::Error("❌ Multiplier mismatch for " + symbol + 
-                         " | Expected: " + DoubleToString(expectedMultiplier, 2) + 
-                         " | Actual: " + DoubleToString(actualMultiplier, 2));
-         }
-         
-         // Vérifier que le trailing est exécuté
-         bool trailingExecuted = m_coordinator.WasTrailingExecuted(symbol);
-         if(trailingExecuted)
-         {
-            trailingExecutedCount++;
-            Logger::Debug("✅ Trailing executed for " + symbol);
-         }
-         else
-         {
-            Logger::Debug("ℹ️ No positions to trail for " + symbol);
-         }
-      }
-      
-      Logger::Info("📊 VALIDATION SUMMARY:");
-      Logger::Info("   Multiplier applied: " + IntegerToString(multiplierAppliedCount) + "/" + IntegerToString(m_totalSymbols));
-      Logger::Info("   Trailing executed: " + IntegerToString(trailingExecutedCount) + "/" + IntegerToString(m_totalSymbols));
-      
-      if(multiplierAppliedCount == m_totalSymbols)
-         Logger::Success("✅ All multipliers correctly applied");
-      else
-         Logger::Warning("⚠️ Some multipliers not applied correctly");
-         
-      Logger::Info("═══════════════════════════════════════");
    }
 };
 
