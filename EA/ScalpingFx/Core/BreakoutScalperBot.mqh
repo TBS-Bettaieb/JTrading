@@ -14,7 +14,7 @@
 #include "../common/config/BotConfig.mqh"
 #include "BreakoutScalperTrader.mqh"
 #include "BreakoutScalperManager.mqh"
-#include "../common/config/RiskMultiplierManager.mqh"
+#include "../../Shared/Filters/RiskMultiplierManager.mqh"
 
 //+------------------------------------------------------------------+
 //| Main Bot Class                                                   |

@@ -153,7 +153,8 @@ public:
          tslCostMultiplier,
          tslMinTriggerPoints,
          slippagePoints,
-         &m_commissionManager
+         &m_commissionManager,
+         m_trendlineManager
       );
       
       // Initialiser le gestionnaire du statut

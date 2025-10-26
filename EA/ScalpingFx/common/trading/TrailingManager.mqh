@@ -10,6 +10,7 @@
 #include "../../../Shared/TrailingTP_System.mqh"
 #include "../../../Shared/DynamicTrailingStop.mqh"
 #include "../../../Shared/ForexCommissionManager.mqh"
+#include "TrendlineManager.mqh"
 
 //+------------------------------------------------------------------+
 //| Structure pour tracker les positions avec trailing TP            |
@@ -39,6 +40,9 @@ private:
    CDynamicTrailingStop* m_dynamicTSL;
    ForexCommissionManager* m_commissionManager;
    
+   // Trendline Manager pour mettre à jour les lignes TP/SL graphiques
+   TrendlineManager* m_trendlineManager;
+   
    // Objets de trading
    CTrade            m_trade;
    CPositionInfo     m_position;
@@ -58,7 +62,8 @@ public:
                         double tslCostMultiplier,
                         int tslMinTriggerPoints,
                         int slippagePoints,
-                        ForexCommissionManager* commissionManager)
+                        ForexCommissionManager* commissionManager,
+                        TrendlineManager* trendlineManager = NULL)
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -66,6 +71,7 @@ public:
       m_customTPLevels = customTPLevels;
       m_trailingMode = trailingTPMode;
       m_commissionManager = commissionManager;
+      m_trendlineManager = trendlineManager;
       
       // Initialiser Trailing TP
       if(m_useTrailingTP) {
@@ -150,8 +156,13 @@ public:
          
          double newSL, newTP;
          if(m_positionTrailings[i].trailing.Update(currentPrice, newSL, newTP)) {
-            if(newSL > 0 && newTP > 0) {
-               m_trade.PositionModify(ticket, newSL, newTP);
+            if(newSL > 0 || newTP > 0) {
+               if(m_trade.PositionModify(ticket, newSL, newTP)) {
+                  // ✅ Mise à jour réussie, rafraîchir les lignes TP/SL graphiques
+                  if(m_trendlineManager != NULL) {
+                     m_trendlineManager.UpdatePositionLines(ticket, newTP, newSL);
+                  }
+               }
             }
          }
       }
@@ -165,6 +176,23 @@ public:
       if(m_dynamicTSL != NULL)
       {
          m_dynamicTSL.ApplyTrailing(m_symbol, m_magicNumber);
+         
+         // ✅ Mettre à jour les trendlines après le trailing stop
+         if(m_trendlineManager != NULL)
+         {
+            for(int i = 0; i < PositionsTotal(); i++)
+            {
+               if(!m_position.SelectByIndex(i)) continue;
+               if(m_position.Magic() != m_magicNumber) continue;
+               if(m_position.Symbol() != m_symbol) continue;
+               
+               ulong ticket = m_position.Ticket();
+               double currentTP = PositionGetDouble(POSITION_TP);
+               double currentSL = PositionGetDouble(POSITION_SL);
+               
+               m_trendlineManager.UpdatePositionLines(ticket, currentTP, currentSL);
+            }
+         }
       }
    }
    
@@ -179,6 +207,14 @@ public:
       if(m_dynamicTSL != NULL)
       {
          m_dynamicTSL.CalculatePositionCosts(ticket, m_symbol);
+      }
+      
+      // ✅ Créer les trendlines TP/SL pour cette position
+      if(m_trendlineManager != NULL)
+      {
+         double tp = PositionGetDouble(POSITION_TP);
+         double sl = PositionGetDouble(POSITION_SL);
+         m_trendlineManager.CreatePositionLines(ticket, tp, sl);
       }
       
       // Gestion du trailing TP
@@ -216,6 +252,12 @@ public:
    //+------------------------------------------------------------------+
    void OnPositionClosed(ulong ticket)
    {
+      // ✅ Supprimer les trendlines TP/SL pour cette position
+      if(m_trendlineManager != NULL)
+      {
+         m_trendlineManager.DeletePositionLines(ticket);
+      }
+      
       // Nettoyer les coûts de position pour le TSL dynamique
       if(m_dynamicTSL != NULL)
       {
