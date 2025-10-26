@@ -13,7 +13,7 @@ input double   InpRiskPercent = -1.0;  // Risk per trade (%) (-1 = use group def
 
 // Include required files
 #include "../ScalpingFx/Core/BreakoutScalperBot.mqh"
-#include "../ScalpingFx/common/ConfigLoader.mqh"
+#include "../ScalpingFx/common/config/ConfigLoader.mqh"
 #include "../../EA/Shared/Logger.mqh"
 
 // Global variables

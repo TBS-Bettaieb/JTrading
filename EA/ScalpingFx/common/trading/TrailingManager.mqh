@@ -7,9 +7,9 @@
 
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
-#include "../../../EA/Shared/TrailingTP_System.mqh"
-#include "../../../EA/Shared/DynamicTrailingStop.mqh"
-#include "../../../EA/Shared/ForexCommissionManager.mqh"
+#include "../../../Shared/TrailingTP_System.mqh"
+#include "../../../Shared/DynamicTrailingStop.mqh"
+#include "../../../Shared/ForexCommissionManager.mqh"
 
 //+------------------------------------------------------------------+
 //| Structure pour tracker les positions avec trailing TP            |

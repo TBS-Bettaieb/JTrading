@@ -5,8 +5,8 @@
 //+------------------------------------------------------------------+
 #property strict
 
-#include "../../../EA/Shared/TradingEnums.mqh"
-#include "../../../EA/Shared/Logger.mqh"
+#include "../../../Shared/TradingEnums.mqh"
+#include "../../../Shared/Logger.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe pour analyser les points swing                           |

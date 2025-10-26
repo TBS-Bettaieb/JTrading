@@ -10,12 +10,13 @@
 #include <Trade\OrderInfo.mqh>
 #include "../../../EA/Shared/TradingEnums.mqh"
 #include "../../../EA/Shared/ForexCommissionManager.mqh"
-#include "../common/SwingAnalyzer.mqh"
-#include "../common/TrendlineManager.mqh"
-#include "../common/OrderManager.mqh"
-#include "../common/SymbolStatus.mqh"
-#include "../common/TrailingManager.mqh"
-#include "../common/SymbolDisplay.mqh"
+#include "../common/analysis/SwingAnalyzer.mqh"
+#include "../common/trading/TrendlineManager.mqh"
+#include "../common/trading/OrderManager.mqh"
+#include "../common/status/SymbolStatus.mqh"
+#include "../common/trading/TrailingManager.mqh"
+#include "../common/status/SymbolDisplay.mqh"
+#include "../common/analysis/SignalDetectionManager.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe BreakoutScalperTrader - Gestion d'un symbole spécifique       |
@@ -69,6 +70,9 @@ private:
    
    // 🆕 Display Manager
    SymbolDisplay* m_displayManager;
+   
+   // 🆕 Signal Detection Manager
+   SignalDetectionManager* m_signalManager;
    
 public:
    //+------------------------------------------------------------------+
@@ -168,6 +172,15 @@ public:
          timeframe
       );
       
+      // 🆕 Initialiser le Signal Detection Manager
+      m_signalManager = new SignalDetectionManager(
+         symbol,
+         timeframe,
+         strategyMode,
+         &m_swingAnalyzer,
+         m_statusManager
+      );
+      
       Print("✓ BreakoutScalperTrader initialized for ", symbol, " | Magic: ", magicNumber);
    }
    
@@ -211,6 +224,13 @@ public:
          m_displayManager = NULL;
       }
       
+      // Cleanup Signal Detection Manager
+      if(m_signalManager != NULL) 
+      {
+         delete m_signalManager;
+         m_signalManager = NULL;
+      }
+      
       Print("✓ BreakoutScalperTrader destroyed for ", m_symbol);
    }
    
@@ -230,49 +250,19 @@ public:
       // Vérifier les nouvelles positions pour créer les lignes TP/SL
       CheckForNewPositions();
       
-      // Chercher des signaux de trading seulement si pas de positions/ordres existants
-      if(m_statusManager.GetBuyTotal() <= 0)
+      // 🆕 Détection des signaux avec le nouveau manager
+      SignalInfo signal;
+      
+      if(m_signalManager.CheckForBuySignal(signal))
       {
-         if(m_strategyMode == STRATEGY_BREAKOUT)
-         {
-            // Mode BREAKOUT : acheter quand le prix CASSE un swing high (suivre la tendance)
-            double high = m_swingAnalyzer.FindHigh();
-            if(high > 0)
-            {
-               m_orderManager.SendBuyOrder(high);
-            }
-         }
-         else if(m_strategyMode == STRATEGY_REVERSION)
-         {
-            // Mode REVERSION : acheter quand le prix TOUCHE un swing low et rebondit (contre-tendance)
-            double low = m_swingAnalyzer.FindLow();
-            if(low > 0)
-            {
-               m_orderManager.SendBuyOrder(low);
-            }
-         }
+         m_orderManager.SendBuyOrder(signal.triggerPrice);
+         Print("📈 ", m_signalManager.GetSignalDescription(signal));
       }
       
-      if(m_statusManager.GetSellTotal() <= 0)
+      if(m_signalManager.CheckForSellSignal(signal))
       {
-         if(m_strategyMode == STRATEGY_BREAKOUT)
-         {
-            // Mode BREAKOUT : vendre quand le prix CASSE un swing low (suivre la tendance)
-            double low = m_swingAnalyzer.FindLow();
-            if(low > 0)
-            {
-               m_orderManager.SendSellOrder(low);
-            }
-         }
-         else if(m_strategyMode == STRATEGY_REVERSION)
-         {
-            // Mode REVERSION : vendre quand le prix TOUCHE un swing high et redescend (contre-tendance)
-            double high = m_swingAnalyzer.FindHigh();
-            if(high > 0)
-            {
-               m_orderManager.SendSellOrder(high);
-            }
-         }
+         m_orderManager.SendSellOrder(signal.triggerPrice);
+         Print("📉 ", m_signalManager.GetSignalDescription(signal));
       }
    }
 
@@ -489,6 +479,36 @@ private:
          case PERIOD_MN1: return "MN1";
          default:         return "UNKNOWN";
       }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Configuration du Signal Detection Manager                       |
+   //+------------------------------------------------------------------+
+   void EnableBuySignals(bool enable)
+   {
+      if(m_signalManager != NULL)
+         m_signalManager.EnableBuySignals(enable);
+   }
+   
+   void EnableSellSignals(bool enable)
+   {
+      if(m_signalManager != NULL)
+         m_signalManager.EnableSellSignals(enable);
+   }
+   
+   bool IsBuySignalsEnabled() const
+   {
+      return (m_signalManager != NULL) ? m_signalManager.IsBuySignalsEnabled() : false;
+   }
+   
+   bool IsSellSignalsEnabled() const
+   {
+      return (m_signalManager != NULL) ? m_signalManager.IsSellSignalsEnabled() : false;
+   }
+   
+   ENUM_STRATEGY_MODE GetStrategyMode() const
+   {
+      return (m_signalManager != NULL) ? m_signalManager.GetStrategyMode() : STRATEGY_BREAKOUT;
    }
    
 };

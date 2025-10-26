@@ -5,9 +5,9 @@
 //+------------------------------------------------------------------+
 #property strict
 
-#include "../../Shared/TradingEnums.mqh"
-#include "../../Shared/TrailingTP_System.mqh"
-#include "../../Shared/Logger.mqh"
+#include "../../../Shared/TradingEnums.mqh"
+#include "../../../Shared/TrailingTP_System.mqh"
+#include "../../../Shared/Logger.mqh"
 #include "BotConfig.mqh"
 
 //+------------------------------------------------------------------+

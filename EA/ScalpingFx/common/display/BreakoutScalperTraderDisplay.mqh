@@ -5,10 +5,10 @@
 //+------------------------------------------------------------------+
 #property strict
 
-#include "../../../EA/Shared/TradingEnums.mqh"
-#include "../../../EA/Shared/Logger.mqh"
-#include "SymbolStatus.mqh"
-#include "SwingAnalyzer.mqh"
+#include "../../../Shared/TradingEnums.mqh"
+#include "../../../Shared/Logger.mqh"
+#include "../status/BreakoutScalperStatus.mqh"
+#include "../analysis/ForexSwingAnalyzer.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe SymbolDisplay - Gestion de l'affichage        |
@@ -19,7 +19,7 @@ private:
    string            m_symbol;
    int               m_magicNumber;
    SymbolStatus* m_statusManager;
-   SwingAnalyzer* m_swingAnalyzer;
+   ForexSwingAnalyzer* m_swingAnalyzer;
    
    // Paramètres de trading pour affichage
    double            m_riskPercent;
@@ -35,7 +35,7 @@ public:
    SymbolDisplay(string symbol,
                             int magicNumber,
                             SymbolStatus* statusManager,
-                            SwingAnalyzer* swingAnalyzer,
+                            ForexSwingAnalyzer* swingAnalyzer,
                             double riskPercent,
                             int tpPoints,
                             int slPoints,

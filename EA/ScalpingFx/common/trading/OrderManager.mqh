@@ -6,7 +6,7 @@
 #property strict
 
 #include <Trade\Trade.mqh>
-#include "../../../EA/Shared/TradingEnums.mqh"
+#include "../../../Shared/TradingEnums.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe OrderManager - Gestion des ordres pour un symbole   |

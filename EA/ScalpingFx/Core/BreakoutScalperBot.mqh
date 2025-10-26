@@ -11,10 +11,10 @@
 #include "../../../EA/Shared/ChartManager.mqh"
 #include "../../../EA/Shared/NewsFilterManager.mqh"
 #include "../../../EA/Shared/Logger.mqh"
-#include "../common/BotConfig.mqh"
+#include "../common/config/BotConfig.mqh"
 #include "BreakoutScalperTrader.mqh"
 #include "BreakoutScalperManager.mqh"
-#include "../common/RiskMultiplierManager.mqh"
+#include "../common/config/RiskMultiplierManager.mqh"
 
 //+------------------------------------------------------------------+
 //| Main Bot Class                                                   |
