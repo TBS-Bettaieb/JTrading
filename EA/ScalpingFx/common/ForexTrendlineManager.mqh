@@ -240,5 +240,13 @@ public:
       ChartRedraw(m_chartId);
    }
    
+   //+------------------------------------------------------------------+
+   //| Vérifier si une position a déjà des lignes TP/SL               |
+   //+------------------------------------------------------------------+
+   bool HasPositionLines(ulong ticket)
+   {
+      return (FindPositionIndex(ticket) >= 0);
+   }
+   
 };
 //+------------------------------------------------------------------+

@@ -12,10 +12,9 @@
 #include "../../../EA/Shared/ForexCommissionManager.mqh"
 #include "ForexSwingAnalyzer.mqh"
 #include "ForexTrendlineManager.mqh"
-#include "../../../EA/Shared/TrailingTP_System.mqh"
-#include "../../../EA/Shared/DynamicTrailingStop.mqh"
 #include "ForexOrderManager.mqh"
 #include "ForexSymbolStatus.mqh"
+#include "ForexTrailingManager.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe ForexSymbolTrader - Gestion d'un symbole spécifique       |
@@ -55,22 +54,11 @@ private:
    ForexSwingAnalyzer m_swingAnalyzer;      // Analyseur de swing points
    ForexTrendlineManager* m_trendlineManager; // Gestionnaire des lignes TP/SL
    
-   // Trailing TP
-   CTrailingTP*      m_trailingTP;
-   bool              m_useTrailingTP;
-   string            m_customTPLevels;  // Custom TP levels string
-   struct PositionTrailing {
-      ulong ticket;
-      CTrailingTP* trailing;
-   };
-   PositionTrailing  m_positionTrailings[];
-   
+   // 🆕 Trailing Manager (TP + TSL unifiés)
+   ForexTrailingManager* m_trailingManager;
    
    // 🆕 Risk Multiplier
    double            m_currentRiskMultiplier; // Multiplicateur de risque actuel
-   
-   // 🆕 Dynamic Trailing Stop Loss
-   CDynamicTrailingStop* m_dynamicTSL;
    
    // 🆕 Order Manager
    ForexOrderManager* m_orderManager;
@@ -124,17 +112,6 @@ public:
       m_point = SymbolInfoDouble(symbol, SYMBOL_POINT);
       m_currentRiskMultiplier = 1.0;
       
-      // 🆕 Initialiser le Dynamic Trailing Stop
-      m_dynamicTSL = new CDynamicTrailingStop(
-         tslPoints,
-         tslTriggerPoints,
-         useDynamicTSLTrigger,
-         tslCostMultiplier,
-         tslMinTriggerPoints,
-         m_slippagePoints
-      );
-      m_dynamicTSL.SetCommissionManager(&m_commissionManager);
-      
       // Configurer l'objet de trading
       m_trade.SetExpertMagicNumber(magicNumber);
       m_trade.SetDeviationInPoints(m_slippagePoints);
@@ -143,24 +120,6 @@ public:
       
       // Initialiser l'analyseur de swing
       m_swingAnalyzer = ForexSwingAnalyzer(symbol, timeframe, magicNumber, barsN);
-      
-      m_customTPLevels = customTPLevels;
-      
-      // Initialiser le Trailing TP
-      m_useTrailingTP = useTrailingTP;
-      if(m_useTrailingTP) {
-         m_trailingTP = new CTrailingTP(trailingTPMode, customTPLevels);
-         
-         if(!m_trailingTP.ValidateConfiguration()) {
-            Print("⚠️ Config Trailing TP invalide pour ", symbol);
-            delete m_trailingTP;
-            m_trailingTP = NULL;
-            m_useTrailingTP = false;
-         }
-      } else {
-         m_trailingTP = NULL;
-      }
-      ArrayResize(m_positionTrailings, 0);
       
       // Initialiser le gestionnaire des lignes TP/SL
       m_trendlineManager = new ForexTrendlineManager(symbol, magicNumber);
@@ -171,6 +130,22 @@ public:
          tpPoints, slPoints, expirationBars, orderDistPoints,
          entryOffsetPoints, slippagePoints, m_tradeComment,
          riskPercent, m_currentRiskMultiplier
+      );
+      
+      // 🆕 Initialiser le Trailing Manager (TP + TSL)
+      m_trailingManager = new ForexTrailingManager(
+         symbol,
+         magicNumber,
+         useTrailingTP,
+         trailingTPMode,
+         customTPLevels,
+         tslPoints,
+         tslTriggerPoints,
+         useDynamicTSLTrigger,
+         tslCostMultiplier,
+         tslMinTriggerPoints,
+         slippagePoints,
+         &m_commissionManager
       );
       
       // Initialiser le gestionnaire du statut
@@ -184,26 +159,18 @@ public:
    //+------------------------------------------------------------------+
    ~ForexSymbolTrader()
    {
-      // Cleanup Trailing TP
-      for(int i = 0; i < ArraySize(m_positionTrailings); i++) {
-         if(m_positionTrailings[i].trailing != NULL) {
-            delete m_positionTrailings[i].trailing;
-         }
+      // Cleanup Trailing Manager
+      if(m_trailingManager != NULL) 
+      {
+         delete m_trailingManager;
+         m_trailingManager = NULL;
       }
-      if(m_trailingTP != NULL) delete m_trailingTP;
       
       // Cleanup Trendline Manager
       if(m_trendlineManager != NULL) 
       {
          delete m_trendlineManager;
          m_trendlineManager = NULL;
-      }
-      
-      // Cleanup Dynamic TSL
-      if(m_dynamicTSL != NULL) 
-      {
-         delete m_dynamicTSL;
-         m_dynamicTSL = NULL;
       }
       
       // Cleanup Order Manager
@@ -284,33 +251,7 @@ public:
          }
       }
    }
-   //+------------------------------------------------------------------+
-   //| 🆕 Trailing Stop Loss DYNAMIQUE basé sur les coûts réels        |
-   //+------------------------------------------------------------------+
-   void TrailStop()
-   {
-      if(m_dynamicTSL != NULL)
-      {
-         m_dynamicTSL.ApplyTrailing(m_symbol, m_magicNumber);
-         
-         // Mettre à jour les lignes TP/SL après modification du TSL
-         if(m_trendlineManager != NULL)
-         {
-            for(int i = PositionsTotal() - 1; i >= 0; i--)
-            {
-               ulong ticket = PositionGetTicket(i);
-               if(ticket <= 0) continue;
-               
-               if(PositionGetString(POSITION_SYMBOL) != m_symbol) continue;
-               if(PositionGetInteger(POSITION_MAGIC) != m_magicNumber) continue;
-               
-               m_trendlineManager.UpdatePositionLines(ticket, 
-                                                   PositionGetDouble(POSITION_TP), 
-                                                   PositionGetDouble(POSITION_SL));
-            }
-         }
-      }
-   }
+
    
    //+------------------------------------------------------------------+
    //| Fermer toutes les positions et ordres pour ce symbole          |
@@ -357,6 +298,19 @@ public:
       if(m_orderManager != NULL)
       {
          m_orderManager.CancelAllPendingOrders();
+      }
+   }
+   
+   //+------------------------------------------------------------------+
+   //| 🆕 Traiter le trailing à chaque tick (appelé depuis le bot)     |
+   //+------------------------------------------------------------------+
+   void ProcessTrailing()
+   {
+      // Appliquer le trailing (TP + TSL) - DOIT être appelé à chaque tick
+      if(m_trailingManager != NULL)
+      {
+         m_trailingManager.ApplyTrailingTP();
+         m_trailingManager.TrailStop();
       }
    }
    
@@ -421,39 +375,39 @@ public:
    }
    
    //+------------------------------------------------------------------+
-   //| 🆕 Méthodes pour accéder au Dynamic TSL                          |
+   //| 🆕 Méthodes pour accéder au Trailing Manager                     |
    //+------------------------------------------------------------------+
    void SetDynamicTSLTrigger(bool enable)
    {
-      if(m_dynamicTSL != NULL)
+      if(m_trailingManager != NULL)
       {
-         m_dynamicTSL.SetDynamicTrigger(enable);
+         m_trailingManager.SetDynamicTSLTrigger(enable);
       }
    }
    
    void SetDynamicTSLCostMultiplier(double multiplier)
    {
-      if(m_dynamicTSL != NULL)
+      if(m_trailingManager != NULL)
       {
-         m_dynamicTSL.SetCostMultiplier(multiplier);
+         m_trailingManager.SetDynamicTSLCostMultiplier(multiplier);
       }
    }
    
    void SetDynamicTSLMinTriggerPoints(int points)
    {
-      if(m_dynamicTSL != NULL)
+      if(m_trailingManager != NULL)
       {
-         m_dynamicTSL.SetMinTriggerPoints(points);
+         m_trailingManager.SetDynamicTSLMinTriggerPoints(points);
       }
    }
    
    string GetDynamicTSLDebugInfo()
    {
-      if(m_dynamicTSL != NULL)
+      if(m_trailingManager != NULL)
       {
-         return m_dynamicTSL.GetDebugInfo();
+         return m_trailingManager.GetDynamicTSLDebugInfo();
       }
-      return "Dynamic TSL not initialized";
+      return "Trailing Manager not initialized";
    }
    
    
@@ -476,12 +430,6 @@ public:
    {
       if(!PositionSelectByTicket(ticket)) return;
       
-      // 🆕 Calculer les coûts de position pour le TSL dynamique
-      if(m_dynamicTSL != NULL)
-      {
-         m_dynamicTSL.CalculatePositionCosts(ticket, m_symbol);
-      }
-      
       // Créer les lignes TP/SL pour cette position
       if(m_trendlineManager != NULL)
       {
@@ -490,34 +438,11 @@ public:
          m_trendlineManager.CreatePositionLines(ticket, tpPrice, slPrice);
       }
       
-      // Gestion du trailing TP (logique existante)
-      if(!m_useTrailingTP || m_trailingTP == NULL) return;
-      
-      // Vérifier que ce n'est pas déjà tracké
-      for(int i = 0; i < ArraySize(m_positionTrailings); i++) {
-         if(m_positionTrailings[i].ticket == ticket) return;
+      // 🆕 Déléguer la gestion du trailing au Trailing Manager
+      if(m_trailingManager != NULL)
+      {
+         m_trailingManager.OnPositionOpened(ticket);
       }
-      
-      // MODIFIER: Passer customLevels
-      CTrailingTP* newTrailing = new CTrailingTP(
-         m_trailingTP.GetMode(),
-         m_trailingTP.GetCustomLevelsString()  // <-- AJOUTER
-      );
-      
-      newTrailing.Initialize(
-         PositionGetDouble(POSITION_PRICE_OPEN),
-         PositionGetDouble(POSITION_SL),
-         PositionGetDouble(POSITION_TP),
-         PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY
-      );
-      
-      int size = ArraySize(m_positionTrailings);
-      ArrayResize(m_positionTrailings, size + 1);
-      m_positionTrailings[size].ticket = ticket;
-      m_positionTrailings[size].trailing = newTrailing;
-      
-      Print("🎯 Trailing TP #", ticket, " | Mode: ", EnumToString(m_trailingTP.GetMode()),
-            " | Niveaux: ", newTrailing.GetLevelCount());
    }
    
    //+------------------------------------------------------------------+
@@ -525,30 +450,16 @@ public:
    //+------------------------------------------------------------------+
    void OnPositionClosed(ulong ticket)
    {
-      // 🆕 Nettoyer les coûts de position pour le TSL dynamique
-      if(m_dynamicTSL != NULL)
-      {
-         m_dynamicTSL.RemovePositionCosts(ticket);
-      }
-      
       // Supprimer les lignes TP/SL pour cette position
       if(m_trendlineManager != NULL)
       {
          m_trendlineManager.DeletePositionLines(ticket);
       }
       
-      // Gestion du trailing TP (logique existante)
-      for(int i = 0; i < ArraySize(m_positionTrailings); i++) {
-         if(m_positionTrailings[i].ticket == ticket) {
-            if(m_positionTrailings[i].trailing != NULL) {
-               delete m_positionTrailings[i].trailing;
-            }
-            for(int j = i; j < ArraySize(m_positionTrailings) - 1; j++) {
-               m_positionTrailings[j] = m_positionTrailings[j + 1];
-            }
-            ArrayResize(m_positionTrailings, ArraySize(m_positionTrailings) - 1);
-            break;
-         }
+      // 🆕 Déléguer le nettoyage du trailing au Trailing Manager
+      if(m_trailingManager != NULL)
+      {
+         m_trailingManager.OnPositionClosed(ticket);
       }
    }
    
@@ -565,56 +476,17 @@ public:
          
          ulong ticket = m_position.Ticket();
          
-         bool alreadyTracked = false;
-         for(int j = 0; j < ArraySize(m_positionTrailings); j++)
+         // Vérifier si la position est déjà trackée
+         if(m_trendlineManager != NULL && m_trendlineManager.HasPositionLines(ticket))
          {
-            if(m_positionTrailings[j].ticket == ticket)
-            {
-               alreadyTracked = true;
-               break;
-            }
+            continue; // Déjà trackée
          }
          
-         if(!alreadyTracked) OnPositionOpened(ticket);
+         OnPositionOpened(ticket);
       }
    }
    
-   //+------------------------------------------------------------------+
-   //| Appliquer le Trailing TP à toutes les positions                 |
-   //+------------------------------------------------------------------+
-   void ApplyTrailingTP()
-   {
-      if(!m_useTrailingTP) return;
-      
-      CheckForNewPositions();
-      
-      for(int i = ArraySize(m_positionTrailings) - 1; i >= 0; i--) {
-         ulong ticket = m_positionTrailings[i].ticket;
-         
-         if(!PositionSelectByTicket(ticket)) {
-            OnPositionClosed(ticket);
-            continue;
-         }
-         
-         double currentPrice = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) 
-            ? SymbolInfoDouble(m_symbol, SYMBOL_BID)
-            : SymbolInfoDouble(m_symbol, SYMBOL_ASK);
-         
-         double newSL, newTP;
-         if(m_positionTrailings[i].trailing.Update(currentPrice, newSL, newTP)) {
-            if(newSL > 0 && newTP > 0) {
-               if(m_trade.PositionModify(ticket, newSL, newTP))
-               {
-                  // Mettre à jour les lignes TP/SL après modification du Trailing TP
-                  if(m_trendlineManager != NULL)
-                  {
-                     m_trendlineManager.UpdatePositionLines(ticket, newTP, newSL);
-                  }
-               }
-            }
-         }
-      }
-   }
+
    
 private:
    //+------------------------------------------------------------------+
@@ -638,3 +510,4 @@ private:
    }
    
 };
+

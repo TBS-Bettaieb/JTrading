@@ -207,6 +207,9 @@ public:
             // 🆕 Mettre à jour le multiplicateur
             m_symbolTraders[i].SetRiskMultiplier(currentRiskMultiplier);
             
+            // 🆕 Traiter le trailing à chaque tick (avant OnTick)
+            m_symbolTraders[i].ProcessTrailing();
+            
             if(tradingAllowed)
             {
                m_symbolTraders[i].OnTick();
@@ -215,9 +218,6 @@ public:
             {
                m_symbolTraders[i].CancelAllPendingOrders();
             }
-            
-            m_symbolTraders[i].TrailStop();
-            m_symbolTraders[i].ApplyTrailingTP();
          }
       }
       
