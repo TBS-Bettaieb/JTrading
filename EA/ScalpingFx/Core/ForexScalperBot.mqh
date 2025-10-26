@@ -1,7 +1,6 @@
 //+------------------------------------------------------------------+
 //|                                           ForexScalperBot.mqh    |
 //|                                Bot Engine - All Logic Here       |
-//|                                      (c) 2025 - Public Domain    |
 //+------------------------------------------------------------------+
 #property strict
 
@@ -12,13 +11,13 @@
 #include "../../../EA/Shared/ChartManager.mqh"
 #include "../../../EA/Shared/NewsFilterManager.mqh"
 #include "../../../EA/Shared/Logger.mqh"
-#include "../../../EA/Shared/Orchestration/MultiSymbolCoordinator.mqh"
 #include "../common/BotConfig.mqh"
-#include "../common/RiskMultiplierManager.mqh"
+#include "../common/ForexSymbolTrader.mqh"
 #include "../common/ForexSymbolManager.mqh"
+#include "../common/RiskMultiplierManager.mqh"
 
 //+------------------------------------------------------------------+
-//| Classe ForexScalperBot - Version modulaire                        |
+//| Main Bot Class                                                   |
 //+------------------------------------------------------------------+
 class ForexScalperBot
 {
@@ -28,17 +27,14 @@ private:
    TradingTimeManager* m_timeManager;
    RiskMultiplierManager* m_riskMultiplierManager;
    NewsFilterManager* m_newsFilterManager;
-   MultiSymbolCoordinator* m_coordinator;  // 🆕 Coordinateur multi-symboles
-   
+   ForexSymbolTrader* m_symbolTraders[];
    string            m_symbols[];
    int               m_totalSymbols;
    int               m_tickCount;
    int               m_detailUpdateCount;
    
 public:
-   //+------------------------------------------------------------------+
-   //| Constructor                                                      |
-   //+------------------------------------------------------------------+
+   //--- Constructor
    ForexScalperBot(BotConfig &config)
    {
       m_config = config;
@@ -46,29 +42,21 @@ public:
       m_timeManager = NULL;
       m_riskMultiplierManager = NULL;
       m_newsFilterManager = NULL;
-      m_coordinator = NULL;  // 🆕
       m_totalSymbols = 0;
       m_tickCount = 0;
       m_detailUpdateCount = 0;
    }
    
-   //+------------------------------------------------------------------+
-   //| Destructor                                                       |
-   //+------------------------------------------------------------------+
+   //--- Destructor
    ~ForexScalperBot()
    {
       // Cleanup is done in Deinitialize
    }
    
-   //+------------------------------------------------------------------+
-   //| Initialize bot                                                   |
-   //+------------------------------------------------------------------+
-   bool Initialize(bool skipLoggerInit = false)
+   //--- Initialize bot
+   bool Initialize()
    {
-      if(!skipLoggerInit)
-      {
-         Logger::Initialize(m_config.logLevel, "[" + m_config.strategyName + "] ");
-      }
+      Logger::Initialize(m_config.logLevel, "[" + m_config.strategyName + "] ");
       Logger::Info("═══════════════════════════════════════");
       Logger::Info("🚀 Initializing " + m_config.strategyName);
       Logger::Info("═══════════════════════════════════════");
@@ -90,8 +78,8 @@ public:
       Logger::Info("💰 Risk per symbol: " + DoubleToString(riskPerSymbol, 2) + "% (Total: " + 
             DoubleToString(m_config.riskPercent, 2) + "%)");
       
-      // Step 5: 🆕 Create MultiSymbolCoordinator
-      if(!CreateMultiSymbolCoordinator(riskPerSymbol))
+      // Step 5: Create symbol traders
+      if(!CreateSymbolTraders(riskPerSymbol))
          return false;
       
       // Step 6: Initialize Chart Manager
@@ -116,9 +104,7 @@ public:
       return true;
    }
    
-   //+------------------------------------------------------------------+
-   //| Deinitialize bot                                                 |
-   //+------------------------------------------------------------------+
+   //--- Deinitialize bot
    void Deinitialize(const int reason)
    {
       Logger::Info("═══════════════════════════════════════");
@@ -126,12 +112,19 @@ public:
       Logger::Info("Reason: " + IntegerToString(reason));
       Logger::Info("═══════════════════════════════════════");
       
-      // 🆕 Cleanup MultiSymbolCoordinator (nettoie automatiquement tous les managers)
-      if(m_coordinator != NULL)
+      // Cleanup symbol traders
+      if(ArraySize(m_symbolTraders) > 0)
       {
-         delete m_coordinator;
-         m_coordinator = NULL;
-         Logger::Success("✅ MultiSymbolCoordinator cleaned up");
+         for(int i = 0; i < ArraySize(m_symbolTraders); i++)
+         {
+            if(m_symbolTraders[i] != NULL)
+            {
+               delete m_symbolTraders[i];
+               m_symbolTraders[i] = NULL;
+            }
+         }
+         ArrayFree(m_symbolTraders);
+         Logger::Success("✅ Symbol Traders cleaned up");
       }
       
       // Cleanup Risk Multiplier Manager
@@ -171,43 +164,29 @@ public:
       Logger::Info("═══════════════════════════════════════");
    }
    
-   //+------------------------------------------------------------------+
-   //| Main tick handler - VERSION OPTIMISÉE POUR PERFORMANCE          |
-   //+------------------------------------------------------------------+
+   //--- Main tick handler
    void OnTick()
    {
-      // ========== ÉTAPE 1: VALIDATION MINIMALE ==========
-      // ✅ OPTIMISATION: Validation silencieuse (pas de logs à chaque tick)
-      if(m_coordinator == NULL) return;
+      // Validate objects
+      if(m_chartManager == NULL || m_timeManager == NULL || ArraySize(m_symbolTraders) == 0)
+         return;
       
-      // ========== ÉTAPE 2: VÉRIFIER CHANGEMENT RISK MULTIPLIER AVANT RÉCUPÉRATION ==========
-      // ✅ Détecter changement AVANT récupération (comportement ancienne version)
+      // 🆕 Vérifier changement de Risk Multiplier
       if(m_riskMultiplierManager != NULL && m_riskMultiplierManager.HasStatusChanged())
       {
-         double newMultiplier = m_riskMultiplierManager.GetCurrentMultiplier();
-         AdjustAllPositionSizes(newMultiplier);
+         double currentMultiplier = m_riskMultiplierManager.GetCurrentMultiplier();
+         AdjustAllPositionSizes(currentMultiplier);
       }
-
-      // ========== ÉTAPE 3: RÉCUPÉRER MULTIPLICATEUR ACTUEL ==========
-      // ✅ Récupérer après ajustement des positions existantes
-      double currentRiskMultiplier = 1.0;
-      if(m_riskMultiplierManager != NULL)
-         currentRiskMultiplier = m_riskMultiplierManager.GetCurrentMultiplier();
-
-      // ========== ÉTAPE 4: METTRE À JOUR MULTIPLICATEUR DANS COORDINATEUR ==========
-      // ✅ Mettre à jour pour nouveaux ordres
-      m_coordinator.SetGlobalRiskMultiplier(currentRiskMultiplier);
-
-      // ========== ÉTAPE 5: CALCULER PERMISSIONS DE TRADING ==========
+      
+      // Check trading permissions
       bool timeAllowed = m_timeManager.IsTradingAllowed();
       bool newsAllowed = !m_config.useNewsFilter || 
                          (m_newsFilterManager != NULL && 
                           !m_newsFilterManager.IsNewsBlocking());
-
+      
       bool tradingAllowed = timeAllowed && newsAllowed;
-
-      // ========== ÉTAPE 6: VÉRIFIER CHANGEMENT STATUT NEWS ==========
-      // ✅ Logs seulement lors de changement de statut
+      
+      // 🆕 Vérifier changement de statut news
       if(m_newsFilterManager != NULL && m_newsFilterManager.HasStatusChanged())
       {
          string newsStatus = m_newsFilterManager.GetStatusMessage();
@@ -215,278 +194,42 @@ public:
             Logger::Info("📰 NEWS ALERT: " + newsStatus);
       }
       
-      // ========== ÉTAPE 7: TRAITER TOUS LES SYMBOLES ==========
-      // ✅ CRITIQUE: Reproduit EXACTEMENT le comportement de l'ancienne version
+      // 🆕 Obtenir multiplicateur actuel
+      double currentRiskMultiplier = 1.0;
+      if(m_riskMultiplierManager != NULL)
+         currentRiskMultiplier = m_riskMultiplierManager.GetCurrentMultiplier();
       
-      // A. NOUVELLES ENTRÉES (seulement si autorisé)
-      if(tradingAllowed)
+      // Process all symbols
+      for(int i = 0; i < m_totalSymbols; i++)
       {
-         ProcessTradingLogic();  // Appelle m_coordinator.OnTick()
-      }
-      else
-      {
-         // B. ✅ ANNULER SYSTÉMATIQUEMENT tous ordres pending si !tradingAllowed
-         m_coordinator.CancelAllPendingOrders();
+         if(m_symbolTraders[i] != NULL)
+         {
+            // 🆕 Mettre à jour le multiplicateur
+            m_symbolTraders[i].SetRiskMultiplier(currentRiskMultiplier);
+            
+            if(tradingAllowed)
+            {
+               m_symbolTraders[i].OnTick();
+            }
+            else
+            {
+               m_symbolTraders[i].CancelAllPendingOrders();
+            }
+            
+            m_symbolTraders[i].TrailStop();
+            m_symbolTraders[i].ApplyTrailingTP();
+         }
       }
       
-      // C. ✅ TOUJOURS GÉRER LES POSITIONS OUVERTES (trailing stops, trailing TP)
-      // Indépendamment de tradingAllowed, comme dans l'ancienne version
-      m_coordinator.ManageOpenPositions();
-      
-      // ========== ÉTAPE 8: UPDATE CHART ==========
+      // Update chart display
       UpdateChartInfo();
    }
    
-   //+------------------------------------------------------------------+
-   //| Get ChartManager for external access                            |
-   //+------------------------------------------------------------------+
+   //--- Get ChartManager for external access
    ChartManager* GetChartManager() const { return m_chartManager; }
-   
-   //+------------------------------------------------------------------+
-   //| 🆕 Get MultiSymbolCoordinator for external access               |
-   //+------------------------------------------------------------------+
-   MultiSymbolCoordinator* GetCoordinator() const { return m_coordinator; }
 
 private:
-   //+------------------------------------------------------------------+
-   //| 🆕 Create MultiSymbolCoordinator                                |
-   //+------------------------------------------------------------------+
-   bool CreateMultiSymbolCoordinator(double riskPerSymbol)
-   {
-      m_coordinator = new MultiSymbolCoordinator(m_config.baseMagic);
-      if(m_coordinator == NULL)
-      {
-         Logger::Error("❌ ERROR: Failed to create MultiSymbolCoordinator");
-         return false;
-      }
-      
-      // Afficher le mapping des magic numbers
-      PrintMagicNumberMapping(m_symbols, m_config.baseMagic, m_config.timeframe);
-      
-      // Ajouter chaque symbole au coordinateur
-      for(int i = 0; i < m_totalSymbols; i++)
-      {
-         Logger::Info("✅ Adding symbol to coordinator: " + m_symbols[i]);
-         
-         bool success = m_coordinator.AddSymbol(
-            m_symbols[i],
-            m_config.timeframe,
-            riskPerSymbol,
-            m_config.tpPoints,
-            m_config.slPoints,
-            m_config.expirationBars,
-            m_config.slippagePoints,
-            m_config.strategyComment,
-            m_config.strategyMode,
-            m_config.useTrailingTP,
-            m_config.trailingTPMode,
-            m_config.customTPLevels,
-            m_config.tslTriggerPoints,
-            m_config.tslPoints,
-            m_config.barsN,
-            m_config.orderDistPoints,
-            m_config.entryOffsetPoints,
-            m_config.useDynamicTSLTrigger,
-            m_config.tslCostMultiplier,
-            m_config.tslMinTriggerPoints
-         );
-         
-         if(!success)
-         {
-            Logger::Error("❌ ERROR: Failed to add symbol " + m_symbols[i] + " to coordinator");
-            return false;
-         }
-      }
-      
-      Logger::Info("✅ MultiSymbolCoordinator created with " + IntegerToString(m_totalSymbols) + " symbols");
-      
-      // 🔥 VALIDATION CRITIQUE: Vérifier que tous les managers sont correctement initialisés
-      Logger::Info("🔍 Validating managers for all symbols...");
-      for(int i = 0; i < m_totalSymbols; i++)
-      {
-         string errorMessage;
-         if(!m_coordinator.ValidateSymbolManagers(m_symbols[i], errorMessage))
-         {
-            Logger::Error("❌ CRITICAL: Manager validation failed for " + m_symbols[i]);
-            Logger::Error("❌ Error: " + errorMessage);
-            return false;
-         }
-         
-         Logger::Debug("✅ All managers validated for " + m_symbols[i]);
-      }
-      
-      Logger::Success("✅ All managers validated successfully for " + IntegerToString(m_totalSymbols) + " symbols");
-      return true;
-   }
-   
-   //+------------------------------------------------------------------+
-   //| 🆕 Process trading logic - Appeler le coordinateur               |
-   //+------------------------------------------------------------------+
-   void ProcessTradingLogic()
-   {
-      // ✅ OPTIMISATION: Validation silencieuse (déjà validé dans OnTick)
-      if(m_coordinator == NULL) return;
-      
-      // Appeler le coordinateur pour traiter tous les symboles
-      m_coordinator.OnTick();
-   }
-   
-   //+------------------------------------------------------------------+
-   //| 🆕 Ajuster toutes les positions via le coordinateur             |
-   //+------------------------------------------------------------------+
-   void AdjustAllPositionSizes(double multiplier)
-   {
-      Logger::Info("═══════════════════════════════════════");
-      Logger::Info("🔄 AJUSTEMENT DES POSITIONS - Multiplier: x" + DoubleToString(multiplier, 2));
-      Logger::Info("═══════════════════════════════════════");
-      
-      if(m_coordinator != NULL)
-      {
-         int adjustedCount = m_coordinator.AdjustAllSymbols(1.0, multiplier, "Risk multiplier change");
-         
-         if(adjustedCount > 0)
-            Logger::Info("✅ " + IntegerToString(adjustedCount) + " order(s) adjusted across all symbols");
-         else
-            Logger::Info("ℹ️ No orders to adjust");
-      }
-      
-      Logger::Info("═══════════════════════════════════════");
-   }
-   
-   //+------------------------------------------------------------------+
-   //| 🆕 Update chart information using coordinator                    |
-   //+------------------------------------------------------------------+
-   void UpdateChartInfo()
-   {
-      if(m_chartManager == NULL || m_coordinator == NULL) return;
-      
-      m_tickCount++;
-      
-      // Update every 100 ticks
-      if(m_tickCount % 100 != 0) return;
-      
-      // 🆕 Build global status using coordinator
-      string globalStatus = m_coordinator.GetGlobalStatus();
-      string timeStatus = m_timeManager.GetStatusDescription();
-      
-      // Determine color and build status
-      color statusColor = clrGreen;
-      
-      // 🆕 Ajouter status News
-      string newsStatus = "";
-      if(m_newsFilterManager != NULL && m_config.useNewsFilter)
-      {
-         if(m_newsFilterManager.IsNewsBlocking())
-         {
-            newsStatus = m_newsFilterManager.GetStatusMessage();
-            statusColor = clrRed;
-         }
-      }
-      
-      // 🆕 Ajouter status Risk Multiplier
-      string riskMultStatus = "";
-      if(m_riskMultiplierManager != NULL && m_config.useRiskMultiplier)
-      {
-         riskMultStatus = m_riskMultiplierManager.GetStatusDescription();
-      }
-      
-      // Build combined status
-      if(newsStatus != "")
-         globalStatus = newsStatus + " | " + timeStatus + " | " + globalStatus;
-      else
-         globalStatus = timeStatus + " | " + globalStatus;
-      
-      if(riskMultStatus != "")
-         globalStatus = riskMultStatus + " | " + globalStatus;
-      
-      ENUM_TRADING_STATUS status = m_timeManager.GetCurrentStatus();
-      
-      if(status != TRADING_ACTIVE)
-         statusColor = clrOrange;
-      else if(m_riskMultiplierManager != NULL && m_riskMultiplierManager.IsInActivePeriod())
-         statusColor = clrYellow;
-      else if(StringFind(globalStatus, "P/L: -") >= 0)
-         statusColor = clrRed;
-      else if(StringFind(globalStatus, "P/L: ") >= 0)
-         statusColor = clrLime;
-      
-      // Update main label
-      m_chartManager.UpdateLabelText("TopRight", globalStatus);
-      m_chartManager.UpdateLabelColor("TopRight", statusColor);
-      
-      // Update details every 500 ticks
-      m_detailUpdateCount++;
-      if(m_detailUpdateCount % 500 == 0)
-      {
-         UpdateDetailedInfo();
-      }
-   }
-   
-   //+------------------------------------------------------------------+
-   //| 🔥 OPTIMISÉ: Update detailed information using coordinator      |
-   //+------------------------------------------------------------------+
-   void UpdateDetailedInfo()
-   {
-      // ✅ OPTIMISATION: Pas de logs (appelé rarement, tous les 500 ticks)
-      if(m_coordinator != NULL)
-         m_coordinator.RefreshAllSwingDisplays();
-      
-      // Supprimer les anciens labels de symbol details s'ils existent
-      if(m_chartManager != NULL)
-      {
-         long chartId = m_chartManager.GetChartId();
-         string prefix = m_chartManager.GetLabelPrefix();
-         string searchPattern = prefix + "_SymbolDetails_";
-         
-         int total = ObjectsTotal(chartId);
-         for(int i = total - 1; i >= 0; i--)
-         {
-            string objName = ObjectName(chartId, i);
-            if(StringFind(objName, searchPattern) == 0)
-               ObjectDelete(chartId, objName);
-         }
-         ChartRedraw(chartId);
-      }
-   }
-   
-   //+------------------------------------------------------------------+
-   //| 🆕 Print initialization summary using coordinator               |
-   //+------------------------------------------------------------------+
-   void PrintInitializationSummary()
-   {
-      Logger::Success("✅ Initialization completed successfully!");
-      Logger::Info("📈 Trading " + IntegerToString(m_totalSymbols) + " symbols simultaneously");
-      Logger::Info("🕒 Timeframe: " + EnumToString(m_config.timeframe));
-      
-      if(m_config.useTrailingTP)
-      {
-         Logger::Info("🎯 TRAILING TP: " + EnumToString(m_config.trailingTPMode));
-         if(m_config.trailingTPMode == TRAILING_TP_CUSTOM)
-            Logger::Info("   Niveaux: " + m_config.customTPLevels);
-      }
-      
-      if(m_config.useRiskMultiplier && m_riskMultiplierManager != NULL)
-      {
-         Logger::Info("🚀 RISK MULTIPLIER: " + m_riskMultiplierManager.GetDetailedInfo());
-      }
-      
-      if(m_config.useNewsFilter && m_newsFilterManager != NULL)
-      {
-         Logger::Info("📰 NEWS FILTER: " + m_newsFilterManager.GetDetailedInfo());
-      }
-      
-      // 🆕 Afficher les informations du coordinateur
-      if(m_coordinator != NULL)
-      {
-         Logger::Info("🎛️ COORDINATOR: " + m_coordinator.GetDetailedInfo());
-      }
-      
-      Logger::Info("═══════════════════════════════════════");
-   }
-   
-   //+------------------------------------------------------------------+
-   //| Validate Trailing TP configuration (unchanged)                  |
-   //+------------------------------------------------------------------+
+   //--- Validate Trailing TP configuration
    bool ValidateTrailingTP()
    {
       if(m_config.useTrailingTP && m_config.trailingTPMode == TRAILING_TP_CUSTOM)
@@ -509,9 +252,7 @@ private:
       return true;
    }
    
-   //+------------------------------------------------------------------+
-   //| Parse symbols list (unchanged)                                  |
-   //+------------------------------------------------------------------+
+   //--- Parse symbols list
    bool ParseSymbols()
    {
       if(m_config.useAllSymbols)
@@ -534,9 +275,7 @@ private:
       return true;
    }
    
-   //+------------------------------------------------------------------+
-   //| Validate historical data (unchanged)                            |
-   //+------------------------------------------------------------------+
+   //--- Validate historical data
    bool ValidateHistoricalData()
    {
       for(int i = 0; i < m_totalSymbols; i++)
@@ -549,9 +288,60 @@ private:
       return true;
    }
    
-   //+------------------------------------------------------------------+
-   //| Initialize Chart Manager (unchanged)                            |
-   //+------------------------------------------------------------------+
+   //--- Create symbol traders
+   bool CreateSymbolTraders(double riskPerSymbol)
+   {
+      ArrayResize(m_symbolTraders, m_totalSymbols);
+      
+      // Afficher le mapping des magic numbers
+      PrintMagicNumberMapping(m_symbols, m_config.baseMagic, m_config.timeframe);
+      
+      for(int i = 0; i < m_totalSymbols; i++)
+      {
+         // Générer un magic number unique par symbole
+         int symbolMagic = GenerateSymbolMagicNumber(
+            m_config.baseMagic, 
+            m_symbols[i], 
+            m_config.timeframe
+         );
+         
+         Logger::Info("✅ Creating trader for " + m_symbols[i] + " with magic " + IntegerToString(symbolMagic));
+         
+         m_symbolTraders[i] = new ForexSymbolTrader(
+            m_symbols[i],
+            symbolMagic,  // ✅ CORRECTION : magic unique
+            m_config.timeframe,
+            riskPerSymbol,
+            m_config.tpPoints,
+            m_config.slPoints,
+            m_config.tslTriggerPoints,
+            m_config.tslPoints,
+            m_config.barsN,
+            m_config.expirationBars,
+            m_config.orderDistPoints,
+            m_config.slippagePoints,        // NEW
+            m_config.entryOffsetPoints,     // NEW
+            m_config.strategyComment,
+            m_config.strategyMode,
+            m_config.useTrailingTP,
+            m_config.trailingTPMode,
+            m_config.customTPLevels,
+            m_config.useDynamicTSLTrigger,      // 🆕 AJOUTER
+            m_config.tslCostMultiplier,         // 🆕 AJOUTER
+            m_config.tslMinTriggerPoints        // 🆕 AJOUTER
+         );
+         
+         if(m_symbolTraders[i] == NULL)
+         {
+            Logger::Error("❌ ERROR: Failed to create ForexSymbolTrader for " + m_symbols[i]);
+            return false;
+         }
+      }
+      
+      return true;
+   }
+   
+   //--- Initialize Chart Manager
    bool InitializeChartManager()
    {
       m_chartManager = new ChartManager(0, "ForexScalpBot");
@@ -570,9 +360,7 @@ private:
       }
    }
    
-   //+------------------------------------------------------------------+
-   //| Initialize Time Manager (unchanged)                             |
-   //+------------------------------------------------------------------+
+   //--- Initialize Time Manager
    bool InitializeTimeManager()
    {
       m_timeManager = new TradingTimeManager(m_chartManager);
@@ -610,9 +398,7 @@ private:
       return true;
    }
    
-   //+------------------------------------------------------------------+
-   //| Initialize Risk Multiplier Manager (unchanged)                  |
-   //+------------------------------------------------------------------+
+   //--- Initialize Risk Multiplier Manager
    bool InitializeRiskMultiplier()
    {
       m_riskMultiplierManager = new RiskMultiplierManager();
@@ -649,9 +435,7 @@ private:
       return true;
    }
    
-   //+------------------------------------------------------------------+
-   //| Initialize News Filter Manager (unchanged)                      |
-   //+------------------------------------------------------------------+
+   //--- Initialize News Filter Manager
    bool InitializeNewsFilter()
    {
       m_newsFilterManager = new NewsFilterManager();
@@ -682,39 +466,159 @@ private:
       
       return true;
    }
-};
-
-//+------------------------------------------------------------------+
-//| Exemple d'utilisation                                             |
-//+------------------------------------------------------------------+
-/*
-// Création du bot
-BotConfig config;
-// ... configuration du bot ...
-
-ForexScalperBot* bot = new ForexScalperBot(config);
-
-// Initialisation
-if(bot.Initialize())
-{
-   Print("Bot initialized successfully");
    
-   // Dans OnTick()
-   bot.OnTick();
-   
-   // Accès au coordinateur pour des opérations avancées
-   MultiSymbolCoordinator* coordinator = bot.GetCoordinator();
-   if(coordinator != NULL)
+   //--- Print initialization summary
+   void PrintInitializationSummary()
    {
-      string status = coordinator.GetGlobalStatus();
-      Print("Global status: ", status);
+      Logger::Success("✅ Initialization completed successfully!");
+      Logger::Info("📈 Trading " + IntegerToString(m_totalSymbols) + " symbols simultaneously");
+      Logger::Info("🕒 Timeframe: " + EnumToString(m_config.timeframe));
+      
+      if(m_config.useTrailingTP)
+      {
+         Logger::Info("🎯 TRAILING TP: " + EnumToString(m_config.trailingTPMode));
+         if(m_config.trailingTPMode == TRAILING_TP_CUSTOM)
+            Logger::Info("   Niveaux: " + m_config.customTPLevels);
+      }
+      
+      if(m_config.useRiskMultiplier && m_riskMultiplierManager != NULL)
+      {
+         Logger::Info("🚀 RISK MULTIPLIER: " + m_riskMultiplierManager.GetDetailedInfo());
+      }
+      
+      if(m_config.useNewsFilter && m_newsFilterManager != NULL)
+      {
+         Logger::Info("📰 NEWS FILTER: " + m_newsFilterManager.GetDetailedInfo());
+      }
+      
+      Logger::Info("═══════════════════════════════════════");
    }
-}
-else
-{
-   Print("Bot initialization failed");
-}
-
-// Nettoyage
-delete bot;
-*/
+   
+   //--- Ajuster toutes les positions
+   void AdjustAllPositionSizes(double multiplier)
+   {
+      Logger::Info("═══════════════════════════════════════");
+      Logger::Info("🔄 AJUSTEMENT DES POSITIONS - Multiplier: x" + DoubleToString(multiplier, 2));
+      Logger::Info("═══════════════════════════════════════");
+      
+      int adjustedCount = 0;
+      for(int i = 0; i < m_totalSymbols; i++)
+      {
+         if(m_symbolTraders[i] != NULL)
+         {
+            int adjusted = m_symbolTraders[i].AdjustPositionSizes(multiplier);
+            adjustedCount += adjusted;
+         }
+      }
+      
+      if(adjustedCount > 0)
+         Logger::Info("✅ " + IntegerToString(adjustedCount) + " position(s) ajustée(s)");
+      else
+         Logger::Info("ℹ️ Aucune position à ajuster");
+      
+      Logger::Info("═══════════════════════════════════════");
+   }
+   
+   //--- Update chart information
+   void UpdateChartInfo()
+   {
+      if(m_chartManager == NULL || ArraySize(m_symbolTraders) == 0) return;
+      
+      m_tickCount++;
+      
+      // Update every 100 ticks
+      if(m_tickCount % 100 != 0) return;
+      
+      // Build global status
+      string globalStatus = GetGlobalSymbolsStatus(m_symbols, m_symbolTraders);
+      string timeStatus = m_timeManager.GetStatusDescription();
+      
+      // Determine color and build status
+      color statusColor = clrGreen;
+      
+      // 🆕 Ajouter status News
+      string newsStatus = "";
+      if(m_newsFilterManager != NULL && m_config.useNewsFilter)
+      {
+         if(m_newsFilterManager.IsNewsBlocking())
+         {
+            newsStatus = m_newsFilterManager.GetStatusMessage();
+            statusColor = clrRed;
+         }
+      }
+      
+      // 🆕 Ajouter status Risk Multiplier
+      string riskMultStatus = "";
+      if(m_riskMultiplierManager != NULL && m_config.useRiskMultiplier)
+      {
+         riskMultStatus = m_riskMultiplierManager.GetStatusDescription();
+      }
+      
+      // Build combined status
+      if(newsStatus != "")
+         globalStatus = newsStatus + " | " + timeStatus + " | " + globalStatus;
+      else
+         globalStatus = timeStatus + " | " + globalStatus;
+      
+      if(riskMultStatus != "")
+         globalStatus = riskMultStatus + " | " + globalStatus;
+      ENUM_TRADING_STATUS status = m_timeManager.GetCurrentStatus();
+      
+      if(status != TRADING_ACTIVE)
+         statusColor = clrOrange;
+      else if(m_riskMultiplierManager != NULL && m_riskMultiplierManager.IsInActivePeriod())
+         statusColor = clrYellow;
+      else if(StringFind(globalStatus, "P/L: -") >= 0)
+         statusColor = clrRed;
+      else if(StringFind(globalStatus, "P/L: ") >= 0)
+         statusColor = clrLime;
+      
+      // Update main label
+      m_chartManager.UpdateLabelText("TopRight", globalStatus);
+      m_chartManager.UpdateLabelColor("TopRight", statusColor);
+      
+      // Update details every 500 ticks
+      m_detailUpdateCount++;
+      if(m_detailUpdateCount % 500 == 0)
+      {
+         UpdateDetailedInfo();
+      }
+   }
+   
+   //--- Update detailed information
+   void UpdateDetailedInfo()
+   {
+      // Suppression de l'affichage des détails des symboles
+      // On garde seulement le refresh des swing points
+      
+      // Supprimer les anciens labels de symbol details s'ils existent
+      if(m_chartManager != NULL)
+      {
+         // Supprimer spécifiquement le groupe "SymbolDetails"
+         long chartId = m_chartManager.GetChartId();
+         string prefix = m_chartManager.GetLabelPrefix();
+         string searchPattern = prefix + "_SymbolDetails_";
+         
+         int total = ObjectsTotal(chartId);
+         for(int i = total - 1; i >= 0; i--)
+         {
+            string objName = ObjectName(chartId, i);
+            if(StringFind(objName, searchPattern) == 0)
+            {
+               ObjectDelete(chartId, objName);
+            }
+         }
+         ChartRedraw(chartId);
+      }
+      
+      // Refresh swing points seulement
+      for(int i = 0; i < m_totalSymbols; i++)
+      {
+         if(m_symbolTraders[i] != NULL)
+         {
+            m_symbolTraders[i].RefreshSwingDisplay();
+         }
+      }
+   }
+};
+//+------------------------------------------------------------------+

@@ -43,36 +43,27 @@ void PrintSymbolsInfo(string &symbolArray[], int baseMagic, ENUM_TIMEFRAMES time
 //+------------------------------------------------------------------+
 //| Obtenir les statistiques globales des symboles                  |
 //+------------------------------------------------------------------+
-string GetGlobalSymbolsStatus(string &symbolArray[], int symbolCount)
+string GetGlobalSymbolsStatus(string &symbolArray[], ForexSymbolTrader* &traders[])
 {
+   if(ArraySize(symbolArray) != ArraySize(traders))
+      return "ERROR: Array size mismatch";
+   
+   int symbolCount = ArraySize(symbolArray);
    int activeSymbols = 0;
    int totalPositions = 0;
    double totalProfit = 0;
    
-   // Compter les positions et profits pour tous les symboles
    for(int i = 0; i < symbolCount; i++)
    {
-      string symbol = symbolArray[i];
-      
-      // Compter les positions pour ce symbole
-      int symbolPositions = 0;
-      double symbolProfit = 0;
-      
-      for(int j = PositionsTotal() - 1; j >= 0; j--)
+      if(traders[i] != NULL)
       {
-         ulong ticket = PositionGetTicket(j);
-         if(ticket <= 0) continue;
+         int positions = traders[i].GetTotalPositions();
+         double profit = traders[i].GetTotalProfit();
          
-         if(PositionGetString(POSITION_SYMBOL) == symbol)
-         {
-            symbolPositions++;
-            symbolProfit += PositionGetDouble(POSITION_PROFIT);
-         }
+         if(positions > 0) activeSymbols++;
+         totalPositions += positions;
+         totalProfit += profit;
       }
-      
-      if(symbolPositions > 0) activeSymbols++;
-      totalPositions += symbolPositions;
-      totalProfit += symbolProfit;
    }
    
    string status = "FOREX GLOBAL: ";
