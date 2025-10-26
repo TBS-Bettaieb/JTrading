@@ -20,7 +20,7 @@ void ExampleSignalDetectionUsage()
    SignalDetectionManager signalManager(
       "EURUSD",
       PERIOD_M15,
-      STRATEGY_BREAKOUT,  // ou STRATEGY_REVERSION
+      // Mode BREAKOUT uniquement
       &swingAnalyzer,
       &statusManager
    );
@@ -79,7 +79,7 @@ void ExampleDynamicSignalConfiguration()
    SignalDetectionManager signalManager(
       "GBPUSD",
       PERIOD_H1,
-      STRATEGY_REVERSION,
+      // Mode REVERSION supprimé
       &swingAnalyzer,
       &statusManager
    );

@@ -45,7 +45,6 @@ private:
    int               m_slippagePoints;      // NEW: Slippage tolerance
    int               m_entryOffsetPoints;   // NEW: Entry offset for Stop orders
    string            m_tradeComment;        // Commentaire des trades
-   ENUM_STRATEGY_MODE m_strategyMode; // Mode de stratégie (Breakout/Reversion)
    
    // Objets de trading (nécessaires pour certaines opérations)
    CTrade            m_trade;               // Objet de trading
@@ -92,7 +91,6 @@ public:
                      int slippagePoints,
                      int entryOffsetPoints,
                      string tradeComment,
-                     ENUM_STRATEGY_MODE strategyMode,
                      bool useTrailingTP = false,
                      ENUM_TRAILING_TP_MODE trailingTPMode = TRAILING_TP_STEPPED,
                      string customTPLevels = "",
@@ -114,7 +112,6 @@ public:
       m_slippagePoints = slippagePoints;
       m_entryOffsetPoints = entryOffsetPoints;
       m_tradeComment = "BreakoutScalper_" + TimeframeToString(m_timeframe);
-      m_strategyMode = strategyMode;
       
       // Initialiser les variables
       m_point = SymbolInfoDouble(symbol, SYMBOL_POINT);
@@ -134,7 +131,7 @@ public:
       
       // Initialiser le gestionnaire des ordres
       m_orderManager = new OrderManager(
-         symbol, magicNumber, timeframe, strategyMode,
+         symbol, magicNumber, timeframe,
          tpPoints, slPoints, expirationBars, orderDistPoints,
          entryOffsetPoints, slippagePoints, m_tradeComment,
          riskPercent, m_currentRiskMultiplier
@@ -169,7 +166,6 @@ public:
          riskPercent,
          tpPoints,
          slPoints,
-         strategyMode,
          timeframe
       );
       
@@ -177,7 +173,6 @@ public:
       m_signalManager = new SignalDetectionManager(
          symbol,
          timeframe,
-         strategyMode,
          &m_swingAnalyzer,
          m_statusManager
       );
@@ -507,10 +502,6 @@ private:
       return (m_signalManager != NULL) ? m_signalManager.IsSellSignalsEnabled() : false;
    }
    
-   ENUM_STRATEGY_MODE GetStrategyMode() const
-   {
-      return (m_signalManager != NULL) ? m_signalManager.GetStrategyMode() : STRATEGY_BREAKOUT;
-   }
    
 };
 

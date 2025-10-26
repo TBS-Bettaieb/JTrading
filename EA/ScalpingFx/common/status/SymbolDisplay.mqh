@@ -25,7 +25,6 @@ private:
    double            m_riskPercent;
    int               m_tpPoints;
    int               m_slPoints;
-   ENUM_STRATEGY_MODE m_strategyMode;
    ENUM_TIMEFRAMES   m_timeframe;
    
 public:
@@ -39,7 +38,6 @@ public:
                             double riskPercent,
                             int tpPoints,
                             int slPoints,
-                            ENUM_STRATEGY_MODE strategyMode,
                             ENUM_TIMEFRAMES timeframe)
    {
       m_symbol = symbol;
@@ -49,7 +47,6 @@ public:
       m_riskPercent = riskPercent;
       m_tpPoints = tpPoints;
       m_slPoints = slPoints;
-      m_strategyMode = strategyMode;
       m_timeframe = timeframe;
       
       // Créer les labels d'information
@@ -100,11 +97,10 @@ public:
       
       string info = StringFormat(
          "=== %s ===\n" +
-         "Mode: %s | TF: %s\n" +
+         "Mode: BREAKOUT | TF: %s\n" +
          "Positions: %d | P&L: %.2f\n" +
          "Risk: %.2f%% | TP: %d | SL: %d",
          m_symbol,
-         EnumToString(m_strategyMode),
          EnumToString(m_timeframe),
          m_statusManager.GetTotalPositions(),
          m_statusManager.GetTotalProfit(),
@@ -160,7 +156,7 @@ public:
          m_slPoints,
          m_tpPoints,
          m_riskPercent,
-         EnumToString(m_strategyMode)
+         "BREAKOUT"
       );
       
       Print("📋 Inputs - ", info);

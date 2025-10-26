@@ -19,7 +19,6 @@ private:
    int               m_magicNumber;         // Magic number unique
    double            m_point;               // Point du symbole
    ENUM_TIMEFRAMES   m_timeframe;           // Timeframe utilisé
-   ENUM_STRATEGY_MODE m_strategyMode;       // Mode de stratégie
    
    // Paramètres de trading
    double            m_tpPoints;            // Take Profit en points
@@ -44,7 +43,6 @@ public:
    OrderManager(string symbol, 
                      int magicNumber,
                      ENUM_TIMEFRAMES timeframe,
-                     ENUM_STRATEGY_MODE strategyMode,
                      double tpPoints,
                      double slPoints,
                      int expirationBars,
@@ -58,7 +56,6 @@ public:
       m_symbol = symbol;
       m_magicNumber = magicNumber;
       m_timeframe = timeframe;
-      m_strategyMode = strategyMode;
       m_tpPoints = tpPoints;
       m_slPoints = slPoints;
       m_expirationBars = expirationBars;
@@ -104,48 +101,27 @@ public:
       
       datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
       
-      if(m_strategyMode == STRATEGY_BREAKOUT)
-      {
-         // Mode BREAKOUT : utiliser BuyStop (attendre que le prix casse le niveau)
-         double adjustedEntry = entry - (m_entryOffsetPoints * m_point);
-         double adjustedTP = adjustedEntry + m_tpPoints * m_point;
-         double adjustedSL = adjustedEntry - m_slPoints * m_point;
-         
-         // Recalculate lots with adjusted SL for proper risk calculation
-         if(m_riskPercent > 0) lots = CalcLots(adjustedEntry - adjustedSL);
-         
-         if(ask > adjustedEntry - m_orderDistPoints * m_point) return false;
-         
-         if(m_trade.BuyStop(lots, adjustedEntry, m_symbol, adjustedSL, adjustedTP, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
-         {
-            Print("✓ Buy Stop order sent for ", m_symbol, " at ", adjustedEntry, 
-                  " (offset: ", m_entryOffsetPoints, " pts) | Lots: ", lots);
-            return true;
-         }
-         else
-         {
-            Print("✗ Failed to send Buy Stop order for ", m_symbol, " | Error: ", GetLastError());
-            return false;
-         }
-      }
-      else if(m_strategyMode == STRATEGY_REVERSION)
-      {
-         // Mode REVERSION : utiliser BuyLimit (attendre que le prix touche le niveau)
-         if(ask < entry + m_orderDistPoints * m_point) return false;
-         
-         if(m_trade.BuyLimit(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
-         {
-            Print("✓ Buy Limit order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
-            return true;
-         }
-         else
-         {
-            Print("✗ Failed to send Buy Limit order for ", m_symbol, " | Error: ", GetLastError());
-            return false;
-         }
-      }
+      // Mode BREAKOUT : utiliser BuyStop (attendre que le prix casse le niveau)
+      double adjustedEntry = entry - (m_entryOffsetPoints * m_point);
+      double adjustedTP = adjustedEntry + m_tpPoints * m_point;
+      double adjustedSL = adjustedEntry - m_slPoints * m_point;
       
-      return false;
+      // Recalculate lots with adjusted SL for proper risk calculation
+      if(m_riskPercent > 0) lots = CalcLots(adjustedEntry - adjustedSL);
+      
+      if(ask > adjustedEntry - m_orderDistPoints * m_point) return false;
+      
+      if(m_trade.BuyStop(lots, adjustedEntry, m_symbol, adjustedSL, adjustedTP, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
+      {
+         Print("✓ Buy Stop order sent for ", m_symbol, " at ", adjustedEntry, 
+               " (offset: ", m_entryOffsetPoints, " pts) | Lots: ", lots);
+         return true;
+      }
+      else
+      {
+         Print("✗ Failed to send Buy Stop order for ", m_symbol, " | Error: ", GetLastError());
+         return false;
+      }
    }
    
    //+------------------------------------------------------------------+
@@ -163,48 +139,27 @@ public:
       
       datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
       
-      if(m_strategyMode == STRATEGY_BREAKOUT)
-      {
-         // Mode BREAKOUT : utiliser SellStop (attendre que le prix casse le niveau)
-         double adjustedEntry = entry + (m_entryOffsetPoints * m_point);
-         double adjustedTP = adjustedEntry - m_tpPoints * m_point;
-         double adjustedSL = adjustedEntry + m_slPoints * m_point;
-         
-         // Recalculate lots with adjusted SL for proper risk calculation
-         if(m_riskPercent > 0) lots = CalcLots(adjustedSL - adjustedEntry);
-         
-         if(bid < adjustedEntry + m_orderDistPoints * m_point) return false;
-         
-         if(m_trade.SellStop(lots, adjustedEntry, m_symbol, adjustedSL, adjustedTP, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
-         {
-            Print("✓ Sell Stop order sent for ", m_symbol, " at ", adjustedEntry,
-                  " (offset: ", m_entryOffsetPoints, " pts) | Lots: ", lots);
-            return true;
-         }
-         else
-         {
-            Print("✗ Failed to send Sell Stop order for ", m_symbol, " | Error: ", GetLastError());
-            return false;
-         }
-      }
-      else if(m_strategyMode == STRATEGY_REVERSION)
-      {
-         // Mode REVERSION : utiliser SellLimit (attendre que le prix touche le niveau)
-         if(bid > entry - m_orderDistPoints * m_point) return false;
-         
-         if(m_trade.SellLimit(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
-         {
-            Print("✓ Sell Limit order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
-            return true;
-         }
-         else
-         {
-            Print("✗ Failed to send Sell Limit order for ", m_symbol, " | Error: ", GetLastError());
-            return false;
-         }
-      }
+      // Mode BREAKOUT : utiliser SellStop (attendre que le prix casse le niveau)
+      double adjustedEntry = entry + (m_entryOffsetPoints * m_point);
+      double adjustedTP = adjustedEntry - m_tpPoints * m_point;
+      double adjustedSL = adjustedEntry + m_slPoints * m_point;
       
-      return false;
+      // Recalculate lots with adjusted SL for proper risk calculation
+      if(m_riskPercent > 0) lots = CalcLots(adjustedSL - adjustedEntry);
+      
+      if(bid < adjustedEntry + m_orderDistPoints * m_point) return false;
+      
+      if(m_trade.SellStop(lots, adjustedEntry, m_symbol, adjustedSL, adjustedTP, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
+      {
+         Print("✓ Sell Stop order sent for ", m_symbol, " at ", adjustedEntry,
+               " (offset: ", m_entryOffsetPoints, " pts) | Lots: ", lots);
+         return true;
+      }
+      else
+      {
+         Print("✗ Failed to send Sell Stop order for ", m_symbol, " | Error: ", GetLastError());
+         return false;
+      }
    }
    
    //+------------------------------------------------------------------+

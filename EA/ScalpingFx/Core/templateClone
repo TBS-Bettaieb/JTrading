@@ -57,9 +57,9 @@
 #define END_HOUR               19
 
 // 📈 PARAMÈTRES DE STRATÉGIE
-// STRATEGY_BREAKOUT:  Trade les cassures (trending markets)
-// STRATEGY_REVERSION: Trade le retour à la moyenne (ranging markets)
-#define STRATEGY_TYPE          STRATEGY_BREAKOUT
+// Mode BREAKOUT uniquement - Trade les cassures (trending markets)
+// Mode REVERSION supprimé pour simplifier le code
+// #define STRATEGY_TYPE          STRATEGY_BREAKOUT
 
 // BARS_ANALYSIS: Nombre de barres pour détecter swing points
 // - Majors rapides:  5-7 barres

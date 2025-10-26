@@ -16,7 +16,6 @@ struct SignalInfo
 {
    ENUM_ORDER_TYPE signalType;    // ORDER_TYPE_BUY ou ORDER_TYPE_SELL
    double          triggerPrice;  // Prix de déclenchement
-   ENUM_STRATEGY_MODE strategyMode; // Mode utilisé pour le signal
    datetime        timestamp;     // Timestamp du signal
    string          description;   // Description du signal
 };
@@ -29,7 +28,6 @@ class SignalDetectionManager
 private:
    string            m_symbol;
    ENUM_TIMEFRAMES   m_timeframe;
-   ENUM_STRATEGY_MODE m_strategyMode;
    
    SwingAnalyzer*    m_swingAnalyzer;
    SymbolStatus*     m_statusManager;
@@ -43,13 +41,11 @@ public:
    //| Constructeur                                                    |
    //+------------------------------------------------------------------+
    SignalDetectionManager(string symbol, ENUM_TIMEFRAMES timeframe, 
-                         ENUM_STRATEGY_MODE strategyMode,
                          SwingAnalyzer* swingAnalyzer, 
                          SymbolStatus* statusManager)
    {
       m_symbol = symbol;
       m_timeframe = timeframe;
-      m_strategyMode = strategyMode;
       m_swingAnalyzer = swingAnalyzer;
       m_statusManager = statusManager;
       
@@ -78,24 +74,14 @@ public:
       double triggerPrice = 0;
       string description = "";
       
-      if(m_strategyMode == STRATEGY_BREAKOUT)
-      {
-         // Mode BREAKOUT : acheter quand le prix CASSE un swing high (suivre la tendance)
-         triggerPrice = m_swingAnalyzer.FindHigh();
-         description = "Breakout Buy Signal - Price breaks swing high";
-      }
-      else if(m_strategyMode == STRATEGY_REVERSION)
-      {
-         // Mode REVERSION : acheter quand le prix TOUCHE un swing low et rebondit (contre-tendance)
-         triggerPrice = m_swingAnalyzer.FindLow();
-         description = "Reversion Buy Signal - Price touches swing low";
-      }
+      // Mode BREAKOUT : acheter quand le prix CASSE un swing high (suivre la tendance)
+      triggerPrice = m_swingAnalyzer.FindHigh();
+      description = "Breakout Buy Signal - Price breaks swing high";
       
       if(triggerPrice > 0)
       {
          signal.signalType = ORDER_TYPE_BUY;
          signal.triggerPrice = triggerPrice;
-         signal.strategyMode = m_strategyMode;
          signal.timestamp = TimeCurrent();
          signal.description = description;
          return true;
@@ -115,24 +101,14 @@ public:
       double triggerPrice = 0;
       string description = "";
       
-      if(m_strategyMode == STRATEGY_BREAKOUT)
-      {
-         // Mode BREAKOUT : vendre quand le prix CASSE un swing low (suivre la tendance)
-         triggerPrice = m_swingAnalyzer.FindLow();
-         description = "Breakout Sell Signal - Price breaks swing low";
-      }
-      else if(m_strategyMode == STRATEGY_REVERSION)
-      {
-         // Mode REVERSION : vendre quand le prix TOUCHE un swing high et redescend (contre-tendance)
-         triggerPrice = m_swingAnalyzer.FindHigh();
-         description = "Reversion Sell Signal - Price touches swing high";
-      }
+      // Mode BREAKOUT : vendre quand le prix CASSE un swing low (suivre la tendance)
+      triggerPrice = m_swingAnalyzer.FindLow();
+      description = "Breakout Sell Signal - Price breaks swing low";
       
       if(triggerPrice > 0)
       {
          signal.signalType = ORDER_TYPE_SELL;
          signal.triggerPrice = triggerPrice;
-         signal.strategyMode = m_strategyMode;
          signal.timestamp = TimeCurrent();
          signal.description = description;
          return true;
@@ -150,7 +126,6 @@ public:
    //+------------------------------------------------------------------+
    //| Getters                                                         |
    //+------------------------------------------------------------------+
-   ENUM_STRATEGY_MODE GetStrategyMode() const { return m_strategyMode; }
    string GetSymbol() const { return m_symbol; }
    ENUM_TIMEFRAMES GetTimeframe() const { return m_timeframe; }
    
@@ -159,11 +134,10 @@ public:
    //+------------------------------------------------------------------+
    string GetSignalDescription(const SignalInfo &signal) const
    {
-      string modeStr = (signal.strategyMode == STRATEGY_BREAKOUT) ? "Breakout" : "Reversion";
       string typeStr = (signal.signalType == ORDER_TYPE_BUY) ? "BUY" : "SELL";
       
-      return StringFormat("[%s] %s %s Signal at %.5f - %s", 
-                         m_symbol, modeStr, typeStr, 
+      return StringFormat("[%s] Breakout %s Signal at %.5f - %s", 
+                         m_symbol, typeStr, 
                          signal.triggerPrice, signal.description);
    }
    
