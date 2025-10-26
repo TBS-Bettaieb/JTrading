@@ -14,7 +14,6 @@ Ce dossier contient tous les composants partagés du système BreakoutScalper, o
 
 - **`OrderManager.mqh`** : Gestionnaire d'ordres générique
 - **`TrailingManager.mqh`** : Gestion du trailing TP/TSL générique
-- **`ForexTrailingManager.mqh`** : Gestion du trailing spécialisé Forex
 - **`TrendlineManager.mqh`** : Gestion des lignes TP/SL sur graphique
 - **`ForexTrendlineManager.mqh`** : Gestion des trendlines spécialisé Forex
 
