@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//|                                        ForexSymbolStatus.mqh     |
+//|                                        BreakoutScalperStatus.mqh     |
 //|                    Gestionnaire du statut pour un symbole       |
 //|                                      (c) 2025 - Public Domain    |
 //+------------------------------------------------------------------+
@@ -9,9 +9,9 @@
 #include <Trade\OrderInfo.mqh>
 
 //+------------------------------------------------------------------+
-//| Classe ForexSymbolStatus - Gestion du statut pour un symbole    |
+//| Classe BreakoutScalperStatus - Gestion du statut pour un symbole    |
 //+------------------------------------------------------------------+
-class ForexSymbolStatus
+class BreakoutScalperStatus
 {
 private:
    // Données du symbole
@@ -37,7 +37,7 @@ public:
    //+------------------------------------------------------------------+
    //| Constructor                                                      |
    //+------------------------------------------------------------------+
-   ForexSymbolStatus(string symbol, int magicNumber, ENUM_TIMEFRAMES timeframe)
+   BreakoutScalperStatus(string symbol, int magicNumber, ENUM_TIMEFRAMES timeframe)
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -49,15 +49,15 @@ public:
       m_sellTotal = 0;
       m_totalProfit = 0;
       
-      Print("✓ ForexSymbolStatus initialized for ", symbol, " | Magic: ", magicNumber);
+      Print("✓ BreakoutScalperStatus initialized for ", symbol, " | Magic: ", magicNumber);
    }
    
    //+------------------------------------------------------------------+
    //| Destructor                                                       |
    //+------------------------------------------------------------------+
-   ~ForexSymbolStatus()
+   ~BreakoutScalperStatus()
    {
-      Print("✓ ForexSymbolStatus destroyed for ", m_symbol);
+      Print("✓ BreakoutScalperStatus destroyed for ", m_symbol);
    }
    
    //+------------------------------------------------------------------+

@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
-//|                                        ForexSymbolTrader.mqh     |
-//|                    Classe de trading par symbole individuel Forex|
+//|                                        BreakoutScalperTrader.mqh     |
+//|                    Classe de trading par symbole individuel BreakoutScalper|
 //|                                      (c) 2025 - Public Domain    |
 //+------------------------------------------------------------------+
 #property strict
@@ -13,14 +13,14 @@
 #include "../common/ForexSwingAnalyzer.mqh"
 #include "../common/ForexTrendlineManager.mqh"
 #include "../common/ForexOrderManager.mqh"
-#include "../common/ForexSymbolStatus.mqh"
+#include "../common/BreakoutScalperStatus.mqh"
 #include "../common/ForexTrailingManager.mqh"
-#include "../common/ForexSymbolTraderDisplay.mqh"
+#include "../common/BreakoutScalperTraderDisplay.mqh"
 
 //+------------------------------------------------------------------+
-//| Classe ForexSymbolTrader - Gestion d'un symbole spécifique       |
+//| Classe BreakoutScalperTrader - Gestion d'un symbole spécifique       |
 //+------------------------------------------------------------------+
-class ForexSymbolTrader
+class BreakoutScalperTrader
 {
 private:
    // Données du symbole
@@ -65,16 +65,16 @@ private:
    ForexOrderManager* m_orderManager;
    
    // 🆕 Status Manager
-   ForexSymbolStatus* m_statusManager;
+   BreakoutScalperStatus* m_statusManager;
    
    // 🆕 Display Manager
-   ForexSymbolTraderDisplay* m_displayManager;
+   BreakoutScalperTraderDisplay* m_displayManager;
    
 public:
    //+------------------------------------------------------------------+
    //| Constructor                                                      |
    //+------------------------------------------------------------------+
-   ForexSymbolTrader(string symbol, 
+   BreakoutScalperTrader(string symbol, 
                      int magicNumber,
                      ENUM_TIMEFRAMES timeframe,
                      double riskPercent,
@@ -153,10 +153,10 @@ public:
       );
       
       // Initialiser le gestionnaire du statut
-      m_statusManager = new ForexSymbolStatus(symbol, magicNumber, timeframe);
+      m_statusManager = new BreakoutScalperStatus(symbol, magicNumber, timeframe);
       
       // 🆕 Initialiser le Display Manager
-      m_displayManager = new ForexSymbolTraderDisplay(
+      m_displayManager = new BreakoutScalperTraderDisplay(
          symbol,
          magicNumber,
          m_statusManager,
@@ -168,13 +168,13 @@ public:
          timeframe
       );
       
-      Print("✓ ForexSymbolTrader initialized for ", symbol, " | Magic: ", magicNumber);
+      Print("✓ BreakoutScalperTrader initialized for ", symbol, " | Magic: ", magicNumber);
    }
    
    //+------------------------------------------------------------------+
    //| Destructor                                                       |
    //+------------------------------------------------------------------+
-   ~ForexSymbolTrader()
+   ~BreakoutScalperTrader()
    {
       // Cleanup Trailing Manager
       if(m_trailingManager != NULL) 
@@ -211,7 +211,7 @@ public:
          m_displayManager = NULL;
       }
       
-      Print("✓ ForexSymbolTrader destroyed for ", m_symbol);
+      Print("✓ BreakoutScalperTrader destroyed for ", m_symbol);
    }
    
    //+------------------------------------------------------------------+

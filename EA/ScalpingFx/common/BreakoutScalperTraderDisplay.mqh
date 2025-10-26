@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//|                                  ForexSymbolTraderDisplay.mqh   |
+//|                                  BreakoutScalperTraderDisplay.mqh   |
 //|                    Affichage et visualisation pour un symbole   |
 //|                                      (c) 2025 - Public Domain    |
 //+------------------------------------------------------------------+
@@ -7,18 +7,18 @@
 
 #include "../../../EA/Shared/TradingEnums.mqh"
 #include "../../../EA/Shared/Logger.mqh"
-#include "ForexSymbolStatus.mqh"
+#include "BreakoutScalperStatus.mqh"
 #include "ForexSwingAnalyzer.mqh"
 
 //+------------------------------------------------------------------+
-//| Classe ForexSymbolTraderDisplay - Gestion de l'affichage        |
+//| Classe BreakoutScalperTraderDisplay - Gestion de l'affichage        |
 //+------------------------------------------------------------------+
-class ForexSymbolTraderDisplay
+class BreakoutScalperTraderDisplay
 {
 private:
    string            m_symbol;
    int               m_magicNumber;
-   ForexSymbolStatus* m_statusManager;
+   BreakoutScalperStatus* m_statusManager;
    ForexSwingAnalyzer* m_swingAnalyzer;
    
    // Paramètres de trading pour affichage
@@ -32,9 +32,9 @@ public:
    //+------------------------------------------------------------------+
    //| Constructor                                                      |
    //+------------------------------------------------------------------+
-   ForexSymbolTraderDisplay(string symbol,
+   BreakoutScalperTraderDisplay(string symbol,
                             int magicNumber,
-                            ForexSymbolStatus* statusManager,
+                            BreakoutScalperStatus* statusManager,
                             ForexSwingAnalyzer* swingAnalyzer,
                             double riskPercent,
                             int tpPoints,
@@ -55,16 +55,16 @@ public:
       // Créer les labels d'information
       CreateInfoLabels();
       
-      Print("✓ ForexSymbolTraderDisplay initialized for ", symbol);
+      Print("✓ BreakoutScalperTraderDisplay initialized for ", symbol);
    }
    
    //+------------------------------------------------------------------+
    //| Destructor                                                       |
    //+------------------------------------------------------------------+
-   ~ForexSymbolTraderDisplay()
+   ~BreakoutScalperTraderDisplay()
    {
       // Nettoyage des objets graphiques si nécessaire
-      Print("✓ ForexSymbolTraderDisplay destroyed for ", m_symbol);
+      Print("✓ BreakoutScalperTraderDisplay destroyed for ", m_symbol);
    }
    
    //+------------------------------------------------------------------+

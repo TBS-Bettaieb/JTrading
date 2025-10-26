@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//|                                           ForexScalperBot.mqh    |
+//|                                           BreakoutScalperBot.mqh    |
 //|                                Bot Engine - All Logic Here       |
 //+------------------------------------------------------------------+
 #property strict
@@ -12,14 +12,14 @@
 #include "../../../EA/Shared/NewsFilterManager.mqh"
 #include "../../../EA/Shared/Logger.mqh"
 #include "../common/BotConfig.mqh"
-#include "ForexSymbolTrader.mqh"
-#include "ForexSymbolManager.mqh"
+#include "BreakoutScalperTrader.mqh"
+#include "BreakoutScalperManager.mqh"
 #include "../common/RiskMultiplierManager.mqh"
 
 //+------------------------------------------------------------------+
 //| Main Bot Class                                                   |
 //+------------------------------------------------------------------+
-class ForexScalperBot
+class BreakoutScalperBot
 {
 private:
    BotConfig         m_config;
@@ -27,7 +27,7 @@ private:
    TradingTimeManager* m_timeManager;
    RiskMultiplierManager* m_riskMultiplierManager;
    NewsFilterManager* m_newsFilterManager;
-   ForexSymbolTrader* m_symbolTraders[];
+   BreakoutScalperTrader* m_symbolTraders[];
    string            m_symbols[];
    int               m_totalSymbols;
    int               m_tickCount;
@@ -35,7 +35,7 @@ private:
    
 public:
    //--- Constructor
-   ForexScalperBot(BotConfig &config)
+   BreakoutScalperBot(BotConfig &config)
    {
       m_config = config;
       m_chartManager = NULL;
@@ -48,7 +48,7 @@ public:
    }
    
    //--- Destructor
-   ~ForexScalperBot()
+   ~BreakoutScalperBot()
    {
       // Cleanup is done in Deinitialize
    }
@@ -307,7 +307,7 @@ private:
          
          Logger::Info("✅ Creating trader for " + m_symbols[i] + " with magic " + IntegerToString(symbolMagic));
          
-         m_symbolTraders[i] = new ForexSymbolTrader(
+         m_symbolTraders[i] = new BreakoutScalperTrader(
             m_symbols[i],
             symbolMagic,  // ✅ CORRECTION : magic unique
             m_config.timeframe,
@@ -333,7 +333,7 @@ private:
          
          if(m_symbolTraders[i] == NULL)
          {
-            Logger::Error("❌ ERROR: Failed to create ForexSymbolTrader for " + m_symbols[i]);
+            Logger::Error("❌ ERROR: Failed to create BreakoutScalperTrader for " + m_symbols[i]);
             return false;
          }
       }
@@ -344,13 +344,13 @@ private:
    //--- Initialize Chart Manager
    bool InitializeChartManager()
    {
-      m_chartManager = new ChartManager(0, "ForexScalpBot");
+      m_chartManager = new ChartManager(0, "BreakoutScalperBot");
       
       if(m_chartManager != NULL)
       {
          m_chartManager.SetupChart();
          m_chartManager.ShowStrategyName(m_config.strategyName);
-         PrintSymbolsInfo(m_symbols, m_config.baseMagic, m_config.timeframe, "ScalpingRobot");
+         PrintSymbolsInfo(m_symbols, m_config.baseMagic, m_config.timeframe, "BreakoutScalperRobot");
          return true;
       }
       else
