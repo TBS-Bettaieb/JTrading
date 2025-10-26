@@ -1,0 +1,40 @@
+# Core dependencies
+numpy>=1.24.0
+pandas>=2.0.0
+MetaTrader5>=5.0.45
+
+# Technical indicators
+ta>=0.11.0
+# Note: TA-Lib installation on Windows requires manual steps, see README
+# For Windows: pip install TA-Lib‑0.4.28‑cp311‑cp311‑win_amd64.whl
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.14.0
+
+# Data management
+python-dateutil>=2.8.2
+pytz>=2023.3
+openpyxl>=3.1.0  # For Excel file reading
+
+# Utilities
+tqdm>=4.65.0
+colorama>=0.4.6
+tabulate>=0.9.0
+
+# Configuration
+python-dotenv>=1.0.0
+pyyaml>=6.0
+
+# Logging
+loguru>=0.7.0
+
+# Statistical analysis
+scipy>=1.10.0
+scikit-learn>=1.3.0
+
+# Testing (optional)
+pytest>=7.3.0
+pytest-cov>=4.1.0
+
