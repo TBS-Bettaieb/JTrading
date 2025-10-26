@@ -3,9 +3,11 @@
 //|                                    Fair Value Gap Detection Tool |
 //+------------------------------------------------------------------+
 #property copyright "FVG Indicator"
-#property version   "1.30"
+#property version   "1.40"
 #property indicator_chart_window
 #property indicator_plots 0
+
+#include "../../EA/Shared/FVGDetector.mqh"
 
 //--- Détection
 input ENUM_TIMEFRAMES   InpTimeframe          = PERIOD_M5;   // TF d'analyse
@@ -24,7 +26,6 @@ input int               InpBorderWidth        = 1;
 
 //--- Invalidation
 input double            InpInvalidatePct      = 30.0;        // Suppression si pénétration >= %
-enum InvalidationSide { WICK_TOUCH = 0, CLOSE_BODY = 1 };
 input InvalidationSide  InpInvalidateMode     = WICK_TOUCH;
 
 //+------------------------------------------------------------------+
@@ -40,19 +41,9 @@ uint ColorToARGB(color clr, int alpha)
     return (uint)((a << 24) | (r << 16) | (g << 8) | b);
 }
 
-//--- Structure
-struct FVGInfo
-{
-   datetime time;            // bougie centrale
-   datetime startTime;       // bougie 1
-   datetime endTime;         // bougie 3
-   double   top;             // prix haut de zone
-   double   bottom;          // prix bas de zone
-   bool     isBullish;
-   ENUM_TIMEFRAMES timeframe;
-   double   gapSize;
-   bool     IsValid;         // indique si le FVG est encore valide
-};
+//--- FVGDetector instance
+FVGDetector g_fvgDetector;
+FVGConfig   g_fvgConfig;
 
 //--- Manager objets
 class FVGObjectManager
@@ -64,22 +55,13 @@ public:
 };
 
 //--- Globals
-FVGInfo  m_fvgList[];
-int      m_atrHandle        = INVALID_HANDLE;
-datetime g_lastTfBar        = 0;
+datetime g_lastTfBar = 0;
 
 //--- Protos
-void     ProcessTimeframe(ENUM_TIMEFRAMES tf, int atrHandle);
 void     DrawAllFVGs();
 void     DeleteOldFVGs();
-FVGInfo  CreateFVGInfo(datetime time, datetime startTime, datetime endTime, double top, double bottom, bool isBullish, ENUM_TIMEFRAMES tf, double gapSize);
-void     AddFVGToList(FVGInfo &fvg);
-void     SortFVGsByTime(FVGInfo &tempList[]);
 void     DisplayFVGInfo();
 bool     IsNewBarOnTf(ENUM_TIMEFRAMES tf, datetime &out_lastBar);
-bool     ExistsFVG(const FVGInfo &x);
-void     FilterFVGsByLookback(ENUM_TIMEFRAMES tf, int lookbackBars);
-void     UpdateAndInvalidateFVGs(ENUM_TIMEFRAMES tf);
 
 //+------------------------------------------------------------------+
 //| OnInit                                                           |
@@ -90,14 +72,21 @@ int OnInit()
       StringFormat("FVG(%s, Gap>=%.1f%% ATR, Lkb=%d, Ext<=%d, Inv=%.0f%%)",
                    EnumToString(InpTimeframe), InpMinGapATRPercent, InpLookbackBars, InpExtendForwardBars, InpInvalidatePct));
 
-   m_atrHandle = iATR(_Symbol, InpTimeframe, InpATRPeriod);
-   if(m_atrHandle == INVALID_HANDLE)
+   // Configuration FVGDetector
+   g_fvgConfig.atrPeriod = InpATRPeriod;
+   g_fvgConfig.minGapATRPercent = InpMinGapATRPercent;
+   g_fvgConfig.epsilonPts = InpEpsilonPts;
+   g_fvgConfig.invalidatePct = InpInvalidatePct;
+   g_fvgConfig.mode = InpInvalidateMode;
+   g_fvgConfig.lookbackBars = InpLookbackBars;
+   g_fvgConfig.debugMode = InpDebugMode;
+   
+   if(!g_fvgDetector.Init(_Symbol, InpTimeframe, g_fvgConfig))
    {
-      Print("ATR creation failed for ", EnumToString(InpTimeframe), " err=", GetLastError());
+      Print("FVGDetector initialization failed");
       return INIT_FAILED;
    }
 
-   ArrayResize(m_fvgList, 0);
    DeleteOldFVGs();
    g_lastTfBar = 0;
    return INIT_SUCCEEDED;
@@ -108,9 +97,8 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-   if(m_atrHandle != INVALID_HANDLE) IndicatorRelease(m_atrHandle);
+   g_fvgDetector.Deinit();
    DeleteOldFVGs();
-   ArrayFree(m_fvgList);
    Comment("");
    ChartRedraw();
 }
@@ -145,10 +133,10 @@ int OnCalculate(const int rates_total,
    if(isNewBar)
    {
       g_lastTfBar = lastBar;  // Mise à jour de la dernière barre du timeframe
-      ProcessTimeframe(InpTimeframe, m_atrHandle);     // détecte et ajoute
-      FilterFVGsByLookback(InpTimeframe, InpLookbackBars); // limite à la fenêtre
-      UpdateAndInvalidateFVGs(InpTimeframe);           // supprime si pénétration >= %
-      DrawAllFVGs();                                   // redessine avec extension progressive
+      g_fvgDetector.ProcessTimeframe(InpTimeframe);           // détecte et ajoute
+      g_fvgDetector.FilterByLookback(InpTimeframe, InpLookbackBars); // limite à la fenêtre
+      g_fvgDetector.UpdateInvalidation(InpTimeframe);         // supprime si pénétration >= %
+      DrawAllFVGs();                                         // redessine avec extension progressive
    }
 
    DisplayFVGInfo();
@@ -156,183 +144,17 @@ int OnCalculate(const int rates_total,
 }
 
 //+------------------------------------------------------------------+
-//| Détection                                                        |
+//| Détection - maintenant gérée par FVGDetector                    |
 //+------------------------------------------------------------------+
-void ProcessTimeframe(ENUM_TIMEFRAMES tf, int atrHandle)
-{
-   int need = MathMax(InpLookbackBars+10, 500);
-
-   MqlRates rates[];
-   int copied = CopyRates(_Symbol, tf, 0, need, rates);
-   if(copied < 3) return;
-   ArraySetAsSeries(rates, true);
-
-   double atr[];
-   if(CopyBuffer(atrHandle, 0, 0, copied, atr) <= 0) return;
-   ArraySetAsSeries(atr, true);
-
-   double eps = InpEpsilonPts * _Point;
-   int added=0;
-
-   for(int i=1; i<copied-2; i++) // éviter bar 0
-   {
-      datetime t_old = rates[i+2].time;
-      datetime t_new = rates[i].time;
-      datetime startTime = (t_old < t_new ? t_old : t_new);
-      datetime endTime   = (t_old < t_new ? t_new : t_old);
-
-      double minGap = atr[i] * InpMinGapATRPercent / 100.0;
-
-      // Bullish: low[i] > high[i+2] + eps
-      if( (rates[i].low - rates[i+2].high) > eps )
-      {
-         double rawTop = rates[i].low;
-         double rawBot = rates[i+2].high;
-         double top    = MathMax(rawTop, rawBot);
-         double bottom = MathMin(rawTop, rawBot);
-         double gapSz  = top - bottom;
-
-         if(gapSz >= minGap)
-         {
-            FVGInfo fvg = CreateFVGInfo(rates[i+1].time, startTime, endTime, top, bottom, true, tf, gapSz);
-            if(!ExistsFVG(fvg)) { AddFVGToList(fvg); added++; }
-         }
-      }
-      // Bearish: low[i+2] > high[i] + eps
-      else if( (rates[i+2].low - rates[i].high) > eps )
-      {
-         double rawTop = rates[i].high;
-         double rawBot = rates[i+2].low;
-         double top    = MathMax(rawTop, rawBot);
-         double bottom = MathMin(rawTop, rawBot);
-         double gapSz  = top - bottom;
-
-         if(gapSz >= minGap)
-         {
-            FVGInfo fvg = CreateFVGInfo(rates[i+1].time, startTime, endTime, top, bottom, false, tf, gapSz);
-            if(!ExistsFVG(fvg)) { AddFVGToList(fvg); added++; }
-         }
-      }
-   }
-   if(InpDebugMode) Print("FVG added: ", added, " total=", ArraySize(m_fvgList));
-}
 
 //+------------------------------------------------------------------+
-//| Supprime les FVG pénétrés à >= X%                                |
+//| Invalidation - maintenant gérée par FVGDetector                  |
 //+------------------------------------------------------------------+
-void UpdateAndInvalidateFVGs(ENUM_TIMEFRAMES tf)
-{
-   // Parcours: ne traite que les FVG encore valides
-   for(int idx = 0; idx < ArraySize(m_fvgList); ++idx)
-   {
-      if(!m_fvgList[idx].IsValid) 
-         continue;
-
-      // Récup clés
-      double top = m_fvgList[idx].top;
-      double bot = m_fvgList[idx].bottom;
-
-      // Normalisation bornes si inversées
-      if(top < bot)
-      {
-         double tmp = top; 
-         top = bot; 
-         bot = tmp;
-      }
-
-      // Garde: hauteur strictement positive
-      const double height = top - bot;
-      if(height <= 0.0)
-         continue;
-
-      // Seuil d’invalidation (pénétration requise)
-      const double threshold = height * InpInvalidatePct / 100.0;
-
-      // Index MT5 de la bougie correspondant à endTime
-      // true => retourne l'index de la première barre avec time <= endTime
-      int endIdx = iBarShift(_Symbol, tf, m_fvgList[idx].endTime, true);
-      if(endIdx == WRONG_VALUE) 
-         continue;
-
-      // Si endIdx <= 0, aucune bougie strictement postérieure à endTime
-      if(endIdx <= 0) 
-         continue;
-
-      bool invalidate = false;
-
-      // Balayage des bougies STRICTEMENT postérieures à endTime:
-      // Série MT5: bar 0 = la plus récente, bar endIdx = à la frontière endTime,
-      // donc on teste [0 .. endIdx-1].
-      for(int k = 0; k < endIdx; ++k)
-      {
-         // Données bougie k
-         double barLow   = iLow(_Symbol, tf, k);
-         double barHigh  = iHigh(_Symbol, tf, k);
-         double barClose = iClose(_Symbol, tf, k);
-
-         if(InpInvalidateMode == WICK_TOUCH)
-         {
-            if(m_fvgList[idx].isBullish)
-               invalidate = (barLow  <= (top - threshold));
-            else
-               invalidate = (barHigh >= (bot + threshold));
-         }
-         else // CLOSE_BODY
-         {
-            if(m_fvgList[idx].isBullish)
-               invalidate = (barClose <= (top - threshold));
-            else
-               invalidate = (barClose >= (bot + threshold));
-         }
-
-         if(invalidate) 
-            break;
-      }
-
-      if(invalidate)
-      {
-         m_fvgList[idx].IsValid = false;
-
-         // Supprime l’objet graphique associé si présent
-         string name = FVGObjectManager::GenerateName(m_fvgList[idx]);
-         ObjectDelete(0, name);
-      }
-   }
-}
 
 
 //+------------------------------------------------------------------+
-//| Limitation à la fenêtre d'affichage                              |
+//| Filtrage - maintenant géré par FVGDetector                      |
 //+------------------------------------------------------------------+
-void FilterFVGsByLookback(ENUM_TIMEFRAMES tf, int lookbackBars)
-{
-   if(lookbackBars <= 0) return;
-   datetime tt[];
-   int n = CopyTime(_Symbol, tf, 0, lookbackBars+1, tt);
-   if(n < 1) return;
-   ArraySetAsSeries(tt, true);
-   datetime threshold = tt[MathMin(lookbackBars, n-1)];
-
-   SortFVGsByTime(m_fvgList);
-
-   FVGInfo kept[];
-   for(int i=0;i<ArraySize(m_fvgList);i++)
-   {
-      if(m_fvgList[i].time >= threshold)
-      {
-         int k = ArraySize(kept);
-         ArrayResize(kept, k+1);
-         kept[k] = m_fvgList[i];
-      }
-   }
-   ArrayResize(m_fvgList, 0);
-   for(int i=0;i<ArraySize(kept);i++)
-   {
-      int k = ArraySize(m_fvgList);
-      ArrayResize(m_fvgList, k+1);
-      m_fvgList[k] = kept[i];
-   }
-}
 
 //+------------------------------------------------------------------+
 //| Dessin                                                           |
@@ -343,12 +165,16 @@ void DrawAllFVGs()
    DeleteOldFVGs();
 
    datetime lastBar = (g_lastTfBar > 0) ? g_lastTfBar : TimeCurrent();
-   int drawn=0;
-   for(int i=0;i<ArraySize(m_fvgList);i++)
+   
+   // Récupérer les FVG valides depuis le détecteur
+   FVGInfo fvgList[];
+   g_fvgDetector.GetFVGList(fvgList, true);
+   
+   int drawn = 0;
+   for(int i = 0; i < ArraySize(fvgList); i++)
    {
-      // Ne dessiner que les FVG valides
-      if(m_fvgList[i].IsValid)
-         if(FVGObjectManager::DrawRectangle(m_fvgList[i], lastBar)) drawn++;
+      if(FVGObjectManager::DrawRectangle(fvgList[i], lastBar)) 
+         drawn++;
    }
 
    if(InpDebugMode) Print("FVG drawn: ", drawn);
@@ -366,42 +192,17 @@ void DeleteOldFVGs()
 }
 
 //+------------------------------------------------------------------+
-//| Utilitaires                                                      |
+//| Utilitaires - maintenant gérés par FVGDetector                  |
 //+------------------------------------------------------------------+
-FVGInfo CreateFVGInfo(datetime time, datetime startTime, datetime endTime, double top, double bottom, bool isBullish, ENUM_TIMEFRAMES tf, double gapSize)
-{
-   FVGInfo fvg;
-   fvg.time=time; fvg.startTime=startTime; fvg.endTime=endTime;
-   fvg.top=top; fvg.bottom=bottom; fvg.isBullish=isBullish;
-   fvg.timeframe=tf; fvg.gapSize=gapSize;
-   fvg.IsValid=true;  // initialiser comme valide
-   return fvg;
-}
-
-void AddFVGToList(FVGInfo &fvg)
-{
-   int n = ArraySize(m_fvgList); ArrayResize(m_fvgList, n+1); m_fvgList[n]=fvg;
-}
-
-void SortFVGsByTime(FVGInfo &a[])
-{
-   int n = ArraySize(a); if(n<=1) return;
-   for(int i=0;i<n-1;i++)
-      for(int j=0;j<n-i-1;j++)
-         if(a[j].time < a[j+1].time){ FVGInfo t=a[j]; a[j]=a[j+1]; a[j+1]=t; }
-}
 
 void DisplayFVGInfo()
 {
-   int bulls=0,bears=0,valid=0; 
-   for(int i=0;i<ArraySize(m_fvgList);i++) 
-   {
-      if(m_fvgList[i].isBullish) bulls++; else bears++;
-      if(m_fvgList[i].IsValid) valid++;
-   }
+   int total, bulls, bears, valid;
+   g_fvgDetector.GetStats(total, bulls, bears, valid);
+   
    string info = "=== FVG INDICATOR ===\n";
    info += StringFormat("%s: %d zones (↑%d ↓%d) - Valides: %d\n", 
-                        EnumToString(InpTimeframe), ArraySize(m_fvgList), bulls, bears, valid);
+                        EnumToString(InpTimeframe), total, bulls, bears, valid);
    info += StringFormat("Lookback=%d | Extend<=%d | Invalidate=%.0f%% %s\n",
                         InpLookbackBars, InpExtendForwardBars, InpInvalidatePct,
                         (InpInvalidateMode==WICK_TOUCH?"wick":"close"));
@@ -418,20 +219,9 @@ bool IsNewBarOnTf(ENUM_TIMEFRAMES tf, datetime &out_lastBar)
    return false;
 }
 
-bool ExistsFVG(const FVGInfo &x)
-{
-   long xt1=(long)x.startTime, xt2=(long)x.endTime;
-   long xtop=(long)MathRound(x.top/_Point), xbot=(long)MathRound(x.bottom/_Point);
-   for(int k=0;k<ArraySize(m_fvgList);k++)
-   {
-      FVGInfo y=m_fvgList[k];
-      if((long)y.startTime==xt1 && (long)y.endTime==xt2 &&
-         (long)MathRound(y.top/_Point)==xtop &&
-         (long)MathRound(y.bottom/_Point)==xbot && y.isBullish==x.isBullish)
-         return true;
-   }
-   return false;
-}
+//+------------------------------------------------------------------+
+//| ExistsFVG - maintenant géré par FVGDetector                     |
+//+------------------------------------------------------------------+
 
 //+------------------------------------------------------------------+
 //| Manager objets                                                   |

@@ -1,9 +1,12 @@
 //+------------------------------------------------------------------+
-//|                                        ForexTrendlineManager.mqh |
+//|                                        TrendlineManager.mqh |
 //|                      Gestionnaire des lignes de TP/SL visuelles  |
 //|                                      (c) 2025 - Public Domain    |
 //+------------------------------------------------------------------+
 #property strict
+
+#ifndef TRENDLINE_MANAGER_MQH
+#define TRENDLINE_MANAGER_MQH
 
 //+------------------------------------------------------------------+
 //| Structure pour stocker les références des lignes               |
@@ -16,9 +19,9 @@ struct TrendlineRefs
 };
 
 //+------------------------------------------------------------------+
-//| Classe ForexTrendlineManager - Gestion des lignes TP/SL        |
+//| Classe TrendlineManager - Gestion des lignes TP/SL        |
 //+------------------------------------------------------------------+
-class ForexTrendlineManager
+class TrendlineManager
 {
 private:
    string            m_symbol;              // Symbole principal
@@ -48,7 +51,7 @@ public:
    //+------------------------------------------------------------------+
    //| Constructor                                                      |
    //+------------------------------------------------------------------+
-   ForexTrendlineManager(string symbol, int magicNumber)
+   TrendlineManager(string symbol, int magicNumber)
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -59,7 +62,7 @@ public:
    //+------------------------------------------------------------------+
    //| Destructor                                                       |
    //+------------------------------------------------------------------+
-   ~ForexTrendlineManager()
+   ~TrendlineManager()
    {
       DeleteAllLines();
    }
@@ -240,5 +243,15 @@ public:
       ChartRedraw(m_chartId);
    }
    
+   //+------------------------------------------------------------------+
+   //| Vérifier si une position a déjà des lignes TP/SL               |
+   //+------------------------------------------------------------------+
+   bool HasPositionLines(ulong ticket)
+   {
+      return (FindPositionIndex(ticket) >= 0);
+   }
+   
 };
 //+------------------------------------------------------------------+
+
+#endif // TRENDLINE_MANAGER_MQH

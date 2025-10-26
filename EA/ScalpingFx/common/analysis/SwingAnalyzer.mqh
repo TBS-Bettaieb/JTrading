@@ -1,17 +1,17 @@
 //+------------------------------------------------------------------+
-//|                                         ForexSwingAnalyzer.mqh   |
+//|                                          SwingAnalyzer.mqh   |
 //|                    Analyseur de points swing pour le Forex      |
 //|                                      (c) 2025 - Public Domain    |
 //+------------------------------------------------------------------+
 #property strict
 
-#include "../../../EA/Shared/TradingEnums.mqh"
-#include "../../../EA/Shared/Logger.mqh"
+#include "../../../Shared/TradingEnums.mqh"
+#include "../../../Shared/Logger.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe pour analyser les points swing                           |
 //+------------------------------------------------------------------+
-class ForexSwingAnalyzer
+class SwingAnalyzer
 {
 private:
    // Données du symbole
@@ -33,7 +33,7 @@ public:
    //+------------------------------------------------------------------+
    //| Default Constructor                                              |
    //+------------------------------------------------------------------+
-   ForexSwingAnalyzer()
+   SwingAnalyzer()
    {
       m_symbol = "";
       m_timeframe = PERIOD_M5;
@@ -51,7 +51,7 @@ public:
    //+------------------------------------------------------------------+
    //| Constructor with parameters                                      |
    //+------------------------------------------------------------------+
-   ForexSwingAnalyzer(string symbol, ENUM_TIMEFRAMES timeframe, int magicNumber, int barsN)
+   SwingAnalyzer(string symbol, ENUM_TIMEFRAMES timeframe, int magicNumber, int barsN)
    {
       m_symbol = symbol;
       m_timeframe = timeframe;
@@ -65,16 +65,16 @@ public:
       ArrayInitialize(m_lastHighTimes, 0);
       ArrayInitialize(m_lastLowTimes, 0);
       
-      Logger::Success("✓ ForexSwingAnalyzer initialized for " + symbol);
+      Logger::Success("✓ SwingAnalyzer initialized for " + symbol);
    }
    
    //+------------------------------------------------------------------+
    //| Destructor                                                       |
    //+------------------------------------------------------------------+
-   ~ForexSwingAnalyzer()
+   ~SwingAnalyzer()
    {
       DeleteSwingLines();
-      Logger::Success("✓ ForexSwingAnalyzer destroyed for " + m_symbol);
+      Logger::Success("✓ SwingAnalyzer destroyed for " + m_symbol);
    }
    
    //+------------------------------------------------------------------+

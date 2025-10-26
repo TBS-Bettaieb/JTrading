@@ -12,13 +12,13 @@ input string   InpSymbolToTrade = "";  // Symbol to trade (empty = use chart sym
 input double   InpRiskPercent = -1.0;  // Risk per trade (%) (-1 = use group default)
 
 // Include required files
-#include "../ScalpingFx/Core/ForexScalperBot.mqh"
-#include "../ScalpingFx/common/ConfigLoader.mqh"
-#include "../../EA/Shared/Logger.mqh"
+#include "../ScalpingFx/Core/BreakoutScalperBot.mqh"
+#include "../ScalpingFx/common/config/ConfigLoader.mqh"
+#include "../Shared/Logger.mqh"
 
 // Global variables
 CConfigManager* configManager = NULL;
-ForexScalperBot* bot = NULL;
+BreakoutScalperBot* bot = NULL;
 string currentSymbol = "";
 
 //+------------------------------------------------------------------+
@@ -103,7 +103,7 @@ int OnInit()
    }
    
    // Initialize bot with configuration
-   bot = new ForexScalperBot(config);
+   bot = new BreakoutScalperBot(config);
    if(bot == NULL)
    {
       Logger::Error("❌ ERROR: Failed to create bot instance");
@@ -202,7 +202,6 @@ bool ValidateSymbolAvailable(string symbol)
 //+------------------------------------------------------------------+
 void DisplayConfigurationInfo(BotConfig &config)
 {
-   string strategyTypeStr = (config.strategyMode == STRATEGY_BREAKOUT) ? "BREAKOUT" : "REVERSION";
    string trailingTPStr = "Disabled";
    
    if(config.useTrailingTP)
@@ -250,7 +249,6 @@ void DisplayConfigurationInfo(BotConfig &config)
       EnumToString(config.timeframe),
       config.riskPercent,
       config.tpPoints, config.slPoints,
-      strategyTypeStr,
       config.barsN,
       config.startHour, config.endHour,
       trailingTPStr,

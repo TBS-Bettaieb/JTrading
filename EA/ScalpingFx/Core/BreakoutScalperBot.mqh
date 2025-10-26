@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//|                                           ForexScalperBot.mqh    |
+//|                                           BreakoutScalperBot.mqh    |
 //|                                Bot Engine - All Logic Here       |
 //+------------------------------------------------------------------+
 #property strict
@@ -11,15 +11,15 @@
 #include "../../../EA/Shared/ChartManager.mqh"
 #include "../../../EA/Shared/NewsFilterManager.mqh"
 #include "../../../EA/Shared/Logger.mqh"
-#include "../common/BotConfig.mqh"
-#include "../common/ForexSymbolTrader.mqh"
-#include "../common/ForexSymbolManager.mqh"
-#include "../common/RiskMultiplierManager.mqh"
+#include "../common/config/BotConfig.mqh"
+#include "BreakoutScalperTrader.mqh"
+#include "BreakoutScalperManager.mqh"
+#include "../../Shared/Filters/RiskMultiplierManager.mqh"
 
 //+------------------------------------------------------------------+
 //| Main Bot Class                                                   |
 //+------------------------------------------------------------------+
-class ForexScalperBot
+class BreakoutScalperBot
 {
 private:
    BotConfig         m_config;
@@ -27,7 +27,7 @@ private:
    TradingTimeManager* m_timeManager;
    RiskMultiplierManager* m_riskMultiplierManager;
    NewsFilterManager* m_newsFilterManager;
-   ForexSymbolTrader* m_symbolTraders[];
+   BreakoutScalperTrader* m_symbolTraders[];
    string            m_symbols[];
    int               m_totalSymbols;
    int               m_tickCount;
@@ -35,7 +35,7 @@ private:
    
 public:
    //--- Constructor
-   ForexScalperBot(BotConfig &config)
+   BreakoutScalperBot(BotConfig &config)
    {
       m_config = config;
       m_chartManager = NULL;
@@ -48,7 +48,7 @@ public:
    }
    
    //--- Destructor
-   ~ForexScalperBot()
+   ~BreakoutScalperBot()
    {
       // Cleanup is done in Deinitialize
    }
@@ -207,6 +207,9 @@ public:
             // 🆕 Mettre à jour le multiplicateur
             m_symbolTraders[i].SetRiskMultiplier(currentRiskMultiplier);
             
+            // 🆕 Traiter le trailing à chaque tick (avant OnTick)
+            m_symbolTraders[i].ProcessTrailing();
+            
             if(tradingAllowed)
             {
                m_symbolTraders[i].OnTick();
@@ -215,9 +218,6 @@ public:
             {
                m_symbolTraders[i].CancelAllPendingOrders();
             }
-            
-            m_symbolTraders[i].TrailStop();
-            m_symbolTraders[i].ApplyTrailingTP();
          }
       }
       
@@ -307,7 +307,7 @@ private:
          
          Logger::Info("✅ Creating trader for " + m_symbols[i] + " with magic " + IntegerToString(symbolMagic));
          
-         m_symbolTraders[i] = new ForexSymbolTrader(
+         m_symbolTraders[i] = new BreakoutScalperTrader(
             m_symbols[i],
             symbolMagic,  // ✅ CORRECTION : magic unique
             m_config.timeframe,
@@ -322,7 +322,6 @@ private:
             m_config.slippagePoints,        // NEW
             m_config.entryOffsetPoints,     // NEW
             m_config.strategyComment,
-            m_config.strategyMode,
             m_config.useTrailingTP,
             m_config.trailingTPMode,
             m_config.customTPLevels,
@@ -333,7 +332,7 @@ private:
          
          if(m_symbolTraders[i] == NULL)
          {
-            Logger::Error("❌ ERROR: Failed to create ForexSymbolTrader for " + m_symbols[i]);
+            Logger::Error("❌ ERROR: Failed to create BreakoutScalperTrader for " + m_symbols[i]);
             return false;
          }
       }
@@ -344,13 +343,13 @@ private:
    //--- Initialize Chart Manager
    bool InitializeChartManager()
    {
-      m_chartManager = new ChartManager(0, "ForexScalpBot");
+      m_chartManager = new ChartManager(0, "BreakoutScalperBot");
       
       if(m_chartManager != NULL)
       {
          m_chartManager.SetupChart();
          m_chartManager.ShowStrategyName(m_config.strategyName);
-         PrintSymbolsInfo(m_symbols, m_config.baseMagic, m_config.timeframe, "ScalpingRobot");
+         PrintSymbolsInfo(m_symbols, m_config.baseMagic, m_config.timeframe, "BreakoutScalperRobot");
          return true;
       }
       else

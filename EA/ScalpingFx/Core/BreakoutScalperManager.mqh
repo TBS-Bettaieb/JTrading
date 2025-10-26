@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
-//|                                        ForexSymbolManager.mqh    |
-//|                Gestionnaire de symboles multi-trading Forex     |
+//|                                        BreakoutScalperManager.mqh    |
+//|                Gestionnaire de symboles multi-trading BreakoutScalper     |
 //|                                      (c) 2025 - Public Domain    |
 //+------------------------------------------------------------------+
 #property strict
@@ -16,7 +16,7 @@ void PrintSymbolsInfo(string &symbolArray[], int baseMagic, ENUM_TIMEFRAMES time
    int count = ArraySize(symbolArray);
    
    Logger::Info("═══════════════════════════════════════");
-   Logger::Info("🔧 FOREX SYMBOLS CONFIGURATION");
+   Logger::Info("🔧 BREAKOUTSCALPER SYMBOLS CONFIGURATION");
    Logger::Info("═══════════════════════════════════════");
    Logger::Info("Total symbols: " + IntegerToString(count));
    Logger::Info("Strategy: " + strategyName);
@@ -43,7 +43,7 @@ void PrintSymbolsInfo(string &symbolArray[], int baseMagic, ENUM_TIMEFRAMES time
 //+------------------------------------------------------------------+
 //| Obtenir les statistiques globales des symboles                  |
 //+------------------------------------------------------------------+
-string GetGlobalSymbolsStatus(string &symbolArray[], ForexSymbolTrader* &traders[])
+string GetGlobalSymbolsStatus(string &symbolArray[], BreakoutScalperTrader* &traders[])
 {
    if(ArraySize(symbolArray) != ArraySize(traders))
       return "ERROR: Array size mismatch";
@@ -66,7 +66,7 @@ string GetGlobalSymbolsStatus(string &symbolArray[], ForexSymbolTrader* &traders
       }
    }
    
-   string status = "FOREX GLOBAL: ";
+   string status = "BREAKOUTSCALPER GLOBAL: ";
    status += "Symbols: " + IntegerToString(activeSymbols) + "/" + IntegerToString(symbolCount);
    status += " | Positions: " + IntegerToString(totalPositions);
    

@@ -5,9 +5,9 @@
 //+------------------------------------------------------------------+
 #property strict
 
-#include "../../Shared/TradingEnums.mqh"
-#include "../../Shared/TrailingTP_System.mqh"
-#include "../../Shared/Logger.mqh"
+#include "../../../Shared/TradingEnums.mqh"
+#include "../../../Shared/TrailingTP_System.mqh"
+#include "../../../Shared/Logger.mqh"
 
 //+------------------------------------------------------------------+
 //| Configuration structure                                          |
@@ -34,7 +34,6 @@ struct BotConfig
    int               startHour;
    int               endHour;
    string            tradingTimeRanges;  // Format unifié: "08:30-10:45; 15:30-18:00"
-   ENUM_STRATEGY_MODE strategyMode;
    int               barsN;
    int               expirationBars;
    int               orderDistPoints;

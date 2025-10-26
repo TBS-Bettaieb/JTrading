@@ -5,9 +5,9 @@
 //+------------------------------------------------------------------+
 #property strict
 
-#include "../../Shared/TradingEnums.mqh"
-#include "../../Shared/TrailingTP_System.mqh"
-#include "../../Shared/Logger.mqh"
+#include "../../../Shared/TradingEnums.mqh"
+#include "../../../Shared/TrailingTP_System.mqh"
+#include "../../../Shared/Logger.mqh"
 #include "BotConfig.mqh"
 
 //+------------------------------------------------------------------+
@@ -92,7 +92,6 @@ protected:
       m_config.baseMagic = baseMagic;
       m_config.useAllSymbols = false;
       m_config.timeframe = PERIOD_M5;
-      m_config.strategyMode = STRATEGY_BREAKOUT;
    }
    
    // Setup risk and position sizing

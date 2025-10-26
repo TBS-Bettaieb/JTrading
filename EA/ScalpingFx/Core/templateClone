@@ -57,9 +57,9 @@
 #define END_HOUR               19
 
 // 📈 PARAMÈTRES DE STRATÉGIE
-// STRATEGY_BREAKOUT:  Trade les cassures (trending markets)
-// STRATEGY_REVERSION: Trade le retour à la moyenne (ranging markets)
-#define STRATEGY_TYPE          STRATEGY_BREAKOUT
+// Mode BREAKOUT uniquement - Trade les cassures (trending markets)
+// Mode REVERSION supprimé pour simplifier le code
+// #define STRATEGY_TYPE          STRATEGY_BREAKOUT
 
 // BARS_ANALYSIS: Nombre de barres pour détecter swing points
 // - Majors rapides:  5-7 barres
@@ -97,10 +97,10 @@
 //═══════════════════════════════════════════════════════════════════
 
 // Include bot engine
-#include "core/ForexScalperBot.mqh"
+#include "core/BreakoutScalperBot.mqh"
 
 // Global bot instance
-ForexScalperBot* bot = NULL;
+BreakoutScalperBot* bot = NULL;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -134,7 +134,7 @@ int OnInit()
    config.bothBlockMsg = BOTH_BLOCK_MSG;
    
    // Initialize bot
-   bot = new ForexScalperBot(config);
+   bot = new BreakoutScalperBot(config);
    if(bot == NULL)
    {
       Print("❌ ERROR: Failed to create bot instance");
@@ -202,6 +202,6 @@ void OnTick()
 //
 // 6. FICHIERS À DUPLIQUER POUR CRÉER VARIANTES:
 //    - Ce template → renommer → modifier CONFIG
-//    - core/ForexScalperBot.mqh reste inchangé!
+//    - core/BreakoutScalperBot.mqh reste inchangé!
 //
 //+------------------------------------------------------------------+
