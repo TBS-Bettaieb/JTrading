@@ -15,6 +15,7 @@
 #include "../../../EA/Shared/TrailingTP_System.mqh"
 #include "../../../EA/Shared/DynamicTrailingStop.mqh"
 #include "ForexOrderManager.mqh"
+#include "ForexSymbolStatus.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe ForexSymbolTrader - Gestion d'un symbole spécifique       |
@@ -30,12 +31,6 @@ private:
    // Magic number unique pour ce symbole
    int               m_magicNumber;
    
-   // Gestion des barres
-   datetime          m_lastBarTime;         // Dernière barre traitée
-   
-   // Compteurs de positions/ordres
-   int               m_buyTotal;            // Nombre positions/ordres BUY
-   int               m_sellTotal;           // Nombre positions/ordres SELL
    
    // Paramètres de trading
    double            m_riskPercent;         // Risque par symbole
@@ -51,10 +46,11 @@ private:
    string            m_tradeComment;        // Commentaire des trades
    ENUM_STRATEGY_MODE m_strategyMode; // Mode de stratégie (Breakout/Reversion)
    
-   // Objets de trading
+   // Objets de trading (nécessaires pour certaines opérations)
    CTrade            m_trade;               // Objet de trading
    CPositionInfo     m_position;            // Gestion des positions
    COrderInfo        m_order;               // Gestion des ordres
+   
    ForexCommissionManager m_commissionManager;  // Gestionnaire de commission
    ForexSwingAnalyzer m_swingAnalyzer;      // Analyseur de swing points
    ForexTrendlineManager* m_trendlineManager; // Gestionnaire des lignes TP/SL
@@ -69,8 +65,6 @@ private:
    };
    PositionTrailing  m_positionTrailings[];
    
-   // Statistiques
-   double            m_totalProfit;         // Profit total pour ce symbole
    
    // 🆕 Risk Multiplier
    double            m_currentRiskMultiplier; // Multiplicateur de risque actuel
@@ -80,6 +74,9 @@ private:
    
    // 🆕 Order Manager
    ForexOrderManager* m_orderManager;
+   
+   // 🆕 Status Manager
+   ForexSymbolStatus* m_statusManager;
    
 public:
    //+------------------------------------------------------------------+
@@ -125,10 +122,6 @@ public:
       
       // Initialiser les variables
       m_point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-      m_lastBarTime = iTime(symbol, timeframe, 0);  
-      m_buyTotal = 0;
-      m_sellTotal = 0;
-      m_totalProfit = 0;
       m_currentRiskMultiplier = 1.0;
       
       // 🆕 Initialiser le Dynamic Trailing Stop
@@ -180,6 +173,9 @@ public:
          riskPercent, m_currentRiskMultiplier
       );
       
+      // Initialiser le gestionnaire du statut
+      m_statusManager = new ForexSymbolStatus(symbol, magicNumber, timeframe);
+      
       Print("✓ ForexSymbolTrader initialized for ", symbol, " | Magic: ", magicNumber);
    }
    
@@ -217,6 +213,13 @@ public:
          m_orderManager = NULL;
       }
       
+      // Cleanup Status Manager
+      if(m_statusManager != NULL) 
+      {
+         delete m_statusManager;
+         m_statusManager = NULL;
+      }
+      
       Print("✓ ForexSymbolTrader destroyed for ", m_symbol);
    }
    
@@ -226,18 +229,18 @@ public:
    void OnTick()
    {
       // Vérifier si c'est une nouvelle barre
-      if(!IsNewBar()) return;
+      if(!m_statusManager.IsNewBar()) return;
       
       // Note: Trading time control is now handled at the global level in the bot's OnTick()
       
       // Mettre à jour les compteurs
-      UpdateCounters();
+      m_statusManager.UpdateCounters();
       
       // Vérifier les nouvelles positions pour créer les lignes TP/SL
       CheckForNewPositions();
       
       // Chercher des signaux de trading seulement si pas de positions/ordres existants
-      if(m_buyTotal <= 0)
+      if(m_statusManager.GetBuyTotal() <= 0)
       {
          if(m_strategyMode == STRATEGY_BREAKOUT)
          {
@@ -259,7 +262,7 @@ public:
          }
       }
       
-      if(m_sellTotal <= 0)
+      if(m_statusManager.GetSellTotal() <= 0)
       {
          if(m_strategyMode == STRATEGY_BREAKOUT)
          {
@@ -362,22 +365,11 @@ public:
    //+------------------------------------------------------------------+
    string GetStatusInfo()
    {
-      string status = m_symbol + ": ";
-      
-      if(m_buyTotal + m_sellTotal == 0)
-         status += "IDLE";
-      else
+      if(m_statusManager != NULL)
       {
-         status += "ACTIVE | Pos: " + IntegerToString(m_buyTotal + m_sellTotal);
-         status += " (B:" + IntegerToString(m_buyTotal) + " S:" + IntegerToString(m_sellTotal) + ")";
-         
-         if(m_totalProfit != 0)
-         {
-            status += " | P/L: " + DoubleToString(m_totalProfit, 2);
-         }
+         return m_statusManager.GetStatusInfo();
       }
-      
-      return status;
+      return m_symbol + ": ERROR";
    }
    
    //+------------------------------------------------------------------+
@@ -385,20 +377,11 @@ public:
    //+------------------------------------------------------------------+
    double GetTotalProfit()
    {
-      m_totalProfit = 0;
-      
-      for(int i = PositionsTotal() - 1; i >= 0; i--)
+      if(m_statusManager != NULL)
       {
-         if(m_position.SelectByIndex(i))
-         {
-            if(m_position.Magic() == m_magicNumber && m_position.Symbol() == m_symbol)
-            {
-               m_totalProfit += m_position.Profit() + m_position.Swap() + m_position.Commission();
-            }
-         }
+         return m_statusManager.GetTotalProfit();
       }
-      
-      return m_totalProfit;
+      return 0.0;
    }
    
    //+------------------------------------------------------------------+
@@ -406,7 +389,11 @@ public:
    //+------------------------------------------------------------------+
    int GetTotalPositions()
    {
-      return m_buyTotal + m_sellTotal;
+      if(m_statusManager != NULL)
+      {
+         return m_statusManager.GetTotalPositions();
+      }
+      return 0;
    }
    
    //+------------------------------------------------------------------+
@@ -631,23 +618,6 @@ public:
    
 private:
    //+------------------------------------------------------------------+
-   //| Vérifier si c'est une nouvelle barre                            |
-   //+------------------------------------------------------------------+
-   bool IsNewBar()
-   {
-      datetime currentTime = iTime(m_symbol, m_timeframe, 0);
-      
-      if(m_lastBarTime != currentTime)
-      {
-         m_lastBarTime = currentTime;
-         return true;
-      }
-      
-      return false;
-   }
-   
-   
-   //+------------------------------------------------------------------+
    //| Convertir un timeframe en string                                |
    //+------------------------------------------------------------------+
    string TimeframeToString(ENUM_TIMEFRAMES tf)
@@ -664,42 +634,6 @@ private:
          case PERIOD_W1:  return "W1";
          case PERIOD_MN1: return "MN1";
          default:         return "UNKNOWN";
-      }
-   }
-   
-   //+------------------------------------------------------------------+
-   //| Mettre à jour les compteurs de positions/ordres                |
-   //+------------------------------------------------------------------+
-   void UpdateCounters()
-   {
-      m_buyTotal = 0;
-      m_sellTotal = 0;
-      
-      // Compter les positions
-      for(int i = PositionsTotal() - 1; i >= 0; i--)
-      {
-         if(m_position.SelectByIndex(i))
-         {
-            if(m_position.Symbol() == m_symbol && m_position.Magic() == m_magicNumber)
-            {
-               if(m_position.PositionType() == POSITION_TYPE_BUY) m_buyTotal++;
-               if(m_position.PositionType() == POSITION_TYPE_SELL) m_sellTotal++;
-            }
-         }
-      }
-      
-      // Compter les ordres en attente
-      for(int i = OrdersTotal() - 1; i >= 0; i--)
-      {
-         ulong ticket = OrderGetTicket(i);
-         if(OrderSelect(ticket))
-         {
-            if(OrderGetString(ORDER_SYMBOL) == m_symbol && OrderGetInteger(ORDER_MAGIC) == m_magicNumber)
-            {
-               if(OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_BUY_STOP) m_buyTotal++;
-               if(OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_SELL_STOP) m_sellTotal++;
-            }
-         }
       }
    }
    
