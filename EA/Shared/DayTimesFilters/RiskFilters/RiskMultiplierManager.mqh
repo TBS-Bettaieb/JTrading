@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property strict
 
-#include "../Logger.mqh"
+#include "../../Logger.mqh"
 
 //+------------------------------------------------------------------+
 //| Structure pour une période de multiplication                    |
