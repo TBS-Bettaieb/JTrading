@@ -111,6 +111,7 @@ int OnInit()
       return INIT_FAILED;
    }
    
+   
    // Construire les plages horaires à partir des sessions
    string hourRanges = BuildHourRanges();
    if(hourRanges != "")
@@ -285,7 +286,7 @@ void CleanupManagers()
 string BuildHourRanges()
 {
    string ranges = "";
-    if ( (Session1_Start < Session1_End) ||(Session2_Start > Session2_End ))
+    if ( (Session1_Start > Session1_End) ||(Session2_Start > Session2_End ))
     {return ranges;}
 
    // Session 1

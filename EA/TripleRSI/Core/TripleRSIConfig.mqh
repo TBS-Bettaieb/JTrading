@@ -89,6 +89,21 @@ struct TripleRSIConfig
          return false;
       }
       
+      // Validation des niveaux RSI - filtrage des périodes trop proches
+      if(rsiPeriod2 - rsiPeriod1 <= 2)
+      {
+         Logger::Error("RSI Period2 - Period1 must be > 2 (current: " + 
+                      IntegerToString(rsiPeriod2 - rsiPeriod1) + ")");
+         return false;
+      }
+      
+      if(rsiPeriod3 - rsiPeriod2 <= 2)
+      {
+         Logger::Error("RSI Period3 - Period2 must be > 2 (current: " + 
+                      IntegerToString(rsiPeriod3 - rsiPeriod2) + ")");
+         return false;
+      }
+      
       if(rsiOversold >= rsiOverbought)
       {
          Logger::Error("Oversold level must be less than overbought level");

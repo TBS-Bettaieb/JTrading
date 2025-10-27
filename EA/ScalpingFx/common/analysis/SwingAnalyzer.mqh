@@ -7,6 +7,7 @@
 
 #include "../../../Shared/TradingEnums.mqh"
 #include "../../../Shared/Logger.mqh"
+#include "../../../Shared/TimeframeUtils.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe pour analyser les points swing                           |
@@ -93,7 +94,7 @@ public:
       }
       
       // Tentative 2 : Recherche sur le timeframe supérieur (+1 niveau)
-      ENUM_TIMEFRAMES nextTF1 = GetNextHigherTimeframe(m_timeframe);
+      ENUM_TIMEFRAMES nextTF1 = TimeframeUtils::GetNextHigherTimeframe(m_timeframe);
       if(nextTF1 != PERIOD_CURRENT)
       {
          Logger::Debug("🔍 FindHigh: No point found. Trying higher timeframe " + EnumToString(nextTF1));
@@ -107,7 +108,7 @@ public:
       }
       
       // Tentative 3 : Recherche sur le timeframe encore supérieur (+2 niveaux)
-      ENUM_TIMEFRAMES nextTF2 = GetNextHigherTimeframe(nextTF1);
+      ENUM_TIMEFRAMES nextTF2 = TimeframeUtils::GetNextHigherTimeframe(nextTF1);
       if(nextTF2 != PERIOD_CURRENT && nextTF1 != PERIOD_CURRENT)
       {
          Logger::Debug("🔍 FindHigh: Still no point. Trying even higher timeframe " + EnumToString(nextTF2));
@@ -141,7 +142,7 @@ public:
       }
       
       // Tentative 2 : Recherche sur le timeframe supérieur (+1 niveau)
-      ENUM_TIMEFRAMES nextTF1 = GetNextHigherTimeframe(m_timeframe);
+      ENUM_TIMEFRAMES nextTF1 = TimeframeUtils::GetNextHigherTimeframe(m_timeframe);
       if(nextTF1 != PERIOD_CURRENT)
       {
          Logger::Debug("🔍 FindLow: No point found. Trying higher timeframe " + EnumToString(nextTF1));
@@ -155,7 +156,7 @@ public:
       }
       
       // Tentative 3 : Recherche sur le timeframe encore supérieur (+2 niveaux)
-      ENUM_TIMEFRAMES nextTF2 = GetNextHigherTimeframe(nextTF1);
+      ENUM_TIMEFRAMES nextTF2 = TimeframeUtils::GetNextHigherTimeframe(nextTF1);
       if(nextTF2 != PERIOD_CURRENT && nextTF1 != PERIOD_CURRENT)
       {
          Logger::Debug("🔍 FindLow: Still no point. Trying even higher timeframe " + EnumToString(nextTF2));
@@ -339,25 +340,6 @@ private:
       }
       
       ChartRedraw(0);
-   }
-   
-   //+------------------------------------------------------------------+
-   //| Obtenir le timeframe supérieur suivant                          |
-   //+------------------------------------------------------------------+
-   ENUM_TIMEFRAMES GetNextHigherTimeframe(ENUM_TIMEFRAMES current)
-   {
-      switch(current)
-      {
-         case PERIOD_M1:  return PERIOD_M5;
-         case PERIOD_M5:  return PERIOD_M15;
-         case PERIOD_M15: return PERIOD_M30;
-         case PERIOD_M30: return PERIOD_H1;
-         case PERIOD_H1:  return PERIOD_H4;
-         case PERIOD_H4:  return PERIOD_D1;
-         case PERIOD_D1:  return PERIOD_W1;
-         case PERIOD_W1:  return PERIOD_MN1;
-         default:         return PERIOD_CURRENT;
-      }
    }
    
    //+------------------------------------------------------------------+
