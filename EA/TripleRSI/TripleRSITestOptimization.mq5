@@ -8,6 +8,18 @@
 #property strict
 
 //+------------------------------------------------------------------+
+//| Enumérations                                                     |
+//+------------------------------------------------------------------+
+enum ENUM_CONFLUENCE_MODE
+{
+   CONFLUENCE_AUTO,        // Configuration automatique
+   CONFLUENCE_SCALPING,    // Mode scalping
+   CONFLUENCE_SWING,       // Mode swing
+   CONFLUENCE_CONSERVATIVE, // Mode conservative
+   CONFLUENCE_AGGRESSIVE   // Mode agressif
+};
+
+//+------------------------------------------------------------------+
 //| Paramètres d'entrée utilisateur                                  |
 //+------------------------------------------------------------------+
 input group "=== SYMBOLES & TIMEFRAME ==="
@@ -56,6 +68,35 @@ input bool InpSendNotif = false;    // Envoyer notifications
 input group "=== ADVANCED ==="
 input int InpMagicNumber = 123456;  // Magic Number
 input int InpLogLevel = 3; // Niveau de log (0=None, 1=Error, 2=Warning, 3=Info, 4=Debug)
+
+input group "=== CONFLUENCE CONFIGURATION ==="
+input bool InpEnableConfluence = true;                    // Activer système de confluences
+input ENUM_CONFLUENCE_MODE InpConfluenceMode = CONFLUENCE_AUTO; // Mode de confluence
+input int InpMinConfluenceScore = 3;                      // Score minimum requis
+input bool InpUseStrictMode = false;                      // Mode strict
+
+input group "=== VOLUME FILTERS ==="
+input bool InpEnableVolumeFilter = true;                  // Activer filtre volume
+input double InpMinVolumeMultiplier = 1.2;               // Multiplicateur volume minimum
+
+input group "=== SUPPORT/RESISTANCE FILTERS ==="
+input bool InpEnableEMA200Filter = true;                  // Activer filtre EMA200
+input double InpEMA200Tolerance = 5.0;                    // Tolérance EMA200 (points)
+
+input group "=== MACD FILTERS ==="
+input bool InpEnableMACDFilter = true;                    // Activer filtre MACD
+input bool InpUseMACDCrossover = false;                    // Utiliser croisement MACD
+input bool InpUseMACDState = true;                        // Utiliser état MACD simple
+
+input group "=== OSCILLATOR FILTERS ==="
+input bool InpEnableStochasticFilter = true;              // Activer filtre Stochastique
+
+input group "=== PRICE ACTION FILTERS ==="
+input bool InpEnablePsychologicalLevels = true;          // Activer niveaux psychologiques
+
+input group "=== MULTI-TIMEFRAME ==="
+input bool InpEnableMultiTimeframe = true;                // Activer multi-timeframe
+input ENUM_TIMEFRAMES InpHigherTimeframe = PERIOD_M15;    // Timeframe supérieur
 
 //+------------------------------------------------------------------+
 //| Includes                                                         |
@@ -160,6 +201,27 @@ int OnInit()
    config.useAlerts = InpUseAlerts;
    config.sendNotifications = InpSendNotif;
    config.logLevel = (ENUM_LOG_LEVEL)InpLogLevel;
+   
+   // Configuration des confluences
+   config.enableConfluence = InpEnableConfluence;
+   config.confluenceMode = ConfluenceModeToString(InpConfluenceMode);
+   config.minConfluenceScore = InpMinConfluenceScore;
+   config.useStrictMode = InpUseStrictMode;
+   
+   config.enableVolumeFilter = InpEnableVolumeFilter;
+   config.minVolumeMultiplier = InpMinVolumeMultiplier;
+   
+   config.enableEMA200Filter = InpEnableEMA200Filter;
+   config.ema200Tolerance = InpEMA200Tolerance;
+   
+   config.enableMACDFilter = InpEnableMACDFilter;
+   config.useMACDCrossover = InpUseMACDCrossover;
+   config.useMACDState = InpUseMACDState;
+   
+   config.enableStochasticFilter = InpEnableStochasticFilter;
+   config.enablePsychologicalLevels = InpEnablePsychologicalLevels;
+   config.enableMultiTimeframe = InpEnableMultiTimeframe;
+   config.higherTimeframe = InpHigherTimeframe;
    
    // Valider la configuration
    if(!config.Validate())
@@ -349,6 +411,12 @@ void DisplayConfigurationInfo(TripleRSIConfig &config)
    string sessionsStr = BuildHourRanges();
    string daysStr = BuildDayRanges();
    
+   string confluenceStr = "Disabled";
+   if(config.enableConfluence)
+   {
+      confluenceStr = "ON (" + config.confluenceMode + " - Score: " + IntegerToString(config.minConfluenceScore) + ")";
+   }
+   
    string info = StringFormat(
       "=== %s ===\n" +
       "Symbols: %s\n" +
@@ -359,6 +427,7 @@ void DisplayConfigurationInfo(TripleRSIConfig &config)
       "RSI Levels: %d/%d\n" +
       "TP Ratio: %.1fx\n" +
       "Trailing Stop: %s\n" +
+      "Confluence: %s\n" +
       "Sessions: %s\n" +
       "Days: %s\n" +
       "Alerts: %s\n" +
@@ -372,6 +441,7 @@ void DisplayConfigurationInfo(TripleRSIConfig &config)
       config.rsiOversold, config.rsiOverbought,
       config.tpRatio,
       trailingStr,
+      confluenceStr,
       sessionsStr,
       daysStr,
       alertsStr,
@@ -457,4 +527,20 @@ void ShowDetailedInfo()
    string traders = GetTradersInfo();
    
    Comment(stats + "\n\n" + traders);
+}
+
+//+------------------------------------------------------------------+
+//| Fonction utilitaire pour convertir l'enum en string             |
+//+------------------------------------------------------------------+
+string ConfluenceModeToString(ENUM_CONFLUENCE_MODE mode)
+{
+   switch(mode)
+   {
+      case CONFLUENCE_AUTO: return "AUTO";
+      case CONFLUENCE_SCALPING: return "SCALPING";
+      case CONFLUENCE_SWING: return "SWING";
+      case CONFLUENCE_CONSERVATIVE: return "CONSERVATIVE";
+      case CONFLUENCE_AGGRESSIVE: return "AGGRESSIVE";
+      default: return "AUTO";
+   }
 }

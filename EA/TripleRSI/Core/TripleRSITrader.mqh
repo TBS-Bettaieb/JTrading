@@ -49,6 +49,10 @@ private:
    double m_totalProfit;
    datetime m_lastTradeTime;
    
+   // Configuration des confluences
+   bool m_enableConfluence;
+   string m_confluenceMode;
+   
    // Gestion des alertes
    bool m_useAlerts;
    bool m_sendNotifications;
@@ -63,7 +67,9 @@ public:
                     int tslTrigger, int tslPoints,
                     int rsiP1, int rsiP2, int rsiP3,
                     int oversold, int overbought,
-                    bool useAlerts = true, bool sendNotif = false)
+                    bool useAlerts = true, bool sendNotif = false,
+                    // Nouveaux paramètres de confluence
+                    bool enableConfluence = true, string confluenceMode = "AUTO")
    {
       m_symbol = symbol;
       m_magic = magic;
@@ -77,6 +83,10 @@ public:
       m_tslPoints = tslPoints;
       m_useAlerts = useAlerts;
       m_sendNotifications = sendNotif;
+      
+      // Configuration des confluences
+      m_enableConfluence = enableConfluence;
+      m_confluenceMode = confluenceMode;
       
       // Initialiser statistiques
       m_totalTrades = 0;
@@ -125,8 +135,15 @@ public:
          m_commissionManager = NULL;
       }
       
+      // Configuration des confluences
+      if(m_enableConfluence)
+      {
+         SetupConfluenceConfiguration(m_confluenceMode, symbol);
+      }
+      
       Logger::Info("TripleRSI Trader created for " + symbol + " (Magic: " + IntegerToString(magic) + 
-                   ") | Dynamic TSL: " + (m_useDynamicTrailing ? "ON" : "OFF"));
+                   ") | Dynamic TSL: " + (m_useDynamicTrailing ? "ON" : "OFF") +
+                   " | Confluence: " + (m_enableConfluence ? m_confluenceMode : "OFF"));
    }
    
    //--- Destructor
@@ -167,6 +184,52 @@ public:
       Logger::Debug("TripleRSI Trader destroyed for " + m_symbol);
    }
    
+   //--- Configuration des confluences
+   void SetupConfluenceConfiguration(string confluenceMode, string symbol)
+   {
+      if(confluenceMode == "AUTO")
+      {
+         // Configuration automatique selon le symbole
+         if(StringFind(symbol, "US100") >= 0 || StringFind(symbol, "US30") >= 0)
+         {
+            ConfluenceFilters::SetScalpingMode(symbol);
+            Logger::Info("Auto-configured SCALPING mode for " + symbol);
+         }
+         else if(StringFind(symbol, "EURUSD") >= 0 || StringFind(symbol, "GBPUSD") >= 0)
+         {
+            ConfluenceFilters::SetSwingMode(symbol);
+            Logger::Info("Auto-configured SWING mode for " + symbol);
+         }
+         else
+         {
+            ConfluenceFilters::SetConservativeMode(symbol);
+            Logger::Info("Auto-configured CONSERVATIVE mode for " + symbol);
+         }
+      }
+      else if(confluenceMode == "SCALPING")
+      {
+         ConfluenceFilters::SetScalpingMode(symbol);
+      }
+      else if(confluenceMode == "SWING")
+      {
+         ConfluenceFilters::SetSwingMode(symbol);
+      }
+      else if(confluenceMode == "CONSERVATIVE")
+      {
+         ConfluenceFilters::SetConservativeMode(symbol);
+      }
+      else if(confluenceMode == "AGGRESSIVE")
+      {
+         ConfluenceFilters::SetAggressiveMode(symbol);
+      }
+      
+      // Afficher la configuration appliquée
+      ConfluenceConfig config = ConfluenceFilters::GetConfluenceConfig();
+      Logger::Info("Confluence configuration for " + symbol + ":");
+      Logger::Info("  Mode: " + config.presetMode);
+      Logger::Info("  Min Score: " + IntegerToString(config.minConfluenceScore) + "/" + IntegerToString(config.CalculateMaxScore()));
+   }
+   
    //--- Fonction OnTick principale
    void OnTick()
    {
@@ -193,21 +256,83 @@ public:
       // 2. Détecter alignement
       ENUM_RSI_SIGNAL signal = m_alignDetector.GetSignal(rsi1, rsi2, rsi3, false);
       
-      // 3. Si signal valide et pas de position, valider entrée et ouvrir position
+      // 3. Si signal valide et pas de position, valider entrée ET confluences
       if(signal == RSI_SIGNAL_BUY && !HasPosition())
       {
          double slPrice;
+         int confluenceScore = 0;  // Initialiser à 0
+         
+         // Valider règles d'entrée de base
          if(m_entryValidator.ValidateBuyEntry(m_symbol, m_timeframe, 5, slPrice))
          {
-            OpenBuyPosition(slPrice);
+            // Valider confluences paramétrables si activé
+            bool confluenceOK = true;
+            if(m_enableConfluence)
+            {
+               confluenceOK = ConfluenceFilters::CheckParametricConfluence(m_symbol, m_timeframe, true, confluenceScore);
+            }
+            
+            if(confluenceOK)
+            {
+               OpenBuyPosition(slPrice);
+               
+               // Afficher informations de confluence
+               if(m_enableConfluence)
+               {
+                  ConfluenceConfig config = ConfluenceFilters::GetConfluenceConfig();
+                  Logger::Signal(true, "✅ Position BUY ouverte - Score confluence: " + 
+                                 IntegerToString(confluenceScore) + "/" + IntegerToString(config.CalculateMaxScore()) + 
+                                 " (Mode: " + config.presetMode + ")");
+               }
+            }
+            else
+            {
+               if(m_enableConfluence)
+               {
+                  ConfluenceConfig config = ConfluenceFilters::GetConfluenceConfig();
+                  Logger::Warning("❌ Signal BUY rejeté - Score confluence: " + 
+                                 IntegerToString(confluenceScore) + "/" + IntegerToString(config.CalculateMaxScore()));
+               }
+            }
          }
       }
       else if(signal == RSI_SIGNAL_SELL && !HasPosition())
       {
          double slPrice;
+         int confluenceScore = 0;  // Initialiser à 0
+         
+         // Valider règles d'entrée de base
          if(m_entryValidator.ValidateSellEntry(m_symbol, m_timeframe, 5, slPrice))
          {
-            OpenSellPosition(slPrice);
+            // Valider confluences paramétrables si activé
+            bool confluenceOK = true;
+            if(m_enableConfluence)
+            {
+               confluenceOK = ConfluenceFilters::CheckParametricConfluence(m_symbol, m_timeframe, false, confluenceScore);
+            }
+            
+            if(confluenceOK)
+            {
+               OpenSellPosition(slPrice);
+               
+               // Afficher informations de confluence
+               if(m_enableConfluence)
+               {
+                  ConfluenceConfig config = ConfluenceFilters::GetConfluenceConfig();
+                  Logger::Signal(true, "✅ Position SELL ouverte - Score confluence: " + 
+                                 IntegerToString(confluenceScore) + "/" + IntegerToString(config.CalculateMaxScore()) + 
+                                 " (Mode: " + config.presetMode + ")");
+               }
+            }
+            else
+            {
+               if(m_enableConfluence)
+               {
+                  ConfluenceConfig config = ConfluenceFilters::GetConfluenceConfig();
+                  Logger::Warning("❌ Signal SELL rejeté - Score confluence: " + 
+                                 IntegerToString(confluenceScore) + "/" + IntegerToString(config.CalculateMaxScore()));
+               }
+            }
          }
       }
       

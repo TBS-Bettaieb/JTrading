@@ -101,7 +101,10 @@ public:
          Logger::Warning("Chart Manager initialization failed - continuing anyway");
       }
       
-      // 7. Afficher le résumé d'initialisation
+      // 7. Afficher la configuration des confluences
+      PrintConfluenceConfiguration();
+      
+      // 8. Afficher le résumé d'initialisation
       PrintInitializationSummary();
       
       Logger::Success("✅ Triple RSI Bot initialization completed!");
@@ -229,7 +232,9 @@ private:
             m_config.tslTriggerPoints, m_config.tslPoints,
             m_config.rsiPeriod1, m_config.rsiPeriod2, m_config.rsiPeriod3,
             m_config.rsiOversold, m_config.rsiOverbought,
-            m_config.useAlerts, m_config.sendNotifications
+            m_config.useAlerts, m_config.sendNotifications,
+            // Nouveaux paramètres de confluence
+            m_config.enableConfluence, m_config.confluenceMode
          );
          
          if(m_symbolTraders[i] == NULL)
@@ -298,6 +303,32 @@ private:
                       " | Spread: " + DoubleToString(spread, 0));
          Logger::Info("      Lots: " + DoubleToString(minLot, 2) + 
                       " - " + DoubleToString(maxLot, 2));
+      }
+      
+      Logger::Info("═══════════════════════════════════════");
+   }
+   
+   //--- Afficher la configuration des confluences
+   void PrintConfluenceConfiguration()
+   {
+      Logger::Info("═══════════════════════════════════════");
+      Logger::Info("🎯 CONFLUENCE CONFIGURATION");
+      Logger::Info("═══════════════════════════════════════");
+      Logger::Info("Confluence System: " + (m_config.enableConfluence ? "ENABLED" : "DISABLED"));
+      
+      if(m_config.enableConfluence)
+      {
+         Logger::Info("Mode: " + m_config.confluenceMode);
+         Logger::Info("Min Score: " + IntegerToString(m_config.minConfluenceScore));
+         Logger::Info("Strict Mode: " + (m_config.useStrictMode ? "ON" : "OFF"));
+         
+         Logger::Info("Active Filters:");
+         Logger::Info("  Volume: " + (m_config.enableVolumeFilter ? "ON" : "OFF"));
+         Logger::Info("  EMA200: " + (m_config.enableEMA200Filter ? "ON" : "OFF"));
+         Logger::Info("  MACD: " + (m_config.enableMACDFilter ? "ON" : "OFF"));
+         Logger::Info("  Stochastic: " + (m_config.enableStochasticFilter ? "ON" : "OFF"));
+         Logger::Info("  Psychological: " + (m_config.enablePsychologicalLevels ? "ON" : "OFF"));
+         Logger::Info("  Multi-timeframe: " + (m_config.enableMultiTimeframe ? "ON" : "OFF"));
       }
       
       Logger::Info("═══════════════════════════════════════");

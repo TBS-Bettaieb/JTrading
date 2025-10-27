@@ -47,6 +47,35 @@ struct TripleRSIConfig
    // Logging
    ENUM_LOG_LEVEL    logLevel;
    
+   //=== CONFLUENCE CONFIGURATION ===
+   bool              enableConfluence;        // Activer le système de confluences
+   string            confluenceMode;         // Mode de confluence ("AUTO", "SCALPING", "SWING", "CONSERVATIVE", "AGGRESSIVE")
+   int               minConfluenceScore;     // Score minimum requis (ex: 3)
+   bool              useStrictMode;         // Mode strict (tous les filtres requis)
+   
+   // Volume Filters
+   bool              enableVolumeFilter;     // Activer filtre volume
+   double            minVolumeMultiplier;    // Multiplicateur volume minimum (ex: 1.2)
+   
+   // Support/Resistance Filters  
+   bool              enableEMA200Filter;     // Activer filtre EMA200
+   double            ema200Tolerance;       // Tolérance EMA200 en points (ex: 5.0)
+   
+   // MACD Filters
+   bool              enableMACDFilter;       // Activer filtre MACD
+   bool              useMACDCrossover;      // Utiliser croisement MACD
+   bool              useMACDState;          // Utiliser état MACD simple
+   
+   // Oscillator Filters
+   bool              enableStochasticFilter; // Activer filtre Stochastique
+   
+   // Price Action Filters
+   bool              enablePsychologicalLevels; // Activer niveaux psychologiques
+   
+   // Multi-timeframe
+   bool              enableMultiTimeframe; // Activer multi-timeframe
+   ENUM_TIMEFRAMES   higherTimeframe;      // Timeframe supérieur (ex: PERIOD_M15)
+   
    // Constructor par défaut
    TripleRSIConfig()
    {
@@ -78,6 +107,27 @@ struct TripleRSIConfig
       sendNotifications = false;
       
       logLevel = LOG_INFO;
+      
+      // Configuration des confluences par défaut
+      enableConfluence = true;
+      confluenceMode = "AUTO";
+      minConfluenceScore = 3;
+      useStrictMode = false;
+      
+      enableVolumeFilter = true;
+      minVolumeMultiplier = 1.2;
+      
+      enableEMA200Filter = true;
+      ema200Tolerance = 5.0;
+      
+      enableMACDFilter = true;
+      useMACDCrossover = false;
+      useMACDState = true;
+      
+      enableStochasticFilter = true;
+      enablePsychologicalLevels = true;
+      enableMultiTimeframe = true;
+      higherTimeframe = PERIOD_M15;
    }
    
    // Validation de la configuration
@@ -151,6 +201,22 @@ struct TripleRSIConfig
             Logger::Info("TSL Cost Multiplier: " + DoubleToString(tslCostMultiplier, 1));
             Logger::Info("TSL Min Trigger: " + IntegerToString(tslMinTriggerPoints) + " pts");
          }
+      }
+      
+      // Affichage configuration confluences
+      Logger::Info("Confluence System: " + (enableConfluence ? "ENABLED" : "DISABLED"));
+      if(enableConfluence)
+      {
+         Logger::Info("Confluence Mode: " + confluenceMode);
+         Logger::Info("Min Score: " + IntegerToString(minConfluenceScore));
+         Logger::Info("Strict Mode: " + (useStrictMode ? "ON" : "OFF"));
+         Logger::Info("Active Filters:");
+         Logger::Info("  Volume: " + (enableVolumeFilter ? "ON" : "OFF"));
+         Logger::Info("  EMA200: " + (enableEMA200Filter ? "ON" : "OFF"));
+         Logger::Info("  MACD: " + (enableMACDFilter ? "ON" : "OFF"));
+         Logger::Info("  Stochastic: " + (enableStochasticFilter ? "ON" : "OFF"));
+         Logger::Info("  Psychological: " + (enablePsychologicalLevels ? "ON" : "OFF"));
+         Logger::Info("  Multi-timeframe: " + (enableMultiTimeframe ? "ON" : "OFF"));
       }
       Logger::Info("================================");
    }
