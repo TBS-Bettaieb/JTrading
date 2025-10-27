@@ -13,6 +13,7 @@
 #include "../Logic/RSI_Calculator.mqh"
 #include "../Logic/RSI_AlignmentDetector.mqh"
 #include "../Logic/EntryRulesValidator.mqh"
+#include "../Logic/ConfluenceFilters.mqh"
 
 //+------------------------------------------------------------------+
 //| Triple RSI Trader Class                                          |
