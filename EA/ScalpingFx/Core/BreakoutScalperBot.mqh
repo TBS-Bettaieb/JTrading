@@ -7,14 +7,14 @@
 #include <Trade\Trade.mqh>
 #include "../../../EA/Shared/TradingEnums.mqh"
 #include "../../../EA/Shared/TradingUtils.mqh"
-#include "../../../EA/Shared/TradingTimeManager.mqh"
+#include "../../../EA/Shared/DayTimesFilters/TradingTimeManager.mqh"
 #include "../../../EA/Shared/ChartManager.mqh"
 #include "../../../EA/Shared/NewsFilterManager.mqh"
 #include "../../../EA/Shared/Logger.mqh"
 #include "../common/config/BotConfig.mqh"
 #include "BreakoutScalperTrader.mqh"
 #include "BreakoutScalperManager.mqh"
-#include "../../Shared/Filters/RiskMultiplierManager.mqh"
+#include "../../../EA/Shared/DayTimesFilters/RiskFilters/RiskMultiplierManager.mqh"
 
 //+------------------------------------------------------------------+
 //| Main Bot Class                                                   |

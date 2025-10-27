@@ -15,14 +15,14 @@
 #property strict
 
 // Include ChartManager pour utiliser ses méthodes
-#include "ChartManager.mqh"
+#include "../ChartManager.mqh"
 
 // Include des filtres modulaires - ORDRE IMPORTANT pour les énumérations
-#include "Filters/SessionFilter.mqh"     // Doit être en premier pour ENUM_TRADING_SESSION
-#include "Filters/NewsFilter.mqh"        // Doit être en deuxième pour ENUM_NEWS_SEPARATOR
-#include "Filters/TimeRangeFilter.mqh"
-#include "Filters/DayRangeFilter.mqh"
-#include "Filters/TimeMinuteFilter.mqh"
+#include "SessionFilters/SessionFilter.mqh"     // Doit être en premier pour ENUM_TRADING_SESSION
+#include "NewsFilters/NewsFilter.mqh"        // Doit être en deuxième pour ENUM_NEWS_SEPARATOR
+#include "TimeFilters/TimeRangeFilter.mqh"
+#include "DayFilters/DayRangeFilter.mqh"
+#include "TimeFilters/TimeMinuteFilter.mqh"
 
 //+------------------------------------------------------------------+
 //| Énumération des états du trading                                |

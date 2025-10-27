@@ -21,10 +21,12 @@
 //| ✅ [EA INTEGRATION] Ajout 4 buffers de signaux pour l'EA          |
 //| ✅ [FIX] Correction erreur "Sous-fenêtre RSI non trouvée!" en mode testeur |
 //| ✅ [FIX] Correction détection divergences en temps réel (nouvelles barres) |
+//| ✅ [CRITICAL] Validation niveaux RSI dans détection divergences   |
+//| ✅ [FEATURE] Ajout paramètre InpShowLabels pour debug messages    |
 //+------------------------------------------------------------------+
 #property copyright "RSI Divergence Trading System"
 #property link      ""
-#property version   "2.14"
+#property version   "2.15"
 #property indicator_separate_window
 #property indicator_buffers 11  // ✅ EA INTEGRATION: 11 buffers total
 #property indicator_plots   8   // ✅ EA INTEGRATION: 7 plots visibles + 1 signal invisible (buffer 7)
@@ -647,6 +649,14 @@ void CheckBullishDivergence(int currentBar, const datetime &time[], const double
    
    double pivotRSI = RSIBuffer[checkPos];
    
+   // ✅ FIX: Validation du niveau RSI - Le pivot doit être dans la zone de survente
+   if(pivotRSI > InpLowerLevel)
+   {
+      if(InpShowLabels)
+         Print("⚠️ Pivot RSI non conforme (Bullish) : ", DoubleToString(pivotRSI, 2), " > ", InpLowerLevel);
+      return;
+   }
+   
    // ✅ FIX PINE SCRIPT: Recherche du pivot précédent - SIMPLIFIER
    int prevPivotBar = -1;
    double prevPivotRSI = 0;
@@ -673,6 +683,14 @@ void CheckBullishDivergence(int currentBar, const datetime &time[], const double
    
    if(prevPivotBar < 0) 
       return;
+   
+   // ✅ FIX: Validation du niveau RSI du pivot précédent aussi
+   if(prevPivotRSI > InpLowerLevel)
+   {
+      if(InpShowLabels)
+         Print("⚠️ Pivot précédent RSI non conforme (Bullish) : ", DoubleToString(prevPivotRSI, 2), " > ", InpLowerLevel);
+      return;
+   }
    
    // ✅ FIX PINE SCRIPT: Calcul correct de la distance (array en série inversée)
    int barsSincePivot = prevPivotBar - checkPos;
@@ -770,6 +788,14 @@ void CheckBearishDivergence(int currentBar, const datetime &time[], const double
    
    double pivotRSI = RSIBuffer[checkPos];
    
+   // ✅ FIX: Validation du niveau RSI - Le pivot doit être dans la zone de surachat
+   if(pivotRSI < InpUpperLevel)
+   {
+      if(InpShowLabels)
+         Print("⚠️ Pivot RSI non conforme (Bearish) : ", DoubleToString(pivotRSI, 2), " < ", InpUpperLevel);
+      return;
+   }
+   
    // ✅ FIX PINE SCRIPT: Recherche simplifiée du pivot précédent
    int prevPivotBar = -1;
    double prevPivotRSI = 0;
@@ -795,6 +821,14 @@ void CheckBearishDivergence(int currentBar, const datetime &time[], const double
    
    if(prevPivotBar < 0) 
       return;
+   
+   // ✅ FIX: Validation du niveau RSI du pivot précédent aussi
+   if(prevPivotRSI < InpUpperLevel)
+   {
+      if(InpShowLabels)
+         Print("⚠️ Pivot précédent RSI non conforme (Bearish) : ", DoubleToString(prevPivotRSI, 2), " < ", InpUpperLevel);
+      return;
+   }
    
    // ✅ FIX PINE SCRIPT: Calcul correct de la distance
    int barsSincePivot = prevPivotBar - checkPos;
@@ -897,6 +931,14 @@ void CheckHiddenBullishDivergence(int currentBar, const datetime &time[], const 
    
    double pivotRSI = RSIBuffer[checkPos];
    
+   // ✅ FIX: Validation du niveau RSI - Le pivot doit être dans la zone de survente
+   if(pivotRSI > InpLowerLevel)
+   {
+      if(InpShowLabels)
+         Print("⚠️ Pivot RSI non conforme (Hidden Bullish) : ", DoubleToString(pivotRSI, 2), " > ", InpLowerLevel);
+      return;
+   }
+   
    // Recherche du pivot précédent
    int prevPivotBar = -1;
    double prevPivotRSI = 0;
@@ -921,6 +963,14 @@ void CheckHiddenBullishDivergence(int currentBar, const datetime &time[], const 
    
    if(prevPivotBar < 0) 
       return;
+   
+   // ✅ FIX: Validation du niveau RSI du pivot précédent aussi
+   if(prevPivotRSI > InpLowerLevel)
+   {
+      if(InpShowLabels)
+         Print("⚠️ Pivot précédent RSI non conforme (Hidden Bullish) : ", DoubleToString(prevPivotRSI, 2), " > ", InpLowerLevel);
+      return;
+   }
    
    // Calcul de la distance
    int barsSincePivot = prevPivotBar - checkPos;
@@ -1019,6 +1069,14 @@ void CheckHiddenBearishDivergence(int currentBar, const datetime &time[], const 
    
    double pivotRSI = RSIBuffer[checkPos];
    
+   // ✅ FIX: Validation du niveau RSI - Le pivot doit être dans la zone de surachat
+   if(pivotRSI < InpUpperLevel)
+   {
+      if(InpShowLabels)
+         Print("⚠️ Pivot RSI non conforme (Hidden Bearish) : ", DoubleToString(pivotRSI, 2), " < ", InpUpperLevel);
+      return;
+   }
+   
    // Recherche du pivot précédent
    int prevPivotBar = -1;
    double prevPivotRSI = 0;
@@ -1043,6 +1101,14 @@ void CheckHiddenBearishDivergence(int currentBar, const datetime &time[], const 
    
    if(prevPivotBar < 0) 
       return;
+   
+   // ✅ FIX: Validation du niveau RSI du pivot précédent aussi
+   if(prevPivotRSI < InpUpperLevel)
+   {
+      if(InpShowLabels)
+         Print("⚠️ Pivot précédent RSI non conforme (Hidden Bearish) : ", DoubleToString(prevPivotRSI, 2), " < ", InpUpperLevel);
+      return;
+   }
    
    // Calcul de la distance
    int barsSincePivot = prevPivotBar - checkPos;
