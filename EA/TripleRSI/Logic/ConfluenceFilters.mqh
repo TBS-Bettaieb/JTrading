@@ -183,4 +183,94 @@ static bool CheckCompleteConfluence(string symbol, ENUM_TIMEFRAMES timeframe, bo
 {
    return TrendFiltersManager::CheckCompleteConfluence(symbol, timeframe, isBuy, confluenceScore);
 }
+
+//+------------------------------------------------------------------+
+//| Méthodes de configuration des confluences                      |
+//+------------------------------------------------------------------+
+
+//--- Configuration des confluences
+static void SetConfluenceConfig(ConfluenceConfig &config)
+{
+   TrendFiltersManager::SetConfluenceConfig(config);
+}
+
+static ConfluenceConfig GetConfluenceConfig()
+{
+   return TrendFiltersManager::GetConfluenceConfig();
+}
+
+//--- Méthode de confluence paramétrable
+static bool CheckParametricConfluence(string symbol, ENUM_TIMEFRAMES timeframe, bool isBuy, int &confluenceScore)
+{
+   return TrendFiltersManager::CheckParametricConfluence(symbol, timeframe, isBuy, confluenceScore);
+}
+
+//--- Méthodes de configuration rapide
+static void SetScalpingMode(string symbol = "")
+{
+   ConfluenceConfig config;
+   config.SetScalpingMode(symbol);
+   SetConfluenceConfig(config);
+}
+
+static void SetSwingMode(string symbol = "")
+{
+   ConfluenceConfig config;
+   config.SetSwingMode(symbol);
+   SetConfluenceConfig(config);
+}
+
+static void SetConservativeMode(string symbol = "")
+{
+   ConfluenceConfig config;
+   config.SetConservativeMode(symbol);
+   SetConfluenceConfig(config);
+}
+
+static void SetAggressiveMode(string symbol = "")
+{
+   ConfluenceConfig config;
+   config.SetAggressiveMode(symbol);
+   SetConfluenceConfig(config);
+}
+
+//--- Méthode de configuration personnalisée
+static void SetCustomConfig(bool enableVolume = true, bool enableEMA200 = true, bool enableMACD = true,
+                           bool enableStochastic = true, bool enableMultiTimeframe = true, 
+                           bool enablePsychological = true, int minScore = 3)
+{
+   ConfluenceConfig config;
+   
+   config.enableVolumeFilter = enableVolume;
+   config.enableEMA200Filter = enableEMA200;
+   config.enableMACDFilter = enableMACD;
+   config.enableStochasticFilter = enableStochastic;
+   config.enableMultiTimeframe = enableMultiTimeframe;
+   config.enablePsychologicalLevels = enablePsychological;
+   config.minConfluenceScore = minScore;
+   
+   config.presetMode = "CUSTOM";
+   
+   SetConfluenceConfig(config);
+}
+
+//--- Méthode pour obtenir les informations de configuration
+static string GetConfigInfo()
+{
+   ConfluenceConfig config = GetConfluenceConfig();
+   string info = "=== CONFLUENCE CONFIGURATION INFO ===\n";
+   info += "Mode: " + config.presetMode + "\n";
+   info += "Symbol Type: " + config.symbolType + "\n";
+   info += "Min Score: " + IntegerToString(config.minConfluenceScore) + "/" + IntegerToString(config.CalculateMaxScore()) + "\n";
+   info += "Strict Mode: " + (config.useStrictMode ? "ON" : "OFF") + "\n";
+   info += "Volume Filter: " + (config.enableVolumeFilter ? "ON" : "OFF") + "\n";
+   info += "EMA200 Filter: " + (config.enableEMA200Filter ? "ON" : "OFF") + "\n";
+   info += "MACD Filter: " + (config.enableMACDFilter ? "ON" : "OFF") + "\n";
+   info += "Stochastic Filter: " + (config.enableStochasticFilter ? "ON" : "OFF") + "\n";
+   info += "Multi-timeframe: " + (config.enableMultiTimeframe ? "ON" : "OFF") + "\n";
+   info += "Psychological Levels: " + (config.enablePsychologicalLevels ? "ON" : "OFF") + "\n";
+   info += "=====================================";
+   
+   return info;
+}
 };

@@ -22,12 +22,16 @@
 #include "SupportResistanceFilters.mqh"
 #include "OscillatorFilters.mqh"
 #include "PriceActionFilters.mqh"
+#include "ConfluenceConfig.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe manager unifiée pour tous les filtres de tendance        |
 //+------------------------------------------------------------------+
 class TrendFiltersManager
 {
+private:
+   static ConfluenceConfig s_config;
+
 public:
 //+------------------------------------------------------------------+
 //| Détecte le croisement haussier du MACD sur un timeframe donné.   |
@@ -266,4 +270,159 @@ static bool CheckCompleteConfluence(string symbol, ENUM_TIMEFRAMES timeframe, bo
    
    return confluenceOK;
 }
+
+//+------------------------------------------------------------------+
+//| Méthodes de configuration des confluences                      |
+//+------------------------------------------------------------------+
+
+//--- Configuration des confluences
+static void SetConfluenceConfig(ConfluenceConfig &config)
+{
+   s_config = config;
+   Print("TrendFiltersManager: Confluence configuration updated - Mode: ", config.presetMode);
+}
+
+static ConfluenceConfig GetConfluenceConfig()
+{
+   return s_config;
+}
+
+//--- Méthode de confluence paramétrable
+static bool CheckParametricConfluence(string symbol, ENUM_TIMEFRAMES timeframe, bool isBuy, int &confluenceScore)
+{
+   confluenceScore = 0;
+   
+   // 1. MACD confluence (si activé)
+   if(s_config.enableMACDFilter)
+   {
+      bool macdOK = false;
+      if(s_config.useMACDCrossover)
+      {
+         macdOK = isBuy ? CheckMACDBullishCrossover(symbol, timeframe, 
+                                                   s_config.macdFastPeriod,
+                                                   s_config.macdSlowPeriod,
+                                                   s_config.macdSignalPeriod) :
+                          MACDFilters::CheckMACDBearishCrossover(symbol, timeframe,
+                                                                s_config.macdFastPeriod,
+                                                                s_config.macdSlowPeriod,
+                                                                s_config.macdSignalPeriod);
+      }
+      else if(s_config.useMACDState)
+      {
+         macdOK = isBuy ? CheckMACDBullish(symbol, timeframe,
+                                           s_config.macdFastPeriod,
+                                           s_config.macdSlowPeriod,
+                                           s_config.macdSignalPeriod) :
+                          MACDFilters::CheckMACDBearish(symbol, timeframe,
+                                                        s_config.macdFastPeriod,
+                                                        s_config.macdSlowPeriod,
+                                                        s_config.macdSignalPeriod);
+      }
+      
+      if(macdOK) confluenceScore++;
+   }
+   
+   // 2. Multi-timeframe confluence (si activé)
+   if(s_config.enableMultiTimeframe)
+   {
+      bool trendOK = false;
+      if(s_config.useAdvancedTrend)
+      {
+         trendOK = CheckHigherTimeframeTrendAdvanced(symbol, s_config.higherTimeframe, isBuy);
+      }
+      else
+      {
+         trendOK = CheckHigherTimeframeTrend(symbol, s_config.higherTimeframe, isBuy);
+      }
+      
+      if(trendOK) confluenceScore++;
+   }
+   
+   // 3. Volume confluence (si activé)
+   if(s_config.enableVolumeFilter)
+   {
+      bool volumeOK = isBuy ? CheckBuyVolumeConfluence(symbol, timeframe, s_config.minVolumeMultiplier) :
+                              CheckSellVolumeConfluence(symbol, timeframe, s_config.minVolumeMultiplier);
+      
+      if(volumeOK) confluenceScore++;
+   }
+   
+   // 4. EMA200 confluence (si activé)
+   if(s_config.enableEMA200Filter)
+   {
+      bool ema200OK = CheckEMA200Confluence(symbol, timeframe, isBuy);
+      
+      if(ema200OK) confluenceScore++;
+   }
+   
+   // 5. Stochastique confluence (si activé)
+   if(s_config.enableStochasticFilter)
+   {
+      bool stochOK = CheckStochasticConfluence(symbol, timeframe, isBuy);
+      
+      if(stochOK) confluenceScore++;
+   }
+   
+   // 6. Niveaux psychologiques confluence (si activé)
+   if(s_config.enablePsychologicalLevels)
+   {
+      bool psychologicalOK = CheckPsychologicalLevels(symbol, s_config.psychologicalStep, isBuy);
+      
+      if(psychologicalOK) confluenceScore++;
+   }
+   
+   // Validation selon le mode
+   bool confluenceOK = false;
+   if(s_config.useStrictMode)
+   {
+      // Mode strict : tous les filtres activés doivent être validés
+      int maxPossibleScore = s_config.CalculateMaxScore();
+      confluenceOK = (confluenceScore == maxPossibleScore);
+   }
+   else
+   {
+      // Mode normal : score minimum requis
+      confluenceOK = (confluenceScore >= s_config.minConfluenceScore);
+   }
+   
+   Print("TrendFiltersManager: Parametric confluence for ", symbol, " - Score: ", 
+         IntegerToString(confluenceScore), "/", IntegerToString(s_config.CalculateMaxScore()), 
+         ", Valid: ", (confluenceOK ? "YES" : "NO"));
+   
+   return confluenceOK;
+}
+
+//--- Méthodes de configuration rapide
+static void SetScalpingMode(string symbol = "")
+{
+   ConfluenceConfig config;
+   config.SetScalpingMode(symbol);
+   SetConfluenceConfig(config);
+}
+
+static void SetSwingMode(string symbol = "")
+{
+   ConfluenceConfig config;
+   config.SetSwingMode(symbol);
+   SetConfluenceConfig(config);
+}
+
+static void SetConservativeMode(string symbol = "")
+{
+   ConfluenceConfig config;
+   config.SetConservativeMode(symbol);
+   SetConfluenceConfig(config);
+}
+
+static void SetAggressiveMode(string symbol = "")
+{
+   ConfluenceConfig config;
+   config.SetAggressiveMode(symbol);
+   SetConfluenceConfig(config);
+}
 };
+
+//+------------------------------------------------------------------+
+//| Définition de la variable statique en dehors de la classe      |
+//+------------------------------------------------------------------+
+ConfluenceConfig TrendFiltersManager::s_config;
