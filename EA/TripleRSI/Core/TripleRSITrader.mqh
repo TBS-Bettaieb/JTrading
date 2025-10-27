@@ -26,7 +26,6 @@ private:
    int m_magic;
    ENUM_TIMEFRAMES m_timeframe;
    double m_riskPercent;
-   int m_slPoints;
    double m_tpRatio;
    CTrade m_trade;
    
@@ -62,7 +61,7 @@ private:
 public:
    //--- Constructor
    CTripleRSITrader(string symbol, int magic, ENUM_TIMEFRAMES tf,
-                    double risk, int slPoints, double tpRatio,
+                    double risk, double tpRatio,
                     bool useDynamicTrailing,
                     int rsiP1, int rsiP2, int rsiP3,
                     int oversold, int overbought,
@@ -75,7 +74,6 @@ public:
       m_magic = magic;
       m_timeframe = tf;
       m_riskPercent = risk;
-      m_slPoints = slPoints;
       m_tpRatio = tpRatio;
       m_useDynamicTrailing = useDynamicTrailing;
       m_useAlerts = useAlerts;
@@ -406,15 +404,12 @@ public:
          {
             return dynamicSL;
          }
-         Logger::Warning("Dynamic SL calculation failed, using fixed SL fallback");
+         Logger::Error("❌ Dynamic SL calculation failed - cannot open trade without SL");
+         return -1; // Retourner -1 pour signaler l'erreur
       }
       
-      // Fallback: utiliser le SL fixe
-      double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
-      if(isBuy)
-         return entryPrice - (m_slPoints * point);
-      else
-         return entryPrice + (m_slPoints * point);
+      Logger::Error("❌ Dynamic SL Calculator not available");
+      return -1;
    }
    
    //--- Ouvrir position BUY
@@ -422,8 +417,15 @@ public:
    {
       double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_ASK);
       
-      // Calculer le SL dynamique (ou utiliser le fallback fixe)
+      // Calculer le SL dynamique
       double slPrice = CalculateDynamicStopLoss(true, currentPrice);
+      
+      // Vérifier que le SL est valide
+      if(slPrice <= 0 || slPrice >= currentPrice)
+      {
+         Logger::Error("❌ Invalid or missing SL for BUY - cannot open trade");
+         return false;
+      }
       
       double lotSize = CalculateLotSize(currentPrice, slPrice);
       
@@ -492,8 +494,15 @@ public:
    {
       double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
       
-      // Calculer le SL dynamique (ou utiliser le fallback fixe)
+      // Calculer le SL dynamique
       double slPrice = CalculateDynamicStopLoss(false, currentPrice);
+      
+      // Vérifier que le SL est valide
+      if(slPrice <= 0 || slPrice <= currentPrice)
+      {
+         Logger::Error("❌ Invalid or missing SL for SELL - cannot open trade");
+         return false;
+      }
       
       double lotSize = CalculateLotSize(slPrice, currentPrice);
       

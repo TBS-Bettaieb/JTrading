@@ -26,17 +26,29 @@ input group "=== SYMBOLES & TIMEFRAME ==="
 input string InpSymbolsList = "EURUSD,GBPUSD"; // Liste symboles (virgule)
 input ENUM_TIMEFRAMES InpTimeframe = PERIOD_M15; // Timeframe
 
+input group "=== RISK MANAGEMENT ==="
+input double InpRiskPercent = 1.0;  // Risque par trade (%)
+input double InpTPRatio = 2.0;      // Ratio Take Profit (x SL)
+
+input group "=== DYNAMIC STOP-LOSS ==="
+input bool InpUseDynamicSL = true;                    // Activer SL dynamique
+input int InpDynamicSL_SwingLookback = 20;           // Swing: Périodes lookback
+input int InpDynamicSL_SwingMinDistance = 30;        // Swing: Distance min (points)
+input double InpDynamicSL_SwingVolumeThreshold = 1.2; // Swing: Seuil volume
+input int InpDynamicSL_SwingBuffer = 5;              // Swing: Buffer (points)
+input int InpDynamicSL_ATRPeriod = 14;               // ATR: Période standard
+input double InpDynamicSL_ATRMultiplier = 1.5;       // ATR: Multiplicateur
+input int InpDynamicSL_ATRLongPeriod = 28;           // ATR Long: Période
+input double InpDynamicSL_ATRLongMultiplier = 1.2;   // ATR Long: Multiplicateur
+input double InpDynamicSL_ATRVolatilityThreshold = 1.7; // ATR: Seuil volatilité
+input double InpDynamicSL_DefaultPercent = 0.5;      // Fallback: % du prix
+
 input group "=== RSI PARAMETERS ==="
 input int InpRSIPeriod1 = 7;    // RSI Période 1 (rapide)
 input int InpRSIPeriod2 = 14;   // RSI Période 2 (moyen)
 input int InpRSIPeriod3 = 21;   // RSI Période 3 (lent)
 input int InpOversold = 30;     // Niveau survente
 input int InpOverbought = 70;   // Niveau surachat
-
-input group "=== RISK MANAGEMENT ==="
-input double InpRiskPercent = 1.0;  // Risque par trade (%)
-input int InpSLPoints = 100;        // Stop Loss (points)
-input double InpTPRatio = 2.0;      // Ratio Take Profit (x SL)
 
 input group "=== TRAILING STOP ==="
 input bool InpUseDynamicTrailing = true;    // Activer TSL Dynamique
@@ -94,19 +106,6 @@ input bool InpEnablePsychologicalLevels = true;          // Activer niveaux psyc
 input group "=== MULTI-TIMEFRAME ==="
 input bool InpEnableMultiTimeframe = true;                // Activer multi-timeframe
 input ENUM_TIMEFRAMES InpHigherTimeframe = PERIOD_M15;    // Timeframe supérieur
-
-input group "=== DYNAMIC STOP-LOSS ==="
-input bool InpUseDynamicSL = true;                    // Activer SL dynamique
-input int InpDynamicSL_SwingLookback = 20;           // Swing: Périodes lookback
-input int InpDynamicSL_SwingMinDistance = 30;        // Swing: Distance min (points)
-input double InpDynamicSL_SwingVolumeThreshold = 1.2; // Swing: Seuil volume
-input int InpDynamicSL_SwingBuffer = 5;              // Swing: Buffer (points)
-input int InpDynamicSL_ATRPeriod = 14;               // ATR: Période standard
-input double InpDynamicSL_ATRMultiplier = 1.5;       // ATR: Multiplicateur
-input int InpDynamicSL_ATRLongPeriod = 28;           // ATR Long: Période
-input double InpDynamicSL_ATRLongMultiplier = 1.2;   // ATR Long: Multiplicateur
-input double InpDynamicSL_ATRVolatilityThreshold = 1.7; // ATR: Seuil volatilité
-input double InpDynamicSL_DefaultPercent = 0.5;      // Fallback: % du prix
 
 //+------------------------------------------------------------------+
 //| Includes                                                         |
@@ -199,7 +198,7 @@ int OnInit()
    config.rsiPeriod3 = InpRSIPeriod3;
    config.rsiOversold = InpOversold;
    config.rsiOverbought = InpOverbought;
-   config.slPoints = InpSLPoints;
+   config.slPoints = 0; // SL géré dynamiquement via Dynamic SL
    config.tpRatio = InpTPRatio;
    config.useDynamicTrailing = InpUseDynamicTrailing;
    config.tslCostMultiplier = InpTSLCostMultiplier;
@@ -437,10 +436,10 @@ void DisplayConfigurationInfo(TripleRSIConfig &config)
       confluenceStr = "ON (" + config.confluenceMode + " - Score: " + IntegerToString(config.minConfluenceScore) + ")";
    }
    
-   string slStr = "Fixed: " + IntegerToString(config.slPoints) + " pts";
-   if(config.useDynamicStopLoss)
+   string slStr = "Dynamic (Swing/ATR/Percentage)";
+   if(!config.useDynamicStopLoss)
    {
-      slStr = "Dynamic (Swing/ATR/Percentage)";
+      slStr = "Disabled";
    }
    
    string info = StringFormat(
