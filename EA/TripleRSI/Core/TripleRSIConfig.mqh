@@ -30,7 +30,6 @@ struct TripleRSIConfig
    // Stop Loss / Take Profit
    int               slPoints;          // SL en points
    double            tpRatio;          // Ratio TP/SL (ex: 2.0 = 1:2)
-   bool              useTrailingStop;  // Activer trailing stop
    bool              useDynamicTrailing; // Activer TSL dynamique
    int               tslTriggerPoints; // Déclenchement trailing
    int               tslPoints;        // Distance trailing
@@ -107,7 +106,6 @@ struct TripleRSIConfig
       
       slPoints = 100;
       tpRatio = 2.0;
-      useTrailingStop = true;
       useDynamicTrailing = true;
       tslTriggerPoints = 50;
       tslPoints = 30;
@@ -216,17 +214,11 @@ struct TripleRSIConfig
                    IntegerToString(rsiOverbought));
       Logger::Info("SL/TP: " + IntegerToString(slPoints) + "pts / " + 
                    DoubleToString(tpRatio, 1) + "x");
-      Logger::Info("Trailing: " + (useTrailingStop ? "ON" : "OFF"));
-      if(useTrailingStop)
+      Logger::Info("Dynamic TSL: " + (useDynamicTrailing ? "ON" : "OFF"));
+      if(useDynamicTrailing)
       {
-         Logger::Info("TSL: " + IntegerToString(tslTriggerPoints) + "/" + 
-                      IntegerToString(tslPoints) + " pts");
-         Logger::Info("Dynamic TSL: " + (useDynamicTrailing ? "ON" : "OFF"));
-         if(useDynamicTrailing)
-         {
-            Logger::Info("TSL Cost Multiplier: " + DoubleToString(tslCostMultiplier, 1));
-            Logger::Info("TSL Min Trigger: " + IntegerToString(tslMinTriggerPoints) + " pts");
-         }
+         Logger::Info("TSL Cost Multiplier: " + DoubleToString(tslCostMultiplier, 1));
+         Logger::Info("TSL Min Trigger: " + IntegerToString(tslMinTriggerPoints) + " pts");
       }
       
       // Affichage configuration confluences

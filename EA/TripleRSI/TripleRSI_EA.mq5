@@ -27,10 +27,7 @@ input int InpSLPoints = 100;        // Stop Loss (points)
 input double InpTPRatio = 2.0;      // Ratio Take Profit (x SL)
 
 input group "=== TRAILING STOP ==="
-input bool InpUseTrailing = true;   // Activer Trailing Stop
 input bool InpUseDynamicTrailing = true;    // Activer TSL Dynamique
-input int InpTSLTrigger = 50;       // Déclenchement (points)
-input int InpTSLDistance = 30;      // Distance (points)
 input double InpTSLCostMultiplier = 1.5;    // Multiplicateur coûts TSL
 input int InpTSLMinTriggerPoints = 50;     // Trigger minimum TSL (points)
 
@@ -137,10 +134,7 @@ int OnInit()
    config.rsiOverbought = InpOverbought;
    config.slPoints = InpSLPoints;
    config.tpRatio = InpTPRatio;
-   config.useTrailingStop = InpUseTrailing;
    config.useDynamicTrailing = InpUseDynamicTrailing;
-   config.tslTriggerPoints = InpTSLTrigger;
-   config.tslPoints = InpTSLDistance;
    config.tslCostMultiplier = InpTSLCostMultiplier;
    config.tslMinTriggerPoints = InpTSLMinTriggerPoints;
    config.barsLookback = 5;
@@ -271,10 +265,10 @@ void CleanupManagers()
 void DisplayConfigurationInfo(TripleRSIConfig &config)
 {
    string trailingStr = "Disabled";
-   if(config.useTrailingStop)
+   if(config.useDynamicTrailing)
    {
-      trailingStr = "ON (" + IntegerToString(config.tslTriggerPoints) + "/" + 
-                    IntegerToString(config.tslPoints) + " pts)";
+      trailingStr = "ON (Dynamic TSL)";
+      trailingStr += " - Cost Multiplier: " + DoubleToString(config.tslCostMultiplier, 1);
    }
    
    string alertsStr = "Disabled";

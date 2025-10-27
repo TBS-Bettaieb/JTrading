@@ -228,8 +228,7 @@ private:
          m_symbolTraders[i] = new CTripleRSITrader(
             m_symbols[i], symbolMagic, m_config.timeframe,
             m_config.riskPercent, m_config.slPoints, m_config.tpRatio,
-            m_config.useTrailingStop, m_config.useDynamicTrailing,
-            m_config.tslTriggerPoints, m_config.tslPoints,
+            m_config.useDynamicTrailing,
             m_config.rsiPeriod1, m_config.rsiPeriod2, m_config.rsiPeriod3,
             m_config.rsiOversold, m_config.rsiOverbought,
             m_config.useAlerts, m_config.sendNotifications,
@@ -361,11 +360,10 @@ private:
       Logger::Info("💰 Risk per trade: " + DoubleToString(m_config.riskPercent, 1) + "%");
       Logger::Info("🎯 TP Ratio: " + DoubleToString(m_config.tpRatio, 1) + "x");
       
-      if(m_config.useTrailingStop)
+      if(m_config.useDynamicTrailing)
       {
-         Logger::Info("🔄 TRAILING STOP: ON");
-         Logger::Info("   Trigger: " + IntegerToString(m_config.tslTriggerPoints) + " points");
-         Logger::Info("   Distance: " + IntegerToString(m_config.tslPoints) + " points");
+         Logger::Info("🔄 TRAILING STOP: ON (Dynamic TSL only)");
+         Logger::Info("   Mode: Dynamic TSL with cost-based trigger");
       }
       else
       {

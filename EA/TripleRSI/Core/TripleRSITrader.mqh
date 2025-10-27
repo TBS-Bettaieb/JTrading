@@ -35,7 +35,6 @@ private:
    CEntryRulesValidator* m_entryValidator;
    
    // Trailing Stop Dynamique
-   bool m_useTrailingStop;
    bool m_useDynamicTrailing;
    CDynamicTrailingStop* m_dynamicTSL;
    ForexCommissionManager* m_commissionManager;
@@ -43,10 +42,6 @@ private:
    // Dynamic Stop-Loss Calculator
    bool m_useDynamicStopLoss;
    CDynamicStopLossCalculator* m_dynamicSLCalculator;
-   
-   // Paramètres TSL classique (fallback)
-   int m_tslTriggerPoints;
-   int m_tslPoints;
    
    // Statistiques
    int m_totalTrades;
@@ -68,8 +63,7 @@ public:
    //--- Constructor
    CTripleRSITrader(string symbol, int magic, ENUM_TIMEFRAMES tf,
                     double risk, int slPoints, double tpRatio,
-                    bool useTrailing, bool useDynamicTrailing,
-                    int tslTrigger, int tslPoints,
+                    bool useDynamicTrailing,
                     int rsiP1, int rsiP2, int rsiP3,
                     int oversold, int overbought,
                     bool useAlerts = true, bool sendNotif = false,
@@ -83,10 +77,7 @@ public:
       m_riskPercent = risk;
       m_slPoints = slPoints;
       m_tpRatio = tpRatio;
-      m_useTrailingStop = useTrailing;
       m_useDynamicTrailing = useDynamicTrailing;
-      m_tslTriggerPoints = tslTrigger;
-      m_tslPoints = tslPoints;
       m_useAlerts = useAlerts;
       m_sendNotifications = sendNotif;
       
@@ -128,8 +119,8 @@ public:
       {
          m_commissionManager = new ForexCommissionManager();
          m_dynamicTSL = new CDynamicTrailingStop(
-            m_tslPoints,           // Distance TSL
-            m_tslTriggerPoints,   // Trigger par défaut
+            30,                    // Distance TSL par défaut (points)
+            50,                    // Trigger par défaut (points)
             true,                  // Activer trigger dynamique
             1.5,                   // Multiplicateur coûts (1.5x)
             50,                    // Trigger minimum en points
@@ -373,7 +364,7 @@ public:
       }
       
       // 4. Gérer trailing stop si activé et position ouverte
-      if(m_useTrailingStop && HasPosition())
+      if(m_useDynamicTrailing && HasPosition())
       {
          ProcessTrailingStop();
       }
@@ -646,73 +637,13 @@ public:
       return false;
    }
    
-   //--- Traiter trailing stop
+   //--- Traiter trailing stop (UNIQUEMENT dynamique)
    void ProcessTrailingStop()
    {
-      if(!m_useTrailingStop) return;
-      
-      // Utiliser le TSL dynamique si activé
+      // Utiliser UNIQUEMENT le TSL dynamique
       if(m_useDynamicTrailing && m_dynamicTSL != NULL)
       {
          m_dynamicTSL.ApplyTrailing(m_symbol, m_magic);
-         return;
-      }
-      
-      // Fallback vers TSL classique
-      double entryPrice, slPrice, tpPrice, profit;
-      ENUM_POSITION_TYPE type;
-      
-      if(!GetCurrentPosition(entryPrice, slPrice, tpPrice, profit, type))
-         return;
-      
-      double currentPrice;
-      double newSL = slPrice;
-      bool shouldModify = false;
-      
-      if(type == POSITION_TYPE_BUY)
-      {
-         currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
-         double profitPoints = (currentPrice - entryPrice) / SymbolInfoDouble(m_symbol, SYMBOL_POINT);
-         
-         if(profitPoints >= m_tslTriggerPoints)
-         {
-            newSL = currentPrice - (m_tslPoints * SymbolInfoDouble(m_symbol, SYMBOL_POINT));
-            
-            if(newSL > slPrice)
-            {
-               shouldModify = true;
-            }
-         }
-      }
-      else if(type == POSITION_TYPE_SELL)
-      {
-         currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_ASK);
-         double profitPoints = (entryPrice - currentPrice) / SymbolInfoDouble(m_symbol, SYMBOL_POINT);
-         
-         if(profitPoints >= m_tslTriggerPoints)
-         {
-            newSL = currentPrice + (m_tslPoints * SymbolInfoDouble(m_symbol, SYMBOL_POINT));
-            
-            if(newSL < slPrice)
-            {
-               shouldModify = true;
-            }
-         }
-      }
-      
-      if(shouldModify)
-      {
-         ulong ticket = PositionGetTicket(0);
-         if(m_trade.PositionModify(ticket, newSL, tpPrice))
-         {
-            Logger::Info("Classic TSL updated for " + m_symbol + 
-                        " | New SL: " + DoubleToString(newSL, 5));
-         }
-         else
-         {
-            Logger::Error("Failed to update classic TSL for " + m_symbol + 
-                         " | Error: " + IntegerToString(m_trade.ResultRetcode()));
-         }
       }
    }
    
@@ -746,7 +677,6 @@ public:
       info += "Timeframe: " + EnumToString(m_timeframe) + "\n";
       info += "Risk: " + DoubleToString(m_riskPercent, 1) + "%\n";
       info += "TP Ratio: " + DoubleToString(m_tpRatio, 1) + "x\n";
-      info += "Trailing: " + (m_useTrailingStop ? "ON" : "OFF") + "\n";
       info += "Dynamic TSL: " + (m_useDynamicTrailing ? "ON" : "OFF") + "\n";
       
       // Infos TSL dynamique
