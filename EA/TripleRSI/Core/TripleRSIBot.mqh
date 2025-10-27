@@ -119,27 +119,64 @@ public:
       Logger::Info("Reason: " + IntegerToString(reason));
       Logger::Info("═══════════════════════════════════════");
       
-      // Cleanup traders
+      // Cleanup traders avec gestion d'erreur robuste
       if(ArraySize(m_symbolTraders) > 0)
       {
+         int tradersCleaned = 0;
+         int tradersFailed = 0;
+         
          for(int i = 0; i < ArraySize(m_symbolTraders); i++)
          {
             if(m_symbolTraders[i] != NULL)
             {
-               delete m_symbolTraders[i];
-               m_symbolTraders[i] = NULL;
+               // Sauvegarder le pointeur avant suppression
+               CTripleRSITrader* trader = m_symbolTraders[i];
+               m_symbolTraders[i] = NULL; // Prévenir double deletion
+               
+               // Suppression sécurisée
+               delete trader;
+               
+               // Vérifier si la suppression a réussi
+               if(trader == NULL)
+               {
+                  tradersCleaned++;
+               }
+               else
+               {
+                  tradersFailed++;
+                  Logger::Error("❌ Failed to delete trader at index " + IntegerToString(i));
+               }
             }
          }
+         
          ArrayFree(m_symbolTraders);
-         Logger::Success("✅ Symbol Traders cleaned up");
+         
+         Logger::Info("✅ Traders cleaned: " + IntegerToString(tradersCleaned));
+         if(tradersFailed > 0)
+         {
+            Logger::Error("❌ Failed to clean traders: " + IntegerToString(tradersFailed));
+         }
+         else
+         {
+            Logger::Success("✅ Symbol Traders cleaned up");
+         }
       }
       
-      // Cleanup chart manager
+      // Cleanup chart manager avec gestion d'erreur
       if(m_chartManager != NULL)
       {
-         delete m_chartManager;
+         ChartManager* chart = m_chartManager;
          m_chartManager = NULL;
-         Logger::Success("✅ Chart Manager cleaned up");
+         delete chart;
+         
+         if(chart == NULL)
+         {
+            Logger::Success("✅ Chart Manager cleaned up");
+         }
+         else
+         {
+            Logger::Error("❌ Failed to clean Chart Manager");
+         }
       }
       
       ArrayFree(m_symbols);
