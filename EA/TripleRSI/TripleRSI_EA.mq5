@@ -34,6 +34,14 @@ input int InpTSLDistance = 30;      // Distance (points)
 input double InpTSLCostMultiplier = 1.5;    // Multiplicateur coûts TSL
 input int InpTSLMinTriggerPoints = 50;     // Trigger minimum TSL (points)
 
+input group "=== TIME RANGE FILTER ==="
+input bool InpUseTimeFilter = false;             // Activer filtre horaire
+input string InpHourRanges = "8-10;16";          // Plages horaires (ex: 8-10;16)
+
+input group "=== DAY RANGE FILTER ==="
+input bool InpUseDayFilter = false;              // Activer filtre par jour
+input string InpDayRanges = "1-5";               // Jours autorisés (0=Dim,1=Lun...6=Sam)
+
 input group "=== ALERTES ==="
 input bool InpUseAlerts = true;     // Activer alertes
 input bool InpSendNotif = false;    // Envoyer notifications
@@ -46,12 +54,16 @@ input int InpLogLevel = 3; // Niveau de log (0=None, 1=Error, 2=Warning, 3=Info,
 //| Includes                                                         |
 //+------------------------------------------------------------------+
 #include "../Shared/Logger.mqh"
+#include "../Shared/ChartManager.mqh"
+#include "../Shared/DayTimesFilters/TradingTimeManager.mqh"
 #include "Core/TripleRSIBot.mqh"
 
 //+------------------------------------------------------------------+
 //| Variables globales                                               |
 //+------------------------------------------------------------------+
 CTripleRSIBot* bot = NULL;
+ChartManager* chartManager = NULL;
+TradingTimeManager* timeManager = NULL;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -71,6 +83,44 @@ int OnInit()
    // Initialiser Logger
    Logger::Initialize((ENUM_LOG_LEVEL)InpLogLevel, "[TripleRSI] ");
    Logger::Info("=== TRIPLE RSI EA INITIALIZATION ===");
+   
+   // Créer et initialiser ChartManager
+   chartManager = new ChartManager(0, "TripleRSI");
+   if(chartManager == NULL)
+   {
+      Logger::Error("Failed to create Chart Manager");
+      return INIT_FAILED;
+   }
+   chartManager.SetupChart();
+   chartManager.ShowStrategyName("Triple RSI Strategy");
+   
+   // Créer et initialiser TradingTimeManager
+   timeManager = new TradingTimeManager(chartManager);
+   if(timeManager == NULL)
+   {
+      Logger::Error("Failed to create Trading Time Manager");
+      delete chartManager;
+      chartManager = NULL;
+      return INIT_FAILED;
+   }
+   
+   // Initialiser les filtres si activés
+   if(InpUseTimeFilter)
+   {
+      timeManager.InitTimeRangeFilter(true, InpHourRanges);
+      Logger::Info("✅ Time Range Filter ENABLED: " + InpHourRanges);
+   }
+   
+   if(InpUseDayFilter)
+   {
+      timeManager.InitDayRangeFilter(true, InpDayRanges);
+      Logger::Info("✅ Day Range Filter ENABLED: " + InpDayRanges);
+   }
+   
+   if(!InpUseTimeFilter && !InpUseDayFilter)
+   {
+      Logger::Info("ℹ️ No time/day filters enabled - trading allowed 24/7");
+   }
    
    // Créer configuration
    TripleRSIConfig config;
@@ -102,6 +152,7 @@ int OnInit()
    if(!config.Validate())
    {
       Logger::Error("Configuration validation failed");
+      CleanupManagers();
       return INIT_FAILED;
    }
    
@@ -110,6 +161,7 @@ int OnInit()
    if(bot == NULL)
    {
       Logger::Error("Failed to create TripleRSI Bot");
+      CleanupManagers();
       return INIT_FAILED;
    }
    
@@ -118,6 +170,7 @@ int OnInit()
       Logger::Error("Bot initialization failed");
       delete bot;
       bot = NULL;
+      CleanupManagers();
       return INIT_FAILED;
    }
    
@@ -149,6 +202,9 @@ void OnDeinit(const int reason)
       bot = NULL;
    }
    
+   // Nettoyer les managers
+   CleanupManagers();
+   
    Logger::Info("=== TRIPLE RSI EA STOPPED ===");
 }
 
@@ -157,6 +213,17 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   // Vérifier le filtre temporel AVANT de trader
+   if(timeManager != NULL)
+   {
+      if(!timeManager.IsTradingAllowed())
+      {
+         // Le trading est bloqué - ne pas exécuter le bot
+         return;
+      }
+   }
+   
+   // Le trading est autorisé - exécuter le bot normalement
    if(bot != NULL)
    {
       bot.OnTick();
@@ -175,6 +242,26 @@ void OnChartEvent(const int id,
    {
       // Forward chart events to bot if needed
       // (Bot may implement OnChartEvent if required)
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Fonction de nettoyage des managers                              |
+//+------------------------------------------------------------------+
+void CleanupManagers()
+{
+   if(timeManager != NULL)
+   {
+      delete timeManager;
+      timeManager = NULL;
+      Logger::Success("✅ Trading Time Manager cleaned up");
+   }
+   
+   if(chartManager != NULL)
+   {
+      delete chartManager;
+      chartManager = NULL;
+      Logger::Success("✅ Chart Manager cleaned up");
    }
 }
 
