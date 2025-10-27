@@ -76,6 +76,19 @@ struct TripleRSIConfig
    bool              enableMultiTimeframe; // Activer multi-timeframe
    ENUM_TIMEFRAMES   higherTimeframe;      // Timeframe supérieur (ex: PERIOD_M15)
    
+   //=== DYNAMIC STOP-LOSS CONFIGURATION ===
+   bool              useDynamicStopLoss;     // Activer SL dynamique
+   int               dynamicSL_SwingLookback; // Périodes pour détecter swings (20)
+   int               dynamicSL_SwingMinDistance; // Distance minimale swing points (30)
+   double            dynamicSL_SwingVolumeThreshold; // Seuil volume swing (1.2)
+   int               dynamicSL_SwingBuffer; // Buffer sécurité swing (5)
+   int               dynamicSL_ATRPeriod; // Période ATR standard (14)
+   double            dynamicSL_ATRMultiplier; // Multiplicateur ATR (1.5)
+   int               dynamicSL_ATRLongPeriod; // Période ATR longue (28)
+   double            dynamicSL_ATRLongMultiplier; // Multiplicateur ATR longue (1.2)
+   double            dynamicSL_ATRVolatilityThreshold; // Seuil volatilité (1.7)
+   double            dynamicSL_DefaultPercent; // SL par défaut en % (0.5)
+   
    // Constructor par défaut
    TripleRSIConfig()
    {
@@ -128,6 +141,19 @@ struct TripleRSIConfig
       enablePsychologicalLevels = true;
       enableMultiTimeframe = true;
       higherTimeframe = PERIOD_M15;
+      
+      // Configuration Dynamic Stop-Loss par défaut
+      useDynamicStopLoss = true;
+      dynamicSL_SwingLookback = 20;
+      dynamicSL_SwingMinDistance = 30;
+      dynamicSL_SwingVolumeThreshold = 1.2;
+      dynamicSL_SwingBuffer = 5;
+      dynamicSL_ATRPeriod = 14;
+      dynamicSL_ATRMultiplier = 1.5;
+      dynamicSL_ATRLongPeriod = 28;
+      dynamicSL_ATRLongMultiplier = 1.2;
+      dynamicSL_ATRVolatilityThreshold = 1.7;
+      dynamicSL_DefaultPercent = 0.5;
    }
    
    // Validation de la configuration

@@ -98,6 +98,19 @@ input group "=== MULTI-TIMEFRAME ==="
 input bool InpEnableMultiTimeframe = true;                // Activer multi-timeframe
 input ENUM_TIMEFRAMES InpHigherTimeframe = PERIOD_M15;    // Timeframe supérieur
 
+input group "=== DYNAMIC STOP-LOSS ==="
+input bool InpUseDynamicSL = true;                    // Activer SL dynamique
+input int InpDynamicSL_SwingLookback = 20;           // Swing: Périodes lookback
+input int InpDynamicSL_SwingMinDistance = 30;        // Swing: Distance min (points)
+input double InpDynamicSL_SwingVolumeThreshold = 1.2; // Swing: Seuil volume
+input int InpDynamicSL_SwingBuffer = 5;              // Swing: Buffer (points)
+input int InpDynamicSL_ATRPeriod = 14;               // ATR: Période standard
+input double InpDynamicSL_ATRMultiplier = 1.5;       // ATR: Multiplicateur
+input int InpDynamicSL_ATRLongPeriod = 28;           // ATR Long: Période
+input double InpDynamicSL_ATRLongMultiplier = 1.2;   // ATR Long: Multiplicateur
+input double InpDynamicSL_ATRVolatilityThreshold = 1.7; // ATR: Seuil volatilité
+input double InpDynamicSL_DefaultPercent = 0.5;      // Fallback: % du prix
+
 //+------------------------------------------------------------------+
 //| Includes                                                         |
 //+------------------------------------------------------------------+
@@ -222,6 +235,19 @@ int OnInit()
    config.enablePsychologicalLevels = InpEnablePsychologicalLevels;
    config.enableMultiTimeframe = InpEnableMultiTimeframe;
    config.higherTimeframe = InpHigherTimeframe;
+   
+   // Configuration Dynamic Stop-Loss
+   config.useDynamicStopLoss = InpUseDynamicSL;
+   config.dynamicSL_SwingLookback = InpDynamicSL_SwingLookback;
+   config.dynamicSL_SwingMinDistance = InpDynamicSL_SwingMinDistance;
+   config.dynamicSL_SwingVolumeThreshold = InpDynamicSL_SwingVolumeThreshold;
+   config.dynamicSL_SwingBuffer = InpDynamicSL_SwingBuffer;
+   config.dynamicSL_ATRPeriod = InpDynamicSL_ATRPeriod;
+   config.dynamicSL_ATRMultiplier = InpDynamicSL_ATRMultiplier;
+   config.dynamicSL_ATRLongPeriod = InpDynamicSL_ATRLongPeriod;
+   config.dynamicSL_ATRLongMultiplier = InpDynamicSL_ATRLongMultiplier;
+   config.dynamicSL_ATRVolatilityThreshold = InpDynamicSL_ATRVolatilityThreshold;
+   config.dynamicSL_DefaultPercent = InpDynamicSL_DefaultPercent;
    
    // Valider la configuration
    if(!config.Validate())
@@ -417,6 +443,12 @@ void DisplayConfigurationInfo(TripleRSIConfig &config)
       confluenceStr = "ON (" + config.confluenceMode + " - Score: " + IntegerToString(config.minConfluenceScore) + ")";
    }
    
+   string slStr = "Fixed: " + IntegerToString(config.slPoints) + " pts";
+   if(config.useDynamicStopLoss)
+   {
+      slStr = "Dynamic (Swing/ATR/Percentage)";
+   }
+   
    string info = StringFormat(
       "=== %s ===\n" +
       "Symbols: %s\n" +
@@ -425,6 +457,7 @@ void DisplayConfigurationInfo(TripleRSIConfig &config)
       "Risk: %.1f%%\n" +
       "RSI Periods: %d/%d/%d\n" +
       "RSI Levels: %d/%d\n" +
+      "Stop-Loss: %s\n" +
       "TP Ratio: %.1fx\n" +
       "Trailing Stop: %s\n" +
       "Confluence: %s\n" +
@@ -439,6 +472,7 @@ void DisplayConfigurationInfo(TripleRSIConfig &config)
       config.riskPercent,
       config.rsiPeriod1, config.rsiPeriod2, config.rsiPeriod3,
       config.rsiOversold, config.rsiOverbought,
+      slStr,
       config.tpRatio,
       trailingStr,
       confluenceStr,

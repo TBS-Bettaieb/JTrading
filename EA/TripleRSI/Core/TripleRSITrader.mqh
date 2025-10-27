@@ -9,6 +9,7 @@
 #include "../../Shared/Logger.mqh"
 #include "../../Shared/TradingUtils.mqh"
 #include "../../Shared/DynamicTrailingStop.mqh"
+#include "../../Shared/DynamicStopLossCalculator.mqh"
 #include "../../Shared/ForexCommissionManager.mqh"
 #include "../Logic/RSI_Calculator.mqh"
 #include "../Logic/RSI_AlignmentDetector.mqh"
@@ -38,6 +39,10 @@ private:
    bool m_useDynamicTrailing;
    CDynamicTrailingStop* m_dynamicTSL;
    ForexCommissionManager* m_commissionManager;
+   
+   // Dynamic Stop-Loss Calculator
+   bool m_useDynamicStopLoss;
+   CDynamicStopLossCalculator* m_dynamicSLCalculator;
    
    // Paramètres TSL classique (fallback)
    int m_tslTriggerPoints;
@@ -69,7 +74,8 @@ public:
                     int oversold, int overbought,
                     bool useAlerts = true, bool sendNotif = false,
                     // Nouveaux paramètres de confluence
-                    bool enableConfluence = true, string confluenceMode = "AUTO")
+                    bool enableConfluence = true, string confluenceMode = "AUTO",
+                    bool useDynamicStopLoss = true)
    {
       m_symbol = symbol;
       m_magic = magic;
@@ -87,6 +93,10 @@ public:
       // Configuration des confluences
       m_enableConfluence = enableConfluence;
       m_confluenceMode = confluenceMode;
+      
+      // Configuration Dynamic Stop-Loss
+      m_useDynamicStopLoss = useDynamicStopLoss;
+      m_dynamicSLCalculator = NULL;
       
       // Initialiser statistiques
       m_totalTrades = 0;
@@ -141,8 +151,27 @@ public:
          SetupConfluenceConfiguration(m_confluenceMode, symbol);
       }
       
+      // Initialiser DynamicStopLossCalculator si activé
+      if(m_useDynamicStopLoss)
+      {
+         m_dynamicSLCalculator = new CDynamicStopLossCalculator(symbol, tf);
+         if(m_dynamicSLCalculator == NULL)
+         {
+            Logger::Error("Failed to create Dynamic SL Calculator for " + symbol);
+         }
+         else
+         {
+            Logger::Info("Dynamic Stop-Loss Calculator initialized for " + symbol);
+         }
+      }
+      else
+      {
+         m_dynamicSLCalculator = NULL;
+      }
+      
       Logger::Info("TripleRSI Trader created for " + symbol + " (Magic: " + IntegerToString(magic) + 
                    ") | Dynamic TSL: " + (m_useDynamicTrailing ? "ON" : "OFF") +
+                   " | Dynamic SL: " + (m_useDynamicStopLoss ? "ON" : "OFF") +
                    " | Confluence: " + (m_enableConfluence ? m_confluenceMode : "OFF"));
    }
    
@@ -179,6 +208,13 @@ public:
       {
          delete m_commissionManager;
          m_commissionManager = NULL;
+      }
+      
+      // Nettoyer le Dynamic Stop-Loss Calculator
+      if(m_dynamicSLCalculator != NULL)
+      {
+         delete m_dynamicSLCalculator;
+         m_dynamicSLCalculator = NULL;
       }
       
       Logger::Debug("TripleRSI Trader destroyed for " + m_symbol);
@@ -346,10 +382,58 @@ public:
       UpdateStatistics();
    }
    
+   //--- Configurer les paramètres du Dynamic Stop-Loss Calculator
+   void ConfigureDynamicSL(int swingLookback, int swingMinDistance, double swingVolumeThreshold, 
+                           int swingBuffer, int atrPeriod, double atrMultiplier,
+                           int atrLongPeriod, double atrLongMultiplier, 
+                           double atrVolatilityThreshold, double defaultPercent)
+   {
+      if(m_dynamicSLCalculator != NULL)
+      {
+         m_dynamicSLCalculator.SetSwingLookbackPeriods(swingLookback);
+         m_dynamicSLCalculator.SetSwingMinDistancePoints(swingMinDistance);
+         m_dynamicSLCalculator.SetSwingVolumeThreshold(swingVolumeThreshold);
+         m_dynamicSLCalculator.SetSwingBufferPoints(swingBuffer);
+         m_dynamicSLCalculator.SetATRPeriod(atrPeriod);
+         m_dynamicSLCalculator.SetATRMultiplier(atrMultiplier);
+         m_dynamicSLCalculator.SetATRLongPeriod(atrLongPeriod);
+         m_dynamicSLCalculator.SetATRLongMultiplier(atrLongMultiplier);
+         m_dynamicSLCalculator.SetATRVolatilityThreshold(atrVolatilityThreshold);
+         m_dynamicSLCalculator.SetDefaultSLPercent(defaultPercent);
+         
+         Logger::Info("Dynamic SL Calculator configured for " + m_symbol);
+      }
+   }
+   
+   //--- Calculer le Stop-Loss dynamique
+   double CalculateDynamicStopLoss(bool isBuy, double entryPrice)
+   {
+      if(m_useDynamicStopLoss && m_dynamicSLCalculator != NULL)
+      {
+         double dynamicSL = m_dynamicSLCalculator.CalculateStopLoss(isBuy, entryPrice);
+         if(dynamicSL > 0)
+         {
+            return dynamicSL;
+         }
+         Logger::Warning("Dynamic SL calculation failed, using fixed SL fallback");
+      }
+      
+      // Fallback: utiliser le SL fixe
+      double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+      if(isBuy)
+         return entryPrice - (m_slPoints * point);
+      else
+         return entryPrice + (m_slPoints * point);
+   }
+   
    //--- Ouvrir position BUY
-   bool OpenBuyPosition(double slPrice)
+   bool OpenBuyPosition(double slPriceFromValidator)
    {
       double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_ASK);
+      
+      // Calculer le SL dynamique (ou utiliser le fallback fixe)
+      double slPrice = CalculateDynamicStopLoss(true, currentPrice);
+      
       double lotSize = CalculateLotSize(currentPrice, slPrice);
       
       if(lotSize <= 0)
@@ -413,9 +497,13 @@ public:
    }
    
    //--- Ouvrir position SELL
-   bool OpenSellPosition(double slPrice)
+   bool OpenSellPosition(double slPriceFromValidator)
    {
       double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
+      
+      // Calculer le SL dynamique (ou utiliser le fallback fixe)
+      double slPrice = CalculateDynamicStopLoss(false, currentPrice);
+      
       double lotSize = CalculateLotSize(slPrice, currentPrice);
       
       if(lotSize <= 0)

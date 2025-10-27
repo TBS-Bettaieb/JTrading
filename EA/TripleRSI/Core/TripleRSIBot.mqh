@@ -234,13 +234,31 @@ private:
             m_config.rsiOversold, m_config.rsiOverbought,
             m_config.useAlerts, m_config.sendNotifications,
             // Nouveaux paramètres de confluence
-            m_config.enableConfluence, m_config.confluenceMode
+            m_config.enableConfluence, m_config.confluenceMode,
+            m_config.useDynamicStopLoss // Nouveau paramètre
          );
          
          if(m_symbolTraders[i] == NULL)
          {
             Logger::Error("❌ ERROR: Failed to create TripleRSI Trader for " + m_symbols[i]);
             return false;
+         }
+         
+         // Configurer le Dynamic Stop-Loss Calculator si activé
+         if(m_config.useDynamicStopLoss)
+         {
+            m_symbolTraders[i].ConfigureDynamicSL(
+               m_config.dynamicSL_SwingLookback,
+               m_config.dynamicSL_SwingMinDistance,
+               m_config.dynamicSL_SwingVolumeThreshold,
+               m_config.dynamicSL_SwingBuffer,
+               m_config.dynamicSL_ATRPeriod,
+               m_config.dynamicSL_ATRMultiplier,
+               m_config.dynamicSL_ATRLongPeriod,
+               m_config.dynamicSL_ATRLongMultiplier,
+               m_config.dynamicSL_ATRVolatilityThreshold,
+               m_config.dynamicSL_DefaultPercent
+            );
          }
       }
       

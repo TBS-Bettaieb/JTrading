@@ -9,23 +9,8 @@
 #include "TradingEnums.mqh"
 
 //+------------------------------------------------------------------+
-//| PARAMÈTRES CONFIGURABLES - À MODIFIER SELON VOS BESOINS         |
+//| PARAMÈTRES CONFIGURABLES - Configurés via les setters          |
 //+------------------------------------------------------------------+
-// Paramètres Swing Points
-input int    SWING_LOOKBACK_PERIODS = 20;        // Périodes pour détecter les swings
-input int    SWING_MIN_DISTANCE_POINTS = 30;     // Distance minimale swing (points)
-input double SWING_VOLUME_THRESHOLD = 1.2;      // Seuil volume pour validation swing
-input int    SWING_BUFFER_POINTS = 5;            // Buffer de sécurité swing (points)
-
-// Paramètres ATR
-input int    ATR_PERIOD = 14;                    // Période ATR standard
-input double ATR_MULTIPLIER = 1.5;               // Multiplicateur ATR standard
-input int    ATR_LONG_PERIOD = 28;               // Période ATR longue (volatilité élevée)
-input double ATR_LONG_MULTIPLIER = 1.2;          // Multiplicateur ATR longue
-input double ATR_VOLATILITY_THRESHOLD = 1.7;     // Seuil volatilité élevée (x moyenne)
-
-// Paramètres Stop-Loss par défaut
-input double DEFAULT_SL_PERCENT = 0.5;           // Stop-loss par défaut (% du prix)
 
 //+------------------------------------------------------------------+
 //| Structure pour stocker les informations de swing                |
@@ -58,6 +43,18 @@ private:
    double m_cachedATRLong;
    datetime m_lastATRUpdate;
    
+   // Paramètres configurables
+   int m_swingLookbackPeriods;
+   int m_swingMinDistancePoints;
+   double m_swingVolumeThreshold;
+   int m_swingBufferPoints;
+   int m_atrPeriod;
+   double m_atrMultiplier;
+   int m_atrLongPeriod;
+   double m_atrLongMultiplier;
+   double m_atrVolatilityThreshold;
+   double m_defaultSLPercent;
+   
 public:
    //+------------------------------------------------------------------+
    //| Constructeur                                                     |
@@ -67,9 +64,21 @@ public:
       m_symbol = symbol;
       m_timeframe = timeframe;
       
+      // Initialiser les paramètres avec les valeurs par défaut
+      m_swingLookbackPeriods = 20;
+      m_swingMinDistancePoints = 30;
+      m_swingVolumeThreshold = 1.2;
+      m_swingBufferPoints = 5;
+      m_atrPeriod = 14;
+      m_atrMultiplier = 1.5;
+      m_atrLongPeriod = 28;
+      m_atrLongMultiplier = 1.2;
+      m_atrVolatilityThreshold = 1.7;
+      m_defaultSLPercent = 0.5;
+      
       // Initialiser les handles des indicateurs
-      m_atrHandle = iATR(symbol, timeframe, ATR_PERIOD);
-      m_atrLongHandle = iATR(symbol, timeframe, ATR_LONG_PERIOD);
+      m_atrHandle = iATR(symbol, timeframe, m_atrPeriod);
+      m_atrLongHandle = iATR(symbol, timeframe, m_atrLongPeriod);
       m_volumeHandle = iVolumes(symbol, timeframe, VOLUME_TICK);
       
       // Initialiser le cache
@@ -191,7 +200,7 @@ private:
       ArraySetAsSeries(close, true);
       ArraySetAsSeries(volume, true);
       
-      int lookback = SWING_LOOKBACK_PERIODS + 5; // Buffer pour la détection
+      int lookback = m_swingLookbackPeriods + 5; // Buffer pour la détection
       
       if(CopyHigh(m_symbol, m_timeframe, 0, lookback, high) <= 0 ||
          CopyLow(m_symbol, m_timeframe, 0, lookback, low) <= 0 ||
@@ -213,7 +222,7 @@ private:
       
       // Calculer le stop-loss basé sur le swing
       double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
-      double buffer = SWING_BUFFER_POINTS * point;
+      double buffer = m_swingBufferPoints * point;
       double swingSL = 0;
       
       if(isBuy)
@@ -284,7 +293,7 @@ private:
          }
          
          double volatilityRatio = atrStandard / atrAverage;
-         if(volatilityRatio < ATR_VOLATILITY_THRESHOLD)
+         if(volatilityRatio < m_atrVolatilityThreshold)
          {
             Logger::Debug("Volatility too low for ATR_LONG method");
             return 0;
@@ -295,7 +304,7 @@ private:
       }
       
       // Calculer le stop-loss
-      double multiplier = useLongATR ? ATR_LONG_MULTIPLIER : ATR_MULTIPLIER;
+      double multiplier = useLongATR ? m_atrLongMultiplier : m_atrMultiplier;
       double atrDistance = atrValue * multiplier;
       
       double atrSL = 0;
@@ -318,7 +327,7 @@ private:
    {
       Logger::Debug("Calculating percentage stop-loss");
       
-      double percentageDistance = entryPrice * (DEFAULT_SL_PERCENT / 100.0);
+      double percentageDistance = entryPrice * (m_defaultSLPercent / 100.0);
       
       double percentageSL = 0;
       if(isBuy)
@@ -342,7 +351,7 @@ private:
       swing.isValid = false;
       
       double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
-      double minDistance = SWING_MIN_DISTANCE_POINTS * point;
+      double minDistance = m_swingMinDistancePoints * point;
       
       // Calculer la moyenne du volume pour le seuil
       double avgVolume = 0;
@@ -364,7 +373,7 @@ private:
                if(distance >= minDistance)
                {
                   // Vérifier le volume
-                  if((double)volume[i] >= avgVolume * SWING_VOLUME_THRESHOLD)
+                  if((double)volume[i] >= avgVolume * m_swingVolumeThreshold)
                   {
                      swing.time = iTime(m_symbol, m_timeframe, i);
                      swing.price = low[i];
@@ -394,7 +403,7 @@ private:
                if(distance >= minDistance)
                {
                   // Vérifier le volume
-                  if((double)volume[i] >= avgVolume * SWING_VOLUME_THRESHOLD)
+                  if((double)volume[i] >= avgVolume * m_swingVolumeThreshold)
                   {
                      swing.time = iTime(m_symbol, m_timeframe, i);
                      swing.price = high[i];
@@ -485,6 +494,20 @@ private:
    }
    
 public:
+   //+------------------------------------------------------------------+
+   //| Setters pour configuration des paramètres                       |
+   //+------------------------------------------------------------------+
+   void SetSwingLookbackPeriods(int periods) { m_swingLookbackPeriods = MathMax(5, periods); }
+   void SetSwingMinDistancePoints(int points) { m_swingMinDistancePoints = MathMax(5, points); }
+   void SetSwingVolumeThreshold(double threshold) { m_swingVolumeThreshold = MathMax(0.1, threshold); }
+   void SetSwingBufferPoints(int points) { m_swingBufferPoints = MathMax(1, points); }
+   void SetATRPeriod(int period) { m_atrPeriod = MathMax(1, period); }
+   void SetATRMultiplier(double multiplier) { m_atrMultiplier = MathMax(0.1, multiplier); }
+   void SetATRLongPeriod(int period) { m_atrLongPeriod = MathMax(1, period); }
+   void SetATRLongMultiplier(double multiplier) { m_atrLongMultiplier = MathMax(0.1, multiplier); }
+   void SetATRVolatilityThreshold(double threshold) { m_atrVolatilityThreshold = MathMax(1.0, threshold); }
+   void SetDefaultSLPercent(double percent) { m_defaultSLPercent = MathMax(0.1, MathMin(10.0, percent)); }
+   
    //+------------------------------------------------------------------+
    //| Obtenir les informations de debug                               |
    //+------------------------------------------------------------------+
