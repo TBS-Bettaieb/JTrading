@@ -226,23 +226,19 @@ public:
       // 3. Si signal valide et pas de position, valider entrée
       if(signal == RSI_SIGNAL_BUY)
       {
-         double slPrice;
-         
          // Valider règles d'entrée de base uniquement
-         if(m_entryValidator.ValidateBuyEntry(m_symbol, m_timeframe, 5, slPrice))
+         if(m_entryValidator.ValidateBuyEntry(m_symbol, m_timeframe, 5))
          {
-            OpenBuyPosition(slPrice);
+            OpenBuyPosition();
             Logger::Signal(true, "✅ Position BUY ouverte");
          }
       }
       else if(signal == RSI_SIGNAL_SELL)
       {
-         double slPrice;
-         
          // Valider règles d'entrée de base uniquement
-         if(m_entryValidator.ValidateSellEntry(m_symbol, m_timeframe, 5, slPrice))
+         if(m_entryValidator.ValidateSellEntry(m_symbol, m_timeframe, 5))
          {
-            OpenSellPosition(slPrice);
+            OpenSellPosition();
             Logger::Signal(false, "✅ Position SELL ouverte");
          }
       }
@@ -289,7 +285,7 @@ public:
    }
    
    //--- Ouvrir position BUY
-   bool OpenBuyPosition(double slPriceFromValidator)
+   bool OpenBuyPosition()
    {
       double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_ASK);
       
@@ -366,7 +362,7 @@ public:
    }
    
    //--- Ouvrir position SELL
-   bool OpenSellPosition(double slPriceFromValidator)
+   bool OpenSellPosition()
    {
       double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
       

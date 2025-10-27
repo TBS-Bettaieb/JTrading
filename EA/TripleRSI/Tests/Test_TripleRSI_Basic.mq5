@@ -199,15 +199,9 @@ void TestEntryValidation()
    Logger::Info("--- Testing Entry Validation ---");
    
    // Test validation BUY
-   double slPrice;
-   if(g_entryValidator.ValidateBuyEntry(InpTestSymbol, InpTestTimeframe, 5, slPrice))
+   if(g_entryValidator.ValidateBuyEntry(InpTestSymbol, InpTestTimeframe, 5))
    {
       Logger::Success("✓ BUY entry validation passed");
-      Logger::Info("  SL Price: " + DoubleToString(slPrice, 5));
-      
-      double currentPrice = SymbolInfoDouble(InpTestSymbol, SYMBOL_ASK);
-      double slDistance = (currentPrice - slPrice) / SymbolInfoDouble(InpTestSymbol, SYMBOL_POINT);
-      Logger::Info("  SL Distance: " + DoubleToString(slDistance, 0) + " points");
    }
    else
    {
@@ -215,14 +209,9 @@ void TestEntryValidation()
    }
    
    // Test validation SELL
-   if(g_entryValidator.ValidateSellEntry(InpTestSymbol, InpTestTimeframe, 5, slPrice))
+   if(g_entryValidator.ValidateSellEntry(InpTestSymbol, InpTestTimeframe, 5))
    {
       Logger::Success("✓ SELL entry validation passed");
-      Logger::Info("  SL Price: " + DoubleToString(slPrice, 5));
-      
-      double currentPrice = SymbolInfoDouble(InpTestSymbol, SYMBOL_BID);
-      double slDistance = (slPrice - currentPrice) / SymbolInfoDouble(InpTestSymbol, SYMBOL_POINT);
-      Logger::Info("  SL Distance: " + DoubleToString(slDistance, 0) + " points");
    }
    else
    {

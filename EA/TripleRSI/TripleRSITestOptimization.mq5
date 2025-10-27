@@ -20,7 +20,7 @@
 //| Paramètres d'entrée utilisateur                                  |
 //+------------------------------------------------------------------+
 input group "=== SYMBOLES & TIMEFRAME ==="
-input string InpSymbolsList = "EURUSD,GBPUSD"; // Liste symboles (virgule)
+input string InpSymbolsList = ""; // Liste symboles (virgule) - vide = symbole courant
 input ENUM_TIMEFRAMES InpTimeframe = PERIOD_M15; // Timeframe
 
 input group "=== RISK MANAGEMENT ==="
@@ -81,6 +81,12 @@ int OnInit()
    static bool alreadyInitialized = false;
    static string lastSymbolsList = "";
    
+     if(InpTimeframe == PERIOD_M2 ||InpTimeframe == PERIOD_M4 ||InpTimeframe == PERIOD_M6 ||InpTimeframe == PERIOD_M12 ||InpTimeframe == PERIOD_M20 )
+   {
+      Logger::Error("Time Frame Ignored");
+      return INIT_FAILED;
+   }
+   
    if(alreadyInitialized && lastSymbolsList == InpSymbolsList)
    {
       Logger::Info("⚠️ Chart timeframe changed - EA configuration unchanged");
@@ -140,7 +146,7 @@ int OnInit()
    config.strategyName = "Triple RSI Test Strategy";
    config.strategyComment = "TripleRSI-Test";
    config.baseMagic = InpMagicNumber;
-   config.symbolsList = InpSymbolsList;
+   config.symbolsList = (InpSymbolsList == "") ? Symbol() : InpSymbolsList;
    config.timeframe = InpTimeframe;
    config.riskPercent = InpRiskPercent;
    config.rsiPeriod1 = InpRSIPeriod1;
