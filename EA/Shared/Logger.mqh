@@ -2,7 +2,6 @@
 //| Logger.mqh                                                        |
 //| Centralized logging system with configurable levels              |
 //+------------------------------------------------------------------+
-#property once
 #property copyright "(c) 2025"
 #property version   "1.0"
 #property strict
