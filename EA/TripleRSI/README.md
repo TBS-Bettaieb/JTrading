@@ -66,6 +66,13 @@ EA/TripleRSI/
 - **Niveau Oversold**: 30
 - **Niveau Overbought**: 70
 
+⚠️ **Validation des périodes RSI**: L'EA vérifie automatiquement que les périodes RSI respectent les règles suivantes :
+
+- `Period2 - Period1 > 2` (différence minimale entre RSI rapide et moyen)
+- `Period3 - Period2 > 2` (différence minimale entre RSI moyen et lent)
+
+Si ces conditions ne sont pas respectées, l'EA retourne `INIT_FAILED` et ne démarre pas.
+
 ### Gestion des risques
 
 - **Risque par trade**: 1% du capital (recommandé)
@@ -144,9 +151,14 @@ L'EA affiche sur le graphique:
 ### Problèmes courants
 
 1. **Erreur de compilation**: Vérifier que tous les fichiers .mqh sont présents
-2. **Pas de signaux**: Vérifier les niveaux RSI et les données historiques
-3. **Erreurs de trading**: Vérifier les permissions de trading et le spread
-4. **Positions non ouvertes**: Vérifier le capital disponible et les lots minimums
+2. **INIT_FAILED - Validation RSI**:
+   - Vérifier que `InpRSIPeriod2 - InpRSIPeriod1 > 2`
+   - Vérifier que `InpRSIPeriod3 - InpRSIPeriod2 > 2`
+   - Exemple valide: Period1=7, Period2=14, Period3=21
+   - Exemple invalide: Period1=7, Period2=9, Period3=21 (différence = 2)
+3. **Pas de signaux**: Vérifier les niveaux RSI et les données historiques
+4. **Erreurs de trading**: Vérifier les permissions de trading et le spread
+5. **Positions non ouvertes**: Vérifier le capital disponible et les lots minimums
 
 ### Vérifications
 
@@ -189,6 +201,14 @@ L'EA affiche sur le graphique:
 Pour toute question ou problème, consulter les logs détaillés et vérifier la configuration des paramètres.
 
 ## Changelog
+
+### Version 1.1
+
+- ✅ **Nouveau**: Validation automatique des périodes RSI
+- ✅ **Nouveau**: Filtrage des configurations invalides (différence ≤ 2)
+- ✅ **Nouveau**: Messages d'erreur explicites pour le debugging
+- ✅ **Nouveau**: Script de test pour validation RSI
+- ✅ **Amélioration**: Documentation étendue avec exemples
 
 ### Version 1.0
 
