@@ -59,17 +59,17 @@ public:
       if(m_useStrictAlignment)
       {
          // Alignement strict : tous les RSI > oversold
-         return (rsi1 > m_oversoldLevel && 
-                 rsi2 > m_oversoldLevel && 
-                 rsi3 > m_oversoldLevel);
+         return (rsi1 < m_oversoldLevel && 
+                 rsi2 < m_oversoldLevel && 
+                 rsi3 < m_oversoldLevel);
       }
       else
       {
          // Alignement flexible : au moins 2 sur 3 RSI > oversold
          int count = 0;
-         if(rsi1 > m_oversoldLevel) count++;
-         if(rsi2 > m_oversoldLevel) count++;
-         if(rsi3 > m_oversoldLevel) count++;
+         if(rsi1 < m_oversoldLevel) count++;
+         if(rsi2 < m_oversoldLevel) count++;
+         if(rsi3 < m_oversoldLevel) count++;
          
          return (count >= 2);
       }
@@ -82,17 +82,17 @@ public:
       if(m_useStrictAlignment)
       {
          // Alignement strict : tous les RSI < overbought
-         return (rsi1 < m_overboughtLevel && 
-                 rsi2 < m_overboughtLevel && 
-                 rsi3 < m_overboughtLevel);
+         return (rsi1 > m_overboughtLevel && 
+                 rsi2 > m_overboughtLevel && 
+                 rsi3 > m_overboughtLevel);
       }
       else
       {
          // Alignement flexible : au moins 2 sur 3 RSI < overbought
          int count = 0;
-         if(rsi1 < m_overboughtLevel) count++;
-         if(rsi2 < m_overboughtLevel) count++;
-         if(rsi3 < m_overboughtLevel) count++;
+         if(rsi1 > m_overboughtLevel) count++;
+         if(rsi2 > m_overboughtLevel) count++;
+         if(rsi3 > m_overboughtLevel) count++;
          
          return (count >= 2);
       }

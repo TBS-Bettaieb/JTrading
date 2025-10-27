@@ -293,7 +293,7 @@ public:
       ENUM_RSI_SIGNAL signal = m_alignDetector.GetSignal(rsi1, rsi2, rsi3, false);
       
       // 3. Si signal valide et pas de position, valider entrée ET confluences
-      if(signal == RSI_SIGNAL_BUY && !HasPosition())
+      if(signal == RSI_SIGNAL_BUY)
       {
          double slPrice;
          int confluenceScore = 0;  // Initialiser à 0
@@ -332,7 +332,7 @@ public:
             }
          }
       }
-      else if(signal == RSI_SIGNAL_SELL && !HasPosition())
+      else if(signal == RSI_SIGNAL_SELL)
       {
          double slPrice;
          int confluenceScore = 0;  // Initialiser à 0
