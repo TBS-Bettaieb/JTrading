@@ -9,8 +9,8 @@
 #include "../../Shared/Logger.mqh"
 #include "../../Shared/TradingUtils.mqh"
 #include "../../Shared/ChartManager.mqh"
-#include "TripleRSITrader.mqh"
 #include "TripleRSIConfig.mqh"
+#include "TripleRSITrader.mqh"
 
 //+------------------------------------------------------------------+
 //| Triple RSI Bot Class                                             |
@@ -101,8 +101,6 @@ public:
          Logger::Warning("Chart Manager initialization failed - continuing anyway");
       }
       
-      // 7. Afficher la configuration des confluences
-      PrintConfluenceConfiguration();
       
       // 8. Afficher le résumé d'initialisation
       PrintInitializationSummary();
@@ -268,10 +266,7 @@ private:
             m_config.useDynamicTrailing,
             m_config.rsiPeriod1, m_config.rsiPeriod2, m_config.rsiPeriod3,
             m_config.rsiOversold, m_config.rsiOverbought,
-            m_config.useAlerts, m_config.sendNotifications,
-            // Nouveaux paramètres de confluence
-            m_config.enableConfluence, m_config.confluenceMode,
-            m_config.useDynamicStopLoss // Nouveau paramètre
+            m_config.useAlerts, m_config.sendNotifications
          );
          
          if(m_symbolTraders[i] == NULL)
@@ -280,22 +275,10 @@ private:
             return false;
          }
          
-         // Configurer le Dynamic Stop-Loss Calculator si activé
-         if(m_config.useDynamicStopLoss)
-         {
-            m_symbolTraders[i].ConfigureDynamicSL(
-               m_config.dynamicSL_SwingLookback,
-               m_config.dynamicSL_SwingMinDistance,
-               m_config.dynamicSL_SwingVolumeThreshold,
-               m_config.dynamicSL_SwingBuffer,
-               m_config.dynamicSL_ATRPeriod,
-               m_config.dynamicSL_ATRMultiplier,
-               m_config.dynamicSL_ATRLongPeriod,
-               m_config.dynamicSL_ATRLongMultiplier,
-               m_config.dynamicSL_ATRVolatilityThreshold,
-               m_config.dynamicSL_DefaultPercent
-            );
-         }
+         // Initialiser la configuration
+         m_symbolTraders[i].Initialize(m_config);
+         
+         Logger::Success("✅ TripleRSI Trader created successfully for " + m_symbols[i]);
       }
       
       return true;
@@ -362,31 +345,6 @@ private:
       Logger::Info("═══════════════════════════════════════");
    }
    
-   //--- Afficher la configuration des confluences
-   void PrintConfluenceConfiguration()
-   {
-      Logger::Info("═══════════════════════════════════════");
-      Logger::Info("🎯 CONFLUENCE CONFIGURATION");
-      Logger::Info("═══════════════════════════════════════");
-      Logger::Info("Confluence System: " + (m_config.enableConfluence ? "ENABLED" : "DISABLED"));
-      
-      if(m_config.enableConfluence)
-      {
-         Logger::Info("Mode: " + m_config.confluenceMode);
-         Logger::Info("Min Score: " + IntegerToString(m_config.minConfluenceScore));
-         Logger::Info("Strict Mode: " + (m_config.useStrictMode ? "ON" : "OFF"));
-         
-         Logger::Info("Active Filters:");
-         Logger::Info("  Volume: " + (m_config.enableVolumeFilter ? "ON" : "OFF"));
-         Logger::Info("  EMA200: " + (m_config.enableEMA200Filter ? "ON" : "OFF"));
-         Logger::Info("  MACD: " + (m_config.enableMACDFilter ? "ON" : "OFF"));
-         Logger::Info("  Stochastic: " + (m_config.enableStochasticFilter ? "ON" : "OFF"));
-         Logger::Info("  Psychological: " + (m_config.enablePsychologicalLevels ? "ON" : "OFF"));
-         Logger::Info("  Multi-timeframe: " + (m_config.enableMultiTimeframe ? "ON" : "OFF"));
-      }
-      
-      Logger::Info("═══════════════════════════════════════");
-   }
    
    //--- Afficher le résumé d'initialisation
    void PrintInitializationSummary()

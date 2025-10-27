@@ -8,16 +8,13 @@
 #property strict
 
 //+------------------------------------------------------------------+
-//| Enumérations                                                     |
+//| Includes                                                         |
 //+------------------------------------------------------------------+
-enum ENUM_CONFLUENCE_MODE
-{
-   CONFLUENCE_AUTO,        // Configuration automatique
-   CONFLUENCE_SCALPING,    // Mode scalping
-   CONFLUENCE_SWING,       // Mode swing
-   CONFLUENCE_CONSERVATIVE, // Mode conservative
-   CONFLUENCE_AGGRESSIVE   // Mode agressif
-};
+#include "../Shared/TradingEnums.mqh"
+#include "../Shared/Logger.mqh"
+#include "../Shared/ChartManager.mqh"
+#include "../Shared/DayTimesFilters/TradingTimeManager.mqh"
+#include "Core/TripleRSIBot.mqh"
 
 //+------------------------------------------------------------------+
 //| Paramètres d'entrée utilisateur                                  |
@@ -29,19 +26,9 @@ input ENUM_TIMEFRAMES InpTimeframe = PERIOD_M15; // Timeframe
 input group "=== RISK MANAGEMENT ==="
 input double InpRiskPercent = 1.0;  // Risque par trade (%)
 input double InpTPRatio = 2.0;      // Ratio Take Profit (x SL)
-
-input group "=== DYNAMIC STOP-LOSS ==="
-input bool InpUseDynamicSL = true;                    // Activer SL dynamique
-input int InpDynamicSL_SwingLookback = 20;           // Swing: Périodes lookback
-input int InpDynamicSL_SwingMinDistance = 30;        // Swing: Distance min (points)
-input double InpDynamicSL_SwingVolumeThreshold = 1.2; // Swing: Seuil volume
-input int InpDynamicSL_SwingBuffer = 5;              // Swing: Buffer (points)
-input int InpDynamicSL_ATRPeriod = 14;               // ATR: Période standard
-input double InpDynamicSL_ATRMultiplier = 1.5;       // ATR: Multiplicateur
-input int InpDynamicSL_ATRLongPeriod = 28;           // ATR Long: Période
-input double InpDynamicSL_ATRLongMultiplier = 1.2;   // ATR Long: Multiplicateur
-input double InpDynamicSL_ATRVolatilityThreshold = 1.7; // ATR: Seuil volatilité
-input double InpDynamicSL_DefaultPercent = 0.5;      // Fallback: % du prix
+input ENUM_SL_MODE InpSLMode = SL_FIXED_POINTS;       // Mode SL
+input int InpFixedSLPoints = 50;                      // SL fixe en points
+input double InpPercentSLPrice = 0.5;                 // SL en % du prix
 
 input group "=== RSI PARAMETERS ==="
 input int InpRSIPeriod1 = 7;    // RSI Période 1 (rapide)
@@ -53,13 +40,13 @@ input int InpOverbought = 70;   // Niveau surachat
 input group "=== TRAILING STOP ==="
 input bool InpUseDynamicTrailing = true;    // Activer TSL Dynamique
 input double InpTSLCostMultiplier = 1.5;    // Multiplicateur coûts TSL
-input int InpTSLMinTriggerPoints = 50;     // Trigger minimum TSL (points)
+input int InpTSLMinTriggerPoints = 50;      // Trigger minimum TSL (points)
 
 input group "=== SESSION FILTERS ==="
-input int Session1_Start = 8;       // Session 1 - Début (heure)
-input int Session1_End = 12;        // Session 1 - Fin (heure)
-input int Session2_Start = 14;      // Session 2 - Début (heure)
-input int Session2_End = 18;         // Session 2 - Fin (heure)
+input int Session1_Start = 8;       // Session 1 - Début
+input int Session1_End = 12;        // Session 1 - Fin
+input int Session2_Start = 14;      // Session 2 - Début
+input int Session2_End = 18;        // Session 2 - Fin
 
 input group "=== DAY FILTERS ==="
 input bool MondayTrade = true;      // Trading Lundi
@@ -76,44 +63,7 @@ input bool InpSendNotif = false;    // Envoyer notifications
 
 input group "=== ADVANCED ==="
 input int InpMagicNumber = 123456;  // Magic Number
-input int InpLogLevel = 3; // Niveau de log (0=None, 1=Error, 2=Warning, 3=Info, 4=Debug)
-
-input group "=== CONFLUENCE CONFIGURATION ==="
-input bool InpEnableConfluence = true;                    // Activer système de confluences
-input ENUM_CONFLUENCE_MODE InpConfluenceMode = CONFLUENCE_AUTO; // Mode de confluence
-input int InpMinConfluenceScore = 3;                      // Score minimum requis
-input bool InpUseStrictMode = false;                      // Mode strict
-
-input group "=== VOLUME FILTERS ==="
-input bool InpEnableVolumeFilter = true;                  // Activer filtre volume
-input double InpMinVolumeMultiplier = 1.2;               // Multiplicateur volume minimum
-
-input group "=== SUPPORT/RESISTANCE FILTERS ==="
-input bool InpEnableEMA200Filter = true;                  // Activer filtre EMA200
-input double InpEMA200Tolerance = 5.0;                    // Tolérance EMA200 (points)
-
-input group "=== MACD FILTERS ==="
-input bool InpEnableMACDFilter = true;                    // Activer filtre MACD
-input bool InpUseMACDCrossover = false;                    // Utiliser croisement MACD
-input bool InpUseMACDState = true;                        // Utiliser état MACD simple
-
-input group "=== OSCILLATOR FILTERS ==="
-input bool InpEnableStochasticFilter = true;              // Activer filtre Stochastique
-
-input group "=== PRICE ACTION FILTERS ==="
-input bool InpEnablePsychologicalLevels = true;          // Activer niveaux psychologiques
-
-input group "=== MULTI-TIMEFRAME ==="
-input bool InpEnableMultiTimeframe = true;                // Activer multi-timeframe
-input ENUM_TIMEFRAMES InpHigherTimeframe = PERIOD_M15;    // Timeframe supérieur
-
-//+------------------------------------------------------------------+
-//| Includes                                                         |
-//+------------------------------------------------------------------+
-#include "../Shared/Logger.mqh"
-#include "../Shared/ChartManager.mqh"
-#include "../Shared/DayTimesFilters/TradingTimeManager.mqh"
-#include "Core/TripleRSIBot.mqh"
+input int InpLogLevel = 3; // Niveau de log
 
 //+------------------------------------------------------------------+
 //| Variables globales                                               |
@@ -198,49 +148,18 @@ int OnInit()
    config.rsiPeriod3 = InpRSIPeriod3;
    config.rsiOversold = InpOversold;
    config.rsiOverbought = InpOverbought;
-   config.slPoints = 0; // SL géré dynamiquement via Dynamic SL
+   config.slPoints = 0; // SL géré via les nouveaux paramètres
    config.tpRatio = InpTPRatio;
    config.useDynamicTrailing = InpUseDynamicTrailing;
    config.tslCostMultiplier = InpTSLCostMultiplier;
    config.tslMinTriggerPoints = InpTSLMinTriggerPoints;
+   config.slMode = InpSLMode;
+   config.fixedSLPoints = InpFixedSLPoints;
+   config.percentSLPrice = InpPercentSLPrice;
    config.barsLookback = 5;
    config.useAlerts = InpUseAlerts;
    config.sendNotifications = InpSendNotif;
    config.logLevel = (ENUM_LOG_LEVEL)InpLogLevel;
-   
-   // Configuration des confluences
-   config.enableConfluence = InpEnableConfluence;
-   config.confluenceMode = ConfluenceModeToString(InpConfluenceMode);
-   config.minConfluenceScore = InpMinConfluenceScore;
-   config.useStrictMode = InpUseStrictMode;
-   
-   config.enableVolumeFilter = InpEnableVolumeFilter;
-   config.minVolumeMultiplier = InpMinVolumeMultiplier;
-   
-   config.enableEMA200Filter = InpEnableEMA200Filter;
-   config.ema200Tolerance = InpEMA200Tolerance;
-   
-   config.enableMACDFilter = InpEnableMACDFilter;
-   config.useMACDCrossover = InpUseMACDCrossover;
-   config.useMACDState = InpUseMACDState;
-   
-   config.enableStochasticFilter = InpEnableStochasticFilter;
-   config.enablePsychologicalLevels = InpEnablePsychologicalLevels;
-   config.enableMultiTimeframe = InpEnableMultiTimeframe;
-   config.higherTimeframe = InpHigherTimeframe;
-   
-   // Configuration Dynamic Stop-Loss
-   config.useDynamicStopLoss = InpUseDynamicSL;
-   config.dynamicSL_SwingLookback = InpDynamicSL_SwingLookback;
-   config.dynamicSL_SwingMinDistance = InpDynamicSL_SwingMinDistance;
-   config.dynamicSL_SwingVolumeThreshold = InpDynamicSL_SwingVolumeThreshold;
-   config.dynamicSL_SwingBuffer = InpDynamicSL_SwingBuffer;
-   config.dynamicSL_ATRPeriod = InpDynamicSL_ATRPeriod;
-   config.dynamicSL_ATRMultiplier = InpDynamicSL_ATRMultiplier;
-   config.dynamicSL_ATRLongPeriod = InpDynamicSL_ATRLongPeriod;
-   config.dynamicSL_ATRLongMultiplier = InpDynamicSL_ATRLongMultiplier;
-   config.dynamicSL_ATRVolatilityThreshold = InpDynamicSL_ATRVolatilityThreshold;
-   config.dynamicSL_DefaultPercent = InpDynamicSL_DefaultPercent;
    
    // Valider la configuration
    if(!config.Validate())
@@ -430,16 +349,10 @@ void DisplayConfigurationInfo(TripleRSIConfig &config)
    string sessionsStr = BuildHourRanges();
    string daysStr = BuildDayRanges();
    
-   string confluenceStr = "Disabled";
-   if(config.enableConfluence)
+   string slStr = "Fixed Points (" + IntegerToString(config.fixedSLPoints) + " pts)";
+   if(config.slMode == SL_PERCENT_PRICE)
    {
-      confluenceStr = "ON (" + config.confluenceMode + " - Score: " + IntegerToString(config.minConfluenceScore) + ")";
-   }
-   
-   string slStr = "Dynamic (Swing/ATR/Percentage)";
-   if(!config.useDynamicStopLoss)
-   {
-      slStr = "Disabled";
+      slStr = "Percent Price (" + DoubleToString(config.percentSLPrice, 1) + "%)";
    }
    
    string info = StringFormat(
@@ -453,7 +366,6 @@ void DisplayConfigurationInfo(TripleRSIConfig &config)
       "Stop-Loss: %s\n" +
       "TP Ratio: %.1fx\n" +
       "Trailing Stop: %s\n" +
-      "Confluence: %s\n" +
       "Sessions: %s\n" +
       "Days: %s\n" +
       "Alerts: %s\n" +
@@ -468,7 +380,6 @@ void DisplayConfigurationInfo(TripleRSIConfig &config)
       slStr,
       config.tpRatio,
       trailingStr,
-      confluenceStr,
       sessionsStr,
       daysStr,
       alertsStr,
@@ -556,18 +467,3 @@ void ShowDetailedInfo()
    Comment(stats + "\n\n" + traders);
 }
 
-//+------------------------------------------------------------------+
-//| Fonction utilitaire pour convertir l'enum en string             |
-//+------------------------------------------------------------------+
-string ConfluenceModeToString(ENUM_CONFLUENCE_MODE mode)
-{
-   switch(mode)
-   {
-      case CONFLUENCE_AUTO: return "AUTO";
-      case CONFLUENCE_SCALPING: return "SCALPING";
-      case CONFLUENCE_SWING: return "SWING";
-      case CONFLUENCE_CONSERVATIVE: return "CONSERVATIVE";
-      case CONFLUENCE_AGGRESSIVE: return "AGGRESSIVE";
-      default: return "AUTO";
-   }
-}

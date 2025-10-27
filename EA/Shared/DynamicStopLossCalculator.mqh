@@ -120,7 +120,8 @@ public:
       string method = "";
       
       // 1. PRIORITÉ 1 : Dernier swing high/low confirmé
-      double swingSL = CalculateSwingStopLoss(isBuy, entryPrice);
+      //double swingSL = 0;//CalculateSwingStopLoss(isBuy, entryPrice);
+      double swingSL = CalculatePercentageStopLoss(isBuy, entryPrice);
       if(swingSL > 0)
       {
          stopLoss = swingSL;

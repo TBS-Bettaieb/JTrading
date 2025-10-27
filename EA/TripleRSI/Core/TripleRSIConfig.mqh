@@ -6,6 +6,7 @@
 #property strict
 
 #include "../../Shared/Logger.mqh"
+#include "../../Shared/TradingEnums.mqh"
 
 //+------------------------------------------------------------------+
 //| Configuration structure for Triple RSI Strategy                  |
@@ -46,47 +47,10 @@ struct TripleRSIConfig
    // Logging
    ENUM_LOG_LEVEL    logLevel;
    
-   //=== CONFLUENCE CONFIGURATION ===
-   bool              enableConfluence;        // Activer le système de confluences
-   string            confluenceMode;         // Mode de confluence ("AUTO", "SCALPING", "SWING", "CONSERVATIVE", "AGGRESSIVE")
-   int               minConfluenceScore;     // Score minimum requis (ex: 3)
-   bool              useStrictMode;         // Mode strict (tous les filtres requis)
-   
-   // Volume Filters
-   bool              enableVolumeFilter;     // Activer filtre volume
-   double            minVolumeMultiplier;    // Multiplicateur volume minimum (ex: 1.2)
-   
-   // Support/Resistance Filters  
-   bool              enableEMA200Filter;     // Activer filtre EMA200
-   double            ema200Tolerance;       // Tolérance EMA200 en points (ex: 5.0)
-   
-   // MACD Filters
-   bool              enableMACDFilter;       // Activer filtre MACD
-   bool              useMACDCrossover;      // Utiliser croisement MACD
-   bool              useMACDState;          // Utiliser état MACD simple
-   
-   // Oscillator Filters
-   bool              enableStochasticFilter; // Activer filtre Stochastique
-   
-   // Price Action Filters
-   bool              enablePsychologicalLevels; // Activer niveaux psychologiques
-   
-   // Multi-timeframe
-   bool              enableMultiTimeframe; // Activer multi-timeframe
-   ENUM_TIMEFRAMES   higherTimeframe;      // Timeframe supérieur (ex: PERIOD_M15)
-   
-   //=== DYNAMIC STOP-LOSS CONFIGURATION ===
-   bool              useDynamicStopLoss;     // Activer SL dynamique
-   int               dynamicSL_SwingLookback; // Périodes pour détecter swings (20)
-   int               dynamicSL_SwingMinDistance; // Distance minimale swing points (30)
-   double            dynamicSL_SwingVolumeThreshold; // Seuil volume swing (1.2)
-   int               dynamicSL_SwingBuffer; // Buffer sécurité swing (5)
-   int               dynamicSL_ATRPeriod; // Période ATR standard (14)
-   double            dynamicSL_ATRMultiplier; // Multiplicateur ATR (1.5)
-   int               dynamicSL_ATRLongPeriod; // Période ATR longue (28)
-   double            dynamicSL_ATRLongMultiplier; // Multiplicateur ATR longue (1.2)
-   double            dynamicSL_ATRVolatilityThreshold; // Seuil volatilité (1.7)
-   double            dynamicSL_DefaultPercent; // SL par défaut en % (0.5)
+   //=== STOP-LOSS CONFIGURATION ===
+   ENUM_SL_MODE      slMode;                // Mode SL (FIXED_POINTS ou PERCENT_PRICE)
+   int               fixedSLPoints;         // SL fixe en points
+   double            percentSLPrice;        // SL en % du prix
    
    // Constructor par défaut
    TripleRSIConfig()
@@ -119,39 +83,10 @@ struct TripleRSIConfig
       
       logLevel = LOG_INFO;
       
-      // Configuration des confluences par défaut
-      enableConfluence = true;
-      confluenceMode = "AUTO";
-      minConfluenceScore = 3;
-      useStrictMode = false;
-      
-      enableVolumeFilter = true;
-      minVolumeMultiplier = 1.2;
-      
-      enableEMA200Filter = true;
-      ema200Tolerance = 5.0;
-      
-      enableMACDFilter = true;
-      useMACDCrossover = false;
-      useMACDState = true;
-      
-      enableStochasticFilter = true;
-      enablePsychologicalLevels = true;
-      enableMultiTimeframe = true;
-      higherTimeframe = PERIOD_M15;
-      
-      // Configuration Dynamic Stop-Loss par défaut
-      useDynamicStopLoss = true;
-      dynamicSL_SwingLookback = 20;
-      dynamicSL_SwingMinDistance = 30;
-      dynamicSL_SwingVolumeThreshold = 1.2;
-      dynamicSL_SwingBuffer = 5;
-      dynamicSL_ATRPeriod = 14;
-      dynamicSL_ATRMultiplier = 1.5;
-      dynamicSL_ATRLongPeriod = 28;
-      dynamicSL_ATRLongMultiplier = 1.2;
-      dynamicSL_ATRVolatilityThreshold = 1.7;
-      dynamicSL_DefaultPercent = 0.5;
+      // Configuration Stop-Loss par défaut
+      slMode = SL_FIXED_POINTS;
+      fixedSLPoints = 50;
+      percentSLPrice = 0.5;
    }
    
    // Validation de la configuration
@@ -221,21 +156,6 @@ struct TripleRSIConfig
          Logger::Info("TSL Min Trigger: " + IntegerToString(tslMinTriggerPoints) + " pts");
       }
       
-      // Affichage configuration confluences
-      Logger::Info("Confluence System: " + (enableConfluence ? "ENABLED" : "DISABLED"));
-      if(enableConfluence)
-      {
-         Logger::Info("Confluence Mode: " + confluenceMode);
-         Logger::Info("Min Score: " + IntegerToString(minConfluenceScore));
-         Logger::Info("Strict Mode: " + (useStrictMode ? "ON" : "OFF"));
-         Logger::Info("Active Filters:");
-         Logger::Info("  Volume: " + (enableVolumeFilter ? "ON" : "OFF"));
-         Logger::Info("  EMA200: " + (enableEMA200Filter ? "ON" : "OFF"));
-         Logger::Info("  MACD: " + (enableMACDFilter ? "ON" : "OFF"));
-         Logger::Info("  Stochastic: " + (enableStochasticFilter ? "ON" : "OFF"));
-         Logger::Info("  Psychological: " + (enablePsychologicalLevels ? "ON" : "OFF"));
-         Logger::Info("  Multi-timeframe: " + (enableMultiTimeframe ? "ON" : "OFF"));
-      }
       Logger::Info("================================");
    }
 };

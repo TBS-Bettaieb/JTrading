@@ -64,7 +64,7 @@ public:
       if(slPoints > 500) // SL trop éloigné
       {
          Logger::Warning("SL too far for BUY: " + DoubleToString(slPoints, 0) + " points");
-         return false;
+         //return false;
       }
       
       Logger::Debug("BUY entry validated - SL: " + DoubleToString(slPrice, 5) + 

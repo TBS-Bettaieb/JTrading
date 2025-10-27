@@ -8,6 +8,15 @@
 #property strict
 
 //+------------------------------------------------------------------+
+//| Includes                                                         |
+//+------------------------------------------------------------------+
+#include "../Shared/TradingEnums.mqh"
+#include "../Shared/Logger.mqh"
+#include "../Shared/ChartManager.mqh"
+#include "../Shared/DayTimesFilters/TradingTimeManager.mqh"
+#include "Core/TripleRSIBot.mqh"
+
+//+------------------------------------------------------------------+
 //| Paramètres d'entrée utilisateur                                  |
 //+------------------------------------------------------------------+
 input group "=== SYMBOLES & TIMEFRAME ==="
@@ -17,19 +26,9 @@ input ENUM_TIMEFRAMES InpTimeframe = PERIOD_M15; // Timeframe
 input group "=== RISK MANAGEMENT ==="
 input double InpRiskPercent = 1.0;  // Risque par trade (%)
 input double InpTPRatio = 2.0;      // Ratio Take Profit (x SL)
-
-input group "=== DYNAMIC STOP-LOSS ==="
-input bool InpUseDynamicSL = true;                    // Activer SL dynamique
-input int InpDynamicSL_SwingLookback = 20;           // Swing: Périodes lookback
-input int InpDynamicSL_SwingMinDistance = 30;        // Swing: Distance min (points)
-input double InpDynamicSL_SwingVolumeThreshold = 1.2; // Swing: Seuil volume
-input int InpDynamicSL_SwingBuffer = 5;              // Swing: Buffer (points)
-input int InpDynamicSL_ATRPeriod = 14;               // ATR: Période standard
-input double InpDynamicSL_ATRMultiplier = 1.5;       // ATR: Multiplicateur
-input int InpDynamicSL_ATRLongPeriod = 28;           // ATR Long: Période
-input double InpDynamicSL_ATRLongMultiplier = 1.2;   // ATR Long: Multiplicateur
-input double InpDynamicSL_ATRVolatilityThreshold = 1.7; // ATR: Seuil volatilité
-input double InpDynamicSL_DefaultPercent = 0.5;      // Fallback: % du prix
+input ENUM_SL_MODE InpSLMode = SL_FIXED_POINTS;       // Mode SL
+input int InpFixedSLPoints = 50;                      // SL fixe en points
+input double InpPercentSLPrice = 0.5;                 // SL en % du prix
 
 input group "=== RSI PARAMETERS ==="
 input int InpRSIPeriod1 = 7;    // RSI Période 1 (rapide)
@@ -41,15 +40,15 @@ input int InpOverbought = 70;   // Niveau surachat
 input group "=== TRAILING STOP ==="
 input bool InpUseDynamicTrailing = true;    // Activer TSL Dynamique
 input double InpTSLCostMultiplier = 1.5;    // Multiplicateur coûts TSL
-input int InpTSLMinTriggerPoints = 50;     // Trigger minimum TSL (points)
+input int InpTSLMinTriggerPoints = 50;      // Trigger minimum TSL (points)
 
 input group "=== TIME RANGE FILTER ==="
 input bool InpUseTimeFilter = false;             // Activer filtre horaire
-input string InpHourRanges = "8-10;16";          // Plages horaires (ex: 8-10;16)
+input string InpHourRanges = "8-10;16";          // Plages horaires
 
 input group "=== DAY RANGE FILTER ==="
 input bool InpUseDayFilter = false;              // Activer filtre par jour
-input string InpDayRanges = "1-5";               // Jours autorisés (0=Dim,1=Lun...6=Sam)
+input string InpDayRanges = "1-5";               // Jours autorisés
 
 input group "=== ALERTES ==="
 input bool InpUseAlerts = true;     // Activer alertes
@@ -57,15 +56,7 @@ input bool InpSendNotif = false;    // Envoyer notifications
 
 input group "=== ADVANCED ==="
 input int InpMagicNumber = 123456;  // Magic Number
-input int InpLogLevel = 3; // Niveau de log (0=None, 1=Error, 2=Warning, 3=Info, 4=Debug)
-
-//+------------------------------------------------------------------+
-//| Includes                                                         |
-//+------------------------------------------------------------------+
-#include "../Shared/Logger.mqh"
-#include "../Shared/ChartManager.mqh"
-#include "../Shared/DayTimesFilters/TradingTimeManager.mqh"
-#include "Core/TripleRSIBot.mqh"
+input int InpLogLevel = 3; // Niveau de log
 
 //+------------------------------------------------------------------+
 //| Variables globales                                               |
@@ -144,22 +135,14 @@ int OnInit()
    config.rsiPeriod3 = InpRSIPeriod3;
    config.rsiOversold = InpOversold;
    config.rsiOverbought = InpOverbought;
-   config.slPoints = 0; // SL géré dynamiquement via Dynamic SL
+   config.slPoints = 0; // SL géré via les nouveaux paramètres
    config.tpRatio = InpTPRatio;
    config.useDynamicTrailing = InpUseDynamicTrailing;
    config.tslCostMultiplier = InpTSLCostMultiplier;
    config.tslMinTriggerPoints = InpTSLMinTriggerPoints;
-   config.useDynamicStopLoss = InpUseDynamicSL;
-   config.dynamicSL_SwingLookback = InpDynamicSL_SwingLookback;
-   config.dynamicSL_SwingMinDistance = InpDynamicSL_SwingMinDistance;
-   config.dynamicSL_SwingVolumeThreshold = InpDynamicSL_SwingVolumeThreshold;
-   config.dynamicSL_SwingBuffer = InpDynamicSL_SwingBuffer;
-   config.dynamicSL_ATRPeriod = InpDynamicSL_ATRPeriod;
-   config.dynamicSL_ATRMultiplier = InpDynamicSL_ATRMultiplier;
-   config.dynamicSL_ATRLongPeriod = InpDynamicSL_ATRLongPeriod;
-   config.dynamicSL_ATRLongMultiplier = InpDynamicSL_ATRLongMultiplier;
-   config.dynamicSL_ATRVolatilityThreshold = InpDynamicSL_ATRVolatilityThreshold;
-   config.dynamicSL_DefaultPercent = InpDynamicSL_DefaultPercent;
+   config.slMode = InpSLMode;
+   config.fixedSLPoints = InpFixedSLPoints;
+   config.percentSLPrice = InpPercentSLPrice;
    config.barsLookback = 5;
    config.useAlerts = InpUseAlerts;
    config.sendNotifications = InpSendNotif;

@@ -8,13 +8,13 @@
 #include <Trade/Trade.mqh>
 #include "../../Shared/Logger.mqh"
 #include "../../Shared/TradingUtils.mqh"
+#include "../../Shared/TradingEnums.mqh"
 #include "../../Shared/DynamicTrailingStop.mqh"
-#include "../../Shared/DynamicStopLossCalculator.mqh"
 #include "../../Shared/ForexCommissionManager.mqh"
+#include "TripleRSIConfig.mqh"
 #include "../Logic/RSI_Calculator.mqh"
 #include "../Logic/RSI_AlignmentDetector.mqh"
 #include "../Logic/EntryRulesValidator.mqh"
-#include "../Logic/ConfluenceFilters.mqh"
 
 //+------------------------------------------------------------------+
 //| Triple RSI Trader Class                                          |
@@ -38,9 +38,8 @@ private:
    CDynamicTrailingStop* m_dynamicTSL;
    ForexCommissionManager* m_commissionManager;
    
-   // Dynamic Stop-Loss Calculator
-   bool m_useDynamicStopLoss;
-   CDynamicStopLossCalculator* m_dynamicSLCalculator;
+   // Configuration
+   TripleRSIConfig m_config;
    
    // Statistiques
    int m_totalTrades;
@@ -48,9 +47,6 @@ private:
    double m_totalProfit;
    datetime m_lastTradeTime;
    
-   // Configuration des confluences
-   bool m_enableConfluence;
-   string m_confluenceMode;
    
    // Gestion des alertes
    bool m_useAlerts;
@@ -59,16 +55,41 @@ private:
    datetime m_lastBarTime;  // Temps de la dernière barre traitée
 
 public:
-   //--- Constructor
+   //--- Constructor par défaut
+   CTripleRSITrader()
+   {
+      // Constructeur par défaut pour éviter les erreurs de compilation
+      m_symbol = "";
+      m_magic = 0;
+      m_timeframe = PERIOD_M15;
+      m_riskPercent = 1.0;
+      m_tpRatio = 2.0;
+      m_useDynamicTrailing = false;
+      m_useAlerts = true;
+      m_sendNotifications = false;
+      
+      // Initialiser statistiques
+      m_totalTrades = 0;
+      m_winningTrades = 0;
+      m_totalProfit = 0.0;
+      m_lastTradeTime = 0;
+      m_lastBarTime = 0;
+      
+      // Initialiser les pointeurs
+      m_rsiCalc = NULL;
+      m_alignDetector = NULL;
+      m_entryValidator = NULL;
+      m_dynamicTSL = NULL;
+      m_commissionManager = NULL;
+   }
+   
+   //--- Constructor principal
    CTripleRSITrader(string symbol, int magic, ENUM_TIMEFRAMES tf,
                     double risk, double tpRatio,
                     bool useDynamicTrailing,
                     int rsiP1, int rsiP2, int rsiP3,
                     int oversold, int overbought,
-                    bool useAlerts = true, bool sendNotif = false,
-                    // Nouveaux paramètres de confluence
-                    bool enableConfluence = true, string confluenceMode = "AUTO",
-                    bool useDynamicStopLoss = true)
+                    bool useAlerts = true, bool sendNotif = false)
    {
       m_symbol = symbol;
       m_magic = magic;
@@ -78,14 +99,6 @@ public:
       m_useDynamicTrailing = useDynamicTrailing;
       m_useAlerts = useAlerts;
       m_sendNotifications = sendNotif;
-      
-      // Configuration des confluences
-      m_enableConfluence = enableConfluence;
-      m_confluenceMode = confluenceMode;
-      
-      // Configuration Dynamic Stop-Loss
-      m_useDynamicStopLoss = useDynamicStopLoss;
-      m_dynamicSLCalculator = NULL;
       
       // Initialiser statistiques
       m_totalTrades = 0;
@@ -134,34 +147,15 @@ public:
          m_commissionManager = NULL;
       }
       
-      // Configuration des confluences
-      if(m_enableConfluence)
-      {
-         SetupConfluenceConfiguration(m_confluenceMode, symbol);
-      }
-      
-      // Initialiser DynamicStopLossCalculator si activé
-      if(m_useDynamicStopLoss)
-      {
-         m_dynamicSLCalculator = new CDynamicStopLossCalculator(symbol, tf);
-         if(m_dynamicSLCalculator == NULL)
-         {
-            Logger::Error("Failed to create Dynamic SL Calculator for " + symbol);
-         }
-         else
-         {
-            Logger::Info("Dynamic Stop-Loss Calculator initialized for " + symbol);
-         }
-      }
-      else
-      {
-         m_dynamicSLCalculator = NULL;
-      }
-      
       Logger::Info("TripleRSI Trader created for " + symbol + " (Magic: " + IntegerToString(magic) + 
-                   ") | Dynamic TSL: " + (m_useDynamicTrailing ? "ON" : "OFF") +
-                   " | Dynamic SL: " + (m_useDynamicStopLoss ? "ON" : "OFF") +
-                   " | Confluence: " + (m_enableConfluence ? m_confluenceMode : "OFF"));
+                   ") | Dynamic TSL: " + (m_useDynamicTrailing ? "ON" : "OFF"));
+   }
+   
+   //--- Méthode d'initialisation pour configurer le trader
+   void Initialize(TripleRSIConfig& config)
+   {
+      m_config = config;
+      Logger::Info("Configuration applied to trader for " + m_symbol);
    }
    
    //--- Destructor
@@ -199,61 +193,9 @@ public:
          m_commissionManager = NULL;
       }
       
-      // Nettoyer le Dynamic Stop-Loss Calculator
-      if(m_dynamicSLCalculator != NULL)
-      {
-         delete m_dynamicSLCalculator;
-         m_dynamicSLCalculator = NULL;
-      }
-      
       Logger::Debug("TripleRSI Trader destroyed for " + m_symbol);
    }
    
-   //--- Configuration des confluences
-   void SetupConfluenceConfiguration(string confluenceMode, string symbol)
-   {
-      if(confluenceMode == "AUTO")
-      {
-         // Configuration automatique selon le symbole
-         if(StringFind(symbol, "US100") >= 0 || StringFind(symbol, "US30") >= 0)
-         {
-            ConfluenceFilters::SetScalpingMode(symbol);
-            Logger::Info("Auto-configured SCALPING mode for " + symbol);
-         }
-         else if(StringFind(symbol, "EURUSD") >= 0 || StringFind(symbol, "GBPUSD") >= 0)
-         {
-            ConfluenceFilters::SetSwingMode(symbol);
-            Logger::Info("Auto-configured SWING mode for " + symbol);
-         }
-         else
-         {
-            ConfluenceFilters::SetConservativeMode(symbol);
-            Logger::Info("Auto-configured CONSERVATIVE mode for " + symbol);
-         }
-      }
-      else if(confluenceMode == "SCALPING")
-      {
-         ConfluenceFilters::SetScalpingMode(symbol);
-      }
-      else if(confluenceMode == "SWING")
-      {
-         ConfluenceFilters::SetSwingMode(symbol);
-      }
-      else if(confluenceMode == "CONSERVATIVE")
-      {
-         ConfluenceFilters::SetConservativeMode(symbol);
-      }
-      else if(confluenceMode == "AGGRESSIVE")
-      {
-         ConfluenceFilters::SetAggressiveMode(symbol);
-      }
-      
-      // Afficher la configuration appliquée
-      ConfluenceConfig config = ConfluenceFilters::GetConfluenceConfig();
-      Logger::Info("Confluence configuration for " + symbol + ":");
-      Logger::Info("  Mode: " + config.presetMode);
-      Logger::Info("  Min Score: " + IntegerToString(config.minConfluenceScore) + "/" + IntegerToString(config.CalculateMaxScore()));
-   }
    
    //--- Fonction OnTick principale
    void OnTick()
@@ -281,83 +223,27 @@ public:
       // 2. Détecter alignement
       ENUM_RSI_SIGNAL signal = m_alignDetector.GetSignal(rsi1, rsi2, rsi3, false);
       
-      // 3. Si signal valide et pas de position, valider entrée ET confluences
+      // 3. Si signal valide et pas de position, valider entrée
       if(signal == RSI_SIGNAL_BUY)
       {
          double slPrice;
-         int confluenceScore = 0;  // Initialiser à 0
          
-         // Valider règles d'entrée de base
+         // Valider règles d'entrée de base uniquement
          if(m_entryValidator.ValidateBuyEntry(m_symbol, m_timeframe, 5, slPrice))
          {
-            // Valider confluences paramétrables si activé
-            bool confluenceOK = true;
-            if(m_enableConfluence)
-            {
-               confluenceOK = ConfluenceFilters::CheckParametricConfluence(m_symbol, m_timeframe, true, confluenceScore);
-            }
-            
-            if(confluenceOK)
-            {
-               OpenBuyPosition(slPrice);
-               
-               // Afficher informations de confluence
-               if(m_enableConfluence)
-               {
-                  ConfluenceConfig config = ConfluenceFilters::GetConfluenceConfig();
-                  Logger::Signal(true, "✅ Position BUY ouverte - Score confluence: " + 
-                                 IntegerToString(confluenceScore) + "/" + IntegerToString(config.CalculateMaxScore()) + 
-                                 " (Mode: " + config.presetMode + ")");
-               }
-            }
-            else
-            {
-               if(m_enableConfluence)
-               {
-                  ConfluenceConfig config = ConfluenceFilters::GetConfluenceConfig();
-                  Logger::Warning("❌ Signal BUY rejeté - Score confluence: " + 
-                                 IntegerToString(confluenceScore) + "/" + IntegerToString(config.CalculateMaxScore()));
-               }
-            }
+            OpenBuyPosition(slPrice);
+            Logger::Signal(true, "✅ Position BUY ouverte");
          }
       }
       else if(signal == RSI_SIGNAL_SELL)
       {
          double slPrice;
-         int confluenceScore = 0;  // Initialiser à 0
          
-         // Valider règles d'entrée de base
+         // Valider règles d'entrée de base uniquement
          if(m_entryValidator.ValidateSellEntry(m_symbol, m_timeframe, 5, slPrice))
          {
-            // Valider confluences paramétrables si activé
-            bool confluenceOK = true;
-            if(m_enableConfluence)
-            {
-               confluenceOK = ConfluenceFilters::CheckParametricConfluence(m_symbol, m_timeframe, false, confluenceScore);
-            }
-            
-            if(confluenceOK)
-            {
-               OpenSellPosition(slPrice);
-               
-               // Afficher informations de confluence
-               if(m_enableConfluence)
-               {
-                  ConfluenceConfig config = ConfluenceFilters::GetConfluenceConfig();
-                  Logger::Signal(true, "✅ Position SELL ouverte - Score confluence: " + 
-                                 IntegerToString(confluenceScore) + "/" + IntegerToString(config.CalculateMaxScore()) + 
-                                 " (Mode: " + config.presetMode + ")");
-               }
-            }
-            else
-            {
-               if(m_enableConfluence)
-               {
-                  ConfluenceConfig config = ConfluenceFilters::GetConfluenceConfig();
-                  Logger::Warning("❌ Signal SELL rejeté - Score confluence: " + 
-                                 IntegerToString(confluenceScore) + "/" + IntegerToString(config.CalculateMaxScore()));
-               }
-            }
+            OpenSellPosition(slPrice);
+            Logger::Signal(false, "✅ Position SELL ouverte");
          }
       }
       
@@ -371,44 +257,34 @@ public:
       UpdateStatistics();
    }
    
-   //--- Configurer les paramètres du Dynamic Stop-Loss Calculator
-   void ConfigureDynamicSL(int swingLookback, int swingMinDistance, double swingVolumeThreshold, 
-                           int swingBuffer, int atrPeriod, double atrMultiplier,
-                           int atrLongPeriod, double atrLongMultiplier, 
-                           double atrVolatilityThreshold, double defaultPercent)
-   {
-      if(m_dynamicSLCalculator != NULL)
-      {
-         m_dynamicSLCalculator.SetSwingLookbackPeriods(swingLookback);
-         m_dynamicSLCalculator.SetSwingMinDistancePoints(swingMinDistance);
-         m_dynamicSLCalculator.SetSwingVolumeThreshold(swingVolumeThreshold);
-         m_dynamicSLCalculator.SetSwingBufferPoints(swingBuffer);
-         m_dynamicSLCalculator.SetATRPeriod(atrPeriod);
-         m_dynamicSLCalculator.SetATRMultiplier(atrMultiplier);
-         m_dynamicSLCalculator.SetATRLongPeriod(atrLongPeriod);
-         m_dynamicSLCalculator.SetATRLongMultiplier(atrLongMultiplier);
-         m_dynamicSLCalculator.SetATRVolatilityThreshold(atrVolatilityThreshold);
-         m_dynamicSLCalculator.SetDefaultSLPercent(defaultPercent);
-         
-         Logger::Info("Dynamic SL Calculator configured for " + m_symbol);
-      }
-   }
    
-   //--- Calculer le Stop-Loss dynamique
-   double CalculateDynamicStopLoss(bool isBuy, double entryPrice)
+   //--- Calculer le Stop-Loss selon le mode choisi
+   double CalculateStopLoss(bool isBuy, double entryPrice)
    {
-      if(m_useDynamicStopLoss && m_dynamicSLCalculator != NULL)
+      if(m_config.slMode == SL_FIXED_POINTS)
       {
-         double dynamicSL = m_dynamicSLCalculator.CalculateStopLoss(isBuy, entryPrice);
-         if(dynamicSL > 0)
-         {
-            return dynamicSL;
-         }
-         Logger::Error("❌ Dynamic SL calculation failed - cannot open trade without SL");
-         return -1; // Retourner -1 pour signaler l'erreur
+         // Mode SL fixe en points
+         double pointValue = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+         double slDistance = m_config.fixedSLPoints * pointValue;
+         
+         if(isBuy)
+            return entryPrice - slDistance;  // SL en dessous du prix d'achat
+         else
+            return entryPrice + slDistance;  // SL au-dessus du prix de vente
+      }
+      else if(m_config.slMode == SL_PERCENT_PRICE)
+      {
+         // Mode SL en pourcentage du prix
+         double slPercent = m_config.percentSLPrice / 100.0;
+         double slDistance = entryPrice * slPercent;
+         
+         if(isBuy)
+            return entryPrice - slDistance;  // SL en dessous du prix d'achat
+         else
+            return entryPrice + slDistance;  // SL au-dessus du prix de vente
       }
       
-      Logger::Error("❌ Dynamic SL Calculator not available");
+      Logger::Error("❌ Invalid SL mode");
       return -1;
    }
    
@@ -417,8 +293,8 @@ public:
    {
       double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_ASK);
       
-      // Calculer le SL dynamique
-      double slPrice = CalculateDynamicStopLoss(true, currentPrice);
+      // Calculer le SL selon le mode choisi
+      double slPrice = CalculateStopLoss(true, currentPrice);
       
       // Vérifier que le SL est valide
       if(slPrice <= 0 || slPrice >= currentPrice)
@@ -494,8 +370,8 @@ public:
    {
       double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
       
-      // Calculer le SL dynamique
-      double slPrice = CalculateDynamicStopLoss(false, currentPrice);
+      // Calculer le SL selon le mode choisi
+      double slPrice = CalculateStopLoss(false, currentPrice);
       
       // Vérifier que le SL est valide
       if(slPrice <= 0 || slPrice <= currentPrice)
