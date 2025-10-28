@@ -235,13 +235,15 @@ public:
    //+------------------------------------------------------------------+
    void OnTick()
    {
+      // Mettre à jour les compteurs
+      m_statusManager.UpdateCounters();
+      
       // Vérifier si c'est une nouvelle barre
       if(!m_statusManager.IsNewBar()) return;
       
       // Note: Trading time control is now handled at the global level in the bot's OnTick()
       
-      // Mettre à jour les compteurs
-      m_statusManager.UpdateCounters();
+      
       
       // Vérifier les nouvelles positions pour créer les lignes TP/SL
       CheckForNewPositions();
