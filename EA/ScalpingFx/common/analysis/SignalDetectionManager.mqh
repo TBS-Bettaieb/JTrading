@@ -84,7 +84,7 @@ public:
       {
          signal.signalType = ORDER_TYPE_BUY;
          signal.triggerPrice = triggerPrice;
-         signal.timestamp = TimeCurrent();
+         signal.timestamp = TimeGMT();
          signal.description = description;
          return true;
       }
@@ -113,7 +113,7 @@ public:
       {
          signal.signalType = ORDER_TYPE_SELL;
          signal.triggerPrice = triggerPrice;
-         signal.timestamp = TimeCurrent();
+         signal.timestamp = TimeGMT();
          signal.description = description;
          return true;
       }
