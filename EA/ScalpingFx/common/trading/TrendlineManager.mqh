@@ -105,7 +105,7 @@ public:
             
             // Ajouter un label pour identifier la ligne
             string labelName = tpLineName + "_Label";
-            ObjectCreate(m_chartId, labelName, OBJ_TEXT, 0, TimeCurrent(), tpPrice);
+            ObjectCreate(m_chartId, labelName, OBJ_TEXT, 0, TimeGMT(), tpPrice);
             ObjectSetString(m_chartId, labelName, OBJPROP_TEXT, "TP #" + IntegerToString(ticket));
             ObjectSetInteger(m_chartId, labelName, OBJPROP_COLOR, clrLime);
             ObjectSetInteger(m_chartId, labelName, OBJPROP_FONTSIZE, 8);
@@ -130,7 +130,7 @@ public:
             
             // Ajouter un label pour identifier la ligne
             string labelName = slLineName + "_Label";
-            ObjectCreate(m_chartId, labelName, OBJ_TEXT, 0, TimeCurrent(), slPrice);
+            ObjectCreate(m_chartId, labelName, OBJ_TEXT, 0, TimeGMT(), slPrice);
             ObjectSetString(m_chartId, labelName, OBJPROP_TEXT, "SL #" + IntegerToString(ticket));
             ObjectSetInteger(m_chartId, labelName, OBJPROP_COLOR, clrRed);
             ObjectSetInteger(m_chartId, labelName, OBJPROP_FONTSIZE, 8);

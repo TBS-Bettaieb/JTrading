@@ -68,7 +68,9 @@ public:
    //+------------------------------------------------------------------+
    bool CheckForBuySignal(SignalInfo &signal)
    {
-      if(!m_enableBuySignals || m_statusManager.GetBuyTotal() > 0)
+      // Un signal BUY breakout place un ordre au-dessus du prix (overPrice)
+      // On vérifie qu'il n'y a pas déjà un ordre overPrice
+      if(!m_enableBuySignals || m_statusManager.GetOverPriceTotal() > 0)
          return false;
       
       double triggerPrice = 0;
@@ -82,7 +84,7 @@ public:
       {
          signal.signalType = ORDER_TYPE_BUY;
          signal.triggerPrice = triggerPrice;
-         signal.timestamp = TimeCurrent();
+         signal.timestamp = TimeGMT();
          signal.description = description;
          return true;
       }
@@ -95,7 +97,9 @@ public:
    //+------------------------------------------------------------------+
    bool CheckForSellSignal(SignalInfo &signal)
    {
-      if(!m_enableSellSignals || m_statusManager.GetSellTotal() > 0)
+      // Un signal SELL breakout place un ordre en-dessous du prix (underPrice)
+      // On vérifie qu'il n'y a pas déjà un ordre underPrice
+      if(!m_enableSellSignals || m_statusManager.GetUnderPriceTotal() > 0)
          return false;
       
       double triggerPrice = 0;
@@ -109,7 +113,7 @@ public:
       {
          signal.signalType = ORDER_TYPE_SELL;
          signal.triggerPrice = triggerPrice;
-         signal.timestamp = TimeCurrent();
+         signal.timestamp = TimeGMT();
          signal.description = description;
          return true;
       }

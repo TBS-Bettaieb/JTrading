@@ -23,8 +23,8 @@ private:
    datetime          m_lastBarTime;         // Dernière barre traitée
    
    // Compteurs de positions/ordres
-   int               m_buyTotal;            // Nombre positions/ordres BUY
-   int               m_sellTotal;           // Nombre positions/ordres SELL
+   int               m_underPriceTotal;     // Nombre positions/ordres sous le prix actuel
+   int               m_overPriceTotal;      // Nombre positions/ordres au-dessus du prix actuel
    
    // Statistiques
    double            m_totalProfit;         // Profit total pour ce symbole
@@ -45,8 +45,8 @@ public:
       
       // Initialiser les variables
       m_lastBarTime = iTime(symbol, timeframe, 0);
-      m_buyTotal = 0;
-      m_sellTotal = 0;
+      m_underPriceTotal = 0;
+      m_overPriceTotal = 0;
       m_totalProfit = 0;
       
       Print("✓ SymbolStatus initialized for ", symbol, " | Magic: ", magicNumber);
@@ -67,12 +67,12 @@ public:
    {
       string status = m_symbol + ": ";
       
-      if(m_buyTotal + m_sellTotal == 0)
+      if(m_underPriceTotal + m_overPriceTotal == 0)
          status += "IDLE";
       else
       {
-         status += "ACTIVE | Pos: " + IntegerToString(m_buyTotal + m_sellTotal);
-         status += " (B:" + IntegerToString(m_buyTotal) + " S:" + IntegerToString(m_sellTotal) + ")";
+         status += "ACTIVE | Pos: " + IntegerToString(m_underPriceTotal + m_overPriceTotal);
+         status += " (Under:" + IntegerToString(m_underPriceTotal) + " Over:" + IntegerToString(m_overPriceTotal) + ")";
          
          if(m_totalProfit != 0)
          {
@@ -109,23 +109,23 @@ public:
    //+------------------------------------------------------------------+
    int GetTotalPositions()
    {
-      return m_buyTotal + m_sellTotal;
+      return m_underPriceTotal + m_overPriceTotal;
    }
    
    //+------------------------------------------------------------------+
-   //| Obtenir le nombre de positions BUY                              |
+   //| Obtenir le nombre de positions/ordres sous le prix              |
    //+------------------------------------------------------------------+
-   int GetBuyTotal()
+   int GetUnderPriceTotal()
    {
-      return m_buyTotal;
+      return m_underPriceTotal;
    }
    
    //+------------------------------------------------------------------+
-   //| Obtenir le nombre de positions SELL                             |
+   //| Obtenir le nombre de positions/ordres au-dessus du prix         |
    //+------------------------------------------------------------------+
-   int GetSellTotal()
+   int GetOverPriceTotal()
    {
-      return m_sellTotal;
+      return m_overPriceTotal;
    }
    
    //+------------------------------------------------------------------+
@@ -149,8 +149,10 @@ public:
    //+------------------------------------------------------------------+
    void UpdateCounters()
    {
-      m_buyTotal = 0;
-      m_sellTotal = 0;
+      m_underPriceTotal = 0;
+      m_overPriceTotal = 0;
+      
+      double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
       
       // Compter les positions
       for(int i = PositionsTotal() - 1; i >= 0; i--)
@@ -159,8 +161,12 @@ public:
          {
             if(m_position.Symbol() == m_symbol && m_position.Magic() == m_magicNumber)
             {
-               if(m_position.PositionType() == POSITION_TYPE_BUY) m_buyTotal++;
-               if(m_position.PositionType() == POSITION_TYPE_SELL) m_sellTotal++;
+               double openPrice = m_position.PriceOpen();
+               
+               if(openPrice < currentPrice)
+                  m_underPriceTotal++;
+               else if(openPrice > currentPrice)
+                  m_overPriceTotal++;
             }
          }
       }
@@ -173,8 +179,12 @@ public:
          {
             if(OrderGetString(ORDER_SYMBOL) == m_symbol && OrderGetInteger(ORDER_MAGIC) == m_magicNumber)
             {
-               if(OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_BUY_STOP) m_buyTotal++;
-               if(OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_SELL_STOP) m_sellTotal++;
+               double orderPrice = OrderGetDouble(ORDER_PRICE_OPEN);
+               
+               if(orderPrice < currentPrice)
+                  m_underPriceTotal++;
+               else if(orderPrice > currentPrice)
+                  m_overPriceTotal++;
             }
          }
       }
@@ -183,10 +193,10 @@ public:
    //+------------------------------------------------------------------+
    //| Définir manuellement les compteurs                              |
    //+------------------------------------------------------------------+
-   void SetCounters(int buyTotal, int sellTotal)
+   void SetCounters(int underPriceTotal, int overPriceTotal)
    {
-      m_buyTotal = buyTotal;
-      m_sellTotal = sellTotal;
+      m_underPriceTotal = underPriceTotal;
+      m_overPriceTotal = overPriceTotal;
    }
    
    //+------------------------------------------------------------------+
@@ -194,8 +204,8 @@ public:
    //+------------------------------------------------------------------+
    void ResetCounters()
    {
-      m_buyTotal = 0;
-      m_sellTotal = 0;
+      m_underPriceTotal = 0;
+      m_overPriceTotal = 0;
       m_totalProfit = 0;
    }
 };

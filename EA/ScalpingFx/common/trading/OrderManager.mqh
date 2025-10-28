@@ -7,6 +7,7 @@
 
 #include <Trade\Trade.mqh>
 #include "../../../Shared/TradingEnums.mqh"
+#include "../../../Shared/FVGDetector.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe OrderManager - Gestion des ordres pour un symbole   |
@@ -33,6 +34,11 @@ private:
    double            m_riskPercent;         // Risque par symbole
    double            m_currentRiskMultiplier; // Multiplicateur de risque actuel
    
+   // Filters
+   bool              m_useFvgFilter;        // Utiliser le filtre FVG
+   FVGDetector*      m_fvgDetector;         // Détecteur FVG
+   double            m_fvgCheckRadius;      // Rayon de recherche en points (défaut: 500)
+   
    // Objet de trading
    CTrade            m_trade;               // Objet de trading
    
@@ -51,7 +57,8 @@ public:
                      int slippagePoints,
                      string tradeComment,
                      double riskPercent = 0.0,
-                     double riskMultiplier = 1.0)
+                     double riskMultiplier = 1.0,
+                     bool useFvgFilter = false)
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -65,6 +72,9 @@ public:
       m_tradeComment = tradeComment;
       m_riskPercent = riskPercent;
       m_currentRiskMultiplier = riskMultiplier;
+      m_useFvgFilter = useFvgFilter;
+      m_fvgDetector = NULL;
+      m_fvgCheckRadius = 500.0;  // Par défaut 500 points
       
       // Initialiser les variables
       m_point = SymbolInfoDouble(symbol, SYMBOL_POINT);
@@ -75,7 +85,14 @@ public:
       m_trade.SetTypeFilling(ORDER_FILLING_FOK);
       m_trade.SetAsyncMode(false);
       
-      Print("✓ OrderManager initialized for ", symbol, " | Magic: ", magicNumber);
+      // Initialiser le FVG Detector si le filtre est activé
+      if(m_useFvgFilter)
+      {
+         InitializeFvgDetector();
+      }
+      
+      Print("✓ OrderManager initialized for ", symbol, " | Magic: ", magicNumber, 
+            " | FVG Filter: ", (m_useFvgFilter ? "ON" : "OFF"));
    }
    
    //+------------------------------------------------------------------+
@@ -83,7 +100,22 @@ public:
    //+------------------------------------------------------------------+
    ~OrderManager()
    {
+      // Cleanup FVG Detector
+      if(m_fvgDetector != NULL)
+      {
+         delete m_fvgDetector;
+         m_fvgDetector = NULL;
+      }
+      
       Print("✓ OrderManager destroyed for ", m_symbol);
+   }
+
+   //+------------------------------------------------------------------+
+   //| Vérifier le filtre FVG (à implémenter)                          |
+   //+------------------------------------------------------------------+
+   bool CheckFvgDisqualifier()
+   {
+      return false;
    }
    
    //+------------------------------------------------------------------+
@@ -328,7 +360,149 @@ public:
       return m_currentRiskMultiplier;
    }
    
+   //+------------------------------------------------------------------+
+   //| Obtenir l'état du filtre FVG                                     |
+   //+------------------------------------------------------------------+
+   bool GetUseFvgFilter()
+   {
+      return m_useFvgFilter;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Définir l'état du filtre FVG                                     |
+   //+------------------------------------------------------------------+
+   void SetUseFvgFilter(bool enabled)
+   {
+      m_useFvgFilter = enabled;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Définir le rayon de recherche FVG (en points)                   |
+   //+------------------------------------------------------------------+
+   void SetFvgCheckRadius(double radiusPoints)
+   {
+      m_fvgCheckRadius = MathMax(50.0, radiusPoints);  // Minimum 50 points
+   }
+   
+   
+   
 private:
+   //+------------------------------------------------------------------+
+   //| Initialiser le détecteur FVG                                     |
+   //+------------------------------------------------------------------+
+   void InitializeFvgDetector()
+   {
+      if(m_fvgDetector != NULL)
+      {
+         delete m_fvgDetector;
+         m_fvgDetector = NULL;
+      }
+      
+      m_fvgDetector = new FVGDetector();
+      
+      // Configuration FVG
+      FVGConfig config;
+      config.atrPeriod = 14;
+      config.minGapATRPercent = 5.0;
+      config.epsilonPts = 0.1;
+      config.invalidatePct = 30.0;
+      config.mode = WICK_TOUCH;
+      config.lookbackBars = 300;
+      config.debugMode = false;
+      
+      // Initialiser avec le timeframe actuel
+      if(!m_fvgDetector.Init(m_symbol, m_timeframe, config))
+      {
+         Print("❌ [", m_symbol, "] Failed to initialize FVG Detector");
+         delete m_fvgDetector;
+         m_fvgDetector = NULL;
+         m_useFvgFilter = false;  // Désactiver le filtre
+      }
+      else
+      {
+         // Traiter le timeframe pour détecter les FVG
+         m_fvgDetector.ProcessTimeframe(m_timeframe);
+         m_fvgDetector.UpdateInvalidation(m_timeframe);
+         
+         int total, bullish, bearish, valid;
+         m_fvgDetector.GetStats(total, bullish, bearish, valid);
+         Print("📊 [", m_symbol, "] FVG Detector initialized | Total: ", total, 
+               " | Valid: ", valid, " | Bullish: ", bullish, " | Bearish: ", bearish);
+      }
+   }
+
+   
+   
+   //+------------------------------------------------------------------+
+   //| Filtre breakout : vérifie si FVG opposé entre Entry et SL       |
+   //| @param entryPrice - Prix d'entrée proposé                        |
+   //| @param stopLoss - Prix du stop loss                              |
+   //| @param isBuy - true pour Buy, false pour Sell                    |
+   //| @return true si le trade est autorisé, false si bloqué          |
+   //+------------------------------------------------------------------+
+   bool AllowBreakoutTrade(double entryPrice, double stopLoss, bool isBuy)
+   {
+      // Si le filtre est désactivé ou le détecteur non initialisé
+      if(!m_useFvgFilter || m_fvgDetector == NULL)
+         return true;  // Autoriser le trade
+      
+      // Mettre à jour les FVG (détection + invalidation)
+      m_fvgDetector.ProcessTimeframe(m_timeframe);
+      m_fvgDetector.UpdateInvalidation(m_timeframe);
+      
+      // Récupérer TOUS les FVG valides
+      FVGInfo allFvgs[];
+      m_fvgDetector.GetFVGList(allFvgs, true);
+      
+      for(int i = 0; i < ArraySize(allFvgs); i++)
+      {
+         if(!allFvgs[i].IsValid)
+            continue;
+         
+         // Zone du FVG
+         double fvgHigh = allFvgs[i].top;
+         double fvgLow = allFvgs[i].bottom;
+         
+         // Normaliser si inversé
+         if(fvgHigh < fvgLow)
+         {
+            double tmp = fvgHigh;
+            fvgHigh = fvgLow;
+            fvgLow = tmp;
+         }
+         
+         // Vérifie si la zone FVG est entre Entry et SL
+         bool fvgInsideTradeZone = false;
+         
+         if(isBuy)
+         {
+            // Pour un Buy : entry > SL, donc vérifier si FVG est entre SL et entry
+            fvgInsideTradeZone = (fvgHigh <= entryPrice && fvgLow >= stopLoss);
+         }
+         else
+         {
+            // Pour un Sell : entry < SL, donc vérifier si FVG est entre entry et SL
+            fvgInsideTradeZone = (fvgHigh <= stopLoss && fvgLow >= entryPrice);
+         }
+         
+         // Vérifie si le FVG est d'une direction OPPOSÉE au signal
+         bool isOpposite = (isBuy && !allFvgs[i].isBullish)   // Buy mais FVG bearish
+                        || (!isBuy && allFvgs[i].isBullish);   // Sell mais FVG bullish
+         
+         if(fvgInsideTradeZone && isOpposite)
+         {
+            Print("⚠️ [", m_symbol, "] FVG opposé détecté entre Entry et SL - Trade annulé");
+            Print("   ", (isBuy ? "BUY" : "SELL"), " @ ", DoubleToString(entryPrice, _Digits),
+                  " | SL: ", DoubleToString(stopLoss, _Digits),
+                  " | FVG ", (allFvgs[i].isBullish ? "BULLISH" : "BEARISH"),
+                  " [", DoubleToString(fvgLow, _Digits), " - ", DoubleToString(fvgHigh, _Digits), "]");
+            return false;  // Bloquer le trade
+         }
+      }
+      
+      return true;  // Aucun risque détecté, autoriser le trade
+   }
+   
    //+------------------------------------------------------------------+
    //| Calculer la taille du lot basée sur le risque                   |
    //+------------------------------------------------------------------+
