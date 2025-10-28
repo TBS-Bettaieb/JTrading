@@ -67,7 +67,7 @@ enum ENUM_TRADING_SESSION
 ENUM_TRADING_SESSION GetCurrentSession()
 {
    MqlDateTime dt; 
-   TimeToStruct(TimeCurrent(), dt);
+   TimeToStruct(TimeGMT(), dt);
    int currentTimeMinute = dt.hour * 100 + dt.min;
    
    // SESSION_ASIA : 22:00-6:00 (traverse minuit)
@@ -177,8 +177,8 @@ bool IsSessionAllowed()
 //+------------------------------------------------------------------+
 bool IsSessionAllowedCustom(ENUM_TRADING_SESSION session, int avoidMinutes)
 {
-   MqlDateTime dt; 
-   TimeToStruct(TimeCurrent(), dt);
+  MqlDateTime dt; 
+  TimeToStruct(TimeGMT(), dt);
    int currentTimeMinute = dt.hour * 100 + dt.min;
    
    // SESSION_ALL : toujours autorisé
@@ -275,8 +275,8 @@ public:
    {
       if(!m_useFilter) return true;
 
-      MqlDateTime dt;
-      TimeToStruct(TimeCurrent(), dt);
+  MqlDateTime dt;
+  TimeToStruct(TimeGMT(), dt);
       int currentTimeMinute = dt.hour * 100 + dt.min;
       
       // SESSION_ALL : toujours autorisé
@@ -328,8 +328,8 @@ public:
    //+------------------------------------------------------------------+
    ENUM_TRADING_SESSION GetCurrentSession()
    {
-      MqlDateTime dt; 
-      TimeToStruct(TimeCurrent(), dt);
+   MqlDateTime dt; 
+   TimeToStruct(TimeGMT(), dt);
       int currentTimeMinute = dt.hour * 100 + dt.min;
       
       // SESSION_ASIA : 22:00-6:00 (traverse minuit)

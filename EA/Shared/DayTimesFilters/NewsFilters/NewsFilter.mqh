@@ -91,7 +91,7 @@ bool CheckUpcomingNews(
    
    // Récupérer le calendrier économique
    MqlCalendarValue values[];
-   datetime starttime = TimeCurrent();
+   datetime starttime = TimeGMT();
    datetime endtime = starttime + 86400 * daysLookup;
    
    if(!CalendarValueHistory(values, starttime, endtime)) 
@@ -120,7 +120,7 @@ bool CheckUpcomingNews(
             datetime newsTime = values[i].time;
             int secondsBefore = stopBeforeMin * 60;
             
-            if(newsTime - TimeCurrent() < secondsBefore)
+            if(newsTime - TimeGMT() < secondsBefore)
             {
                return true;
             }
@@ -250,14 +250,14 @@ public:
 
       // Vérifier si on attend après une actualité
       if(m_tradingDisabledNews && 
-         TimeCurrent() - m_lastNewsAvoided < m_startTradingMin * 60)
+         TimeGMT() - m_lastNewsAvoided < m_startTradingMin * 60)
       {
          // Logging anti-spam
-         if(TimeCurrent() - m_lastLogTime >= 60)
+         if(TimeGMT() - m_lastLogTime >= 60)
          {
             Print(m_logPrefix + "⏳ Attente ", m_startTradingMin, 
                   " min après actualité avant reprise trading");
-            m_lastLogTime = TimeCurrent();
+            m_lastLogTime = TimeGMT();
             m_lastBlockReason = "Waiting after news event";
          }
          return false;
@@ -346,7 +346,7 @@ private:
       
       // Récupérer le calendrier économique
       MqlCalendarValue values[];
-      datetime starttime = TimeCurrent();
+      datetime starttime = TimeGMT();
       datetime endtime = starttime + 86400 * m_daysLookup;
       
       if(!CalendarValueHistory(values, starttime, endtime)) 
@@ -375,7 +375,7 @@ private:
                datetime newsTime = values[i].time;
                int secondsBefore = m_stopBeforeMin * 60;
                
-               if(newsTime - TimeCurrent() < secondsBefore)
+              if(newsTime - TimeGMT() < secondsBefore)
                {
                   m_lastNewsAvoided = newsTime;
                   m_tradingDisabledNews = true;
@@ -384,10 +384,10 @@ private:
                                      TimeToString(newsTime, TIME_MINUTES);
                   
                   // Logging anti-spam
-                  if(TimeCurrent() - m_lastLogTime >= 60)
+                 if(TimeGMT() - m_lastLogTime >= 60)
                   {
                      Print(m_logPrefix + "📰 Trading désactivé: ", m_lastNewsMessage);
-                     m_lastLogTime = TimeCurrent();
+                    m_lastLogTime = TimeGMT();
                   }
                   
                   return true;
