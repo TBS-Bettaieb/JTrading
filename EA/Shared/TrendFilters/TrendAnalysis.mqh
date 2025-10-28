@@ -172,4 +172,64 @@ if(emaPeriod < 1 || emaPeriod > 500)
       return (priceBelowEMA && emaFalling);
    }
 }
+
+//+------------------------------------------------------------------+
+//| Compte les croisements prix/EMA sur N dernières barres           |
+//| @param symbol Symbole à analyser                                  |
+//| @param timeframe Timeframe à analyser                            |
+//| @param emaPeriod Période de l'EMA                                |
+//| @param barsToCheck Nombre de barres à analyser (ex: 10, 20)     |
+//| @return Nombre de croisements détectés                           |
+//+------------------------------------------------------------------+
+static int CountEMACrossings(string symbol, 
+                            ENUM_TIMEFRAMES timeframe, 
+                            int emaPeriod, 
+                            int barsToCheck)
+{
+   // Validation
+   if(barsToCheck < 2 || emaPeriod < 1)
+   {
+      Print("ERREUR: Paramètres invalides pour CountEMACrossings");
+      return 0;
+   }
+   
+   // Arrays
+   double closePrice[], emaValues[];
+   ArraySetAsSeries(closePrice, true);
+   ArraySetAsSeries(emaValues, true);
+   
+   // Créer handle EMA
+   int emaHandle = iMA(symbol, timeframe, emaPeriod, 0, MODE_EMA, PRICE_CLOSE);
+   if(emaHandle == INVALID_HANDLE)
+   {
+      Print("Erreur création handle EMA pour CountEMACrossings");
+      return 0;
+   }
+   
+   // Copier données (barsToCheck + 1 pour avoir bar précédente)
+   if(CopyBuffer(emaHandle, 0, 0, barsToCheck + 1, emaValues) <= 0 ||
+      CopyClose(symbol, timeframe, 0, barsToCheck + 1, closePrice) <= 0)
+   {
+      Print("Erreur copie données pour CountEMACrossings");
+      IndicatorRelease(emaHandle);
+      return 0;
+   }
+   
+   IndicatorRelease(emaHandle);
+   
+   // Compter les croisements
+   int crossCount = 0;
+   for(int i = 0; i < barsToCheck; i++)
+   {
+      // Vérifier si croisement entre barre i et barre i+1
+      bool currentAbove = closePrice[i] > emaValues[i];
+      bool previousAbove = closePrice[i+1] > emaValues[i+1];
+      
+      // Si changement de position = croisement
+      if(currentAbove != previousAbove)
+         crossCount++;
+   }
+   
+   return crossCount;
+}
 };

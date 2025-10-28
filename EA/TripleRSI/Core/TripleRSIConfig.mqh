@@ -28,8 +28,11 @@ struct TripleRSIConfig
    int               rsiOversold;       // Niveau survente (30)
    int               rsiOverbought;     // Niveau surachat (70)
    bool              useStrictAlignment; // Mode Strict (3/3) ou Flexible (2/3)
-   bool              useEMAValidation;  // Validation avec EMA sur timeframe supérieur
-   int               emaPeriodValidation; // Période EMA pour validation (20-200)
+   bool              useEMAValidation;      // Validation avec EMA sur timeframe supérieur
+   int               emaPeriodValidation;   // Période EMA pour validation (20-200)
+   bool              useEMACrossFilter;     // Filtrer si trop de croisements EMA
+   int               emaCrossBarsCheck;     // Nombre de barres à analyser (10-50)
+   int               emaMaxCrossings;       // Nombre max de croisements tolérés (1-5)
    
    // Stop Loss / Take Profit
    int               slPoints;          // SL en points
@@ -71,8 +74,11 @@ struct TripleRSIConfig
       rsiOversold = 30;
       rsiOverbought = 70;
       useStrictAlignment = true;
-      useEMAValidation = false;  // Désactivé par défaut
-      emaPeriodValidation = 50;  // EMA-50 par défaut
+      useEMAValidation = false;       // Désactivé par défaut
+      emaPeriodValidation = 50;       // EMA-50 par défaut
+      useEMACrossFilter = false;      // Filtre croisements désactivé par défaut
+      emaCrossBarsCheck = 20;         // Analyser 20 dernières barres
+      emaMaxCrossings = 2;            // Max 2 croisements tolérés
       
       slPoints = 100;
       tpRatio = 2.0;

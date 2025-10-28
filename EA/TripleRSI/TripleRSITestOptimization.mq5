@@ -39,6 +39,9 @@ input int InpOverbought = 70;   // Niveau surachat
 input bool InpUseStrictAlignment = true; // Mode Strict (3/3) ou Flexible (2/3)
 input bool InpUseEMAValidation = false;  // Validation EMA sur timeframe supérieur
 input int InpEMAPeriod = 50;    // Période EMA pour validation (20-200)
+input bool InpUseEMACrossFilter = false;    // Filtrer si trop de croisements EMA
+input int InpEMACrossBarsCheck = 20;        // Barres à analyser pour croisements (10-50)
+input int InpEMAMaxCrossings = 2;           // Max croisements tolérés (1-5)
 
 input group "=== TRAILING STOP ==="
 input bool InpUseDynamicTrailing = true;    // Activer TSL Dynamique
@@ -160,6 +163,9 @@ int OnInit()
    config.useStrictAlignment = InpUseStrictAlignment;
    config.useEMAValidation = InpUseEMAValidation;
    config.emaPeriodValidation = InpEMAPeriod;
+   config.useEMACrossFilter = InpUseEMACrossFilter;
+   config.emaCrossBarsCheck = InpEMACrossBarsCheck;
+   config.emaMaxCrossings = InpEMAMaxCrossings;
    config.slPoints = 0; // SL géré via les nouveaux paramètres
    config.tpRatio = InpTPRatio;
    config.useDynamicTrailing = InpUseDynamicTrailing;
