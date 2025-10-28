@@ -66,6 +66,9 @@ struct BotConfig
    ENUM_SEPARATOR    newsSeparator;
    string            newsBlockMsg;
    
+   // FVG FILTER
+   bool              useFvgFilter;        // Utiliser le filtre FVG
+   
    // LOGGING
    ENUM_LOG_LEVEL    logLevel;
 };

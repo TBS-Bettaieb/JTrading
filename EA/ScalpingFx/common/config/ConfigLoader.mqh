@@ -189,6 +189,12 @@ protected:
       m_config.newsSeparator = COMMA;
    }
    
+   // Setup FVG filter parameter
+   void SetupFvgFilter(bool useFvgFilter)
+   {
+      m_config.useFvgFilter = useFvgFilter;
+   }
+   
    // Setup block messages (used by all groups identically)
    void SetupBlockMessages()
    {
@@ -220,6 +226,7 @@ public:
       // ⏰ GMT Times: 11:00-15:00 GMT (was 13:00-17:00 GMT+2) - London-NY Overlap
       SetupRiskMultiplier(true, "11:00-15:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);  // 🆕 Activer/désactiver le filtre FVG par groupe
       SetupBlockMessages();
       
       return true;
@@ -247,6 +254,7 @@ public:
       // ⏰ GMT Times: 11:00-15:00 GMT (was 13:00-17:00 GMT+2) - London-NY Overlap
       SetupRiskMultiplier(true, "11:00-15:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);  // 🆕 Activer/désactiver le filtre FVG par groupe
       SetupBlockMessages();
       
       return true;
@@ -274,6 +282,7 @@ public:
       // ⏰ GMT Times: 06:00-08:00 GMT (was 08:00-10:00 GMT+2) - Euro Session
       SetupRiskMultiplier(true, "06:00-08:00", 2.0, "Euro Session");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);  // 🆕 Activer/désactiver le filtre FVG par groupe
       SetupBlockMessages();
       
       return true;
@@ -301,6 +310,7 @@ public:
       // ⏰ GMT Times: 12:00-13:30 GMT (was 14:00-15:30 GMT+2) - London-NY Overlap
       SetupRiskMultiplier(true, "12:00-13:30", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);  // 🆕 Activer/désactiver le filtre FVG par groupe
       SetupBlockMessages();
       
       return true;
@@ -328,6 +338,7 @@ public:
       // ⏰ GMT Times: 12:30-16:00 GMT (was 14:30-18:00 GMT+2) - London-NY Overlap
       SetupRiskMultiplier(false, "12:30-16:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);  // 🆕 Activer/désactiver le filtre FVG par groupe
       SetupBlockMessages();
       
       return true;
@@ -355,6 +366,7 @@ public:
       // ⏰ GMT Times: 12:00-16:00 GMT (was 14:00-18:00 GMT+2) - London-NY Overlap
       SetupRiskMultiplier(true, "12:00-16:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);  // 🆕 Activer/désactiver le filtre FVG par groupe
       SetupBlockMessages();
       
       return true;
@@ -382,6 +394,7 @@ public:
       // ⏰ GMT Times: 12:00-16:00 GMT (was 14:00-18:00 GMT+2) - London-NY Overlap
       SetupRiskMultiplier(true, "12:00-16:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);  // 🆕 Activer/désactiver le filtre FVG par groupe
       SetupBlockMessages();
       
       return true;
@@ -409,6 +422,7 @@ public:
       // ⏰ GMT Times: 11:15-16:00 GMT (was 13:15-18:00 GMT+2) - London-NY Overlap
       SetupRiskMultiplier(true, "11:15-16:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
+      SetupFvgFilter(false);  // 🆕 Activer/désactiver le filtre FVG par groupe
       SetupBlockMessages();
       
       return true;

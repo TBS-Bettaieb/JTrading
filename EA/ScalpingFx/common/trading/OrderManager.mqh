@@ -33,6 +33,9 @@ private:
    double            m_riskPercent;         // Risque par symbole
    double            m_currentRiskMultiplier; // Multiplicateur de risque actuel
    
+   // Filters
+   bool              m_useFvgFilter;        // Utiliser le filtre FVG
+   
    // Objet de trading
    CTrade            m_trade;               // Objet de trading
    
@@ -51,7 +54,8 @@ public:
                      int slippagePoints,
                      string tradeComment,
                      double riskPercent = 0.0,
-                     double riskMultiplier = 1.0)
+                     double riskMultiplier = 1.0,
+                     bool useFvgFilter = false)
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -65,6 +69,7 @@ public:
       m_tradeComment = tradeComment;
       m_riskPercent = riskPercent;
       m_currentRiskMultiplier = riskMultiplier;
+      m_useFvgFilter = useFvgFilter;
       
       // Initialiser les variables
       m_point = SymbolInfoDouble(symbol, SYMBOL_POINT);
@@ -326,6 +331,22 @@ public:
    double GetRiskMultiplier()
    {
       return m_currentRiskMultiplier;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Obtenir l'état du filtre FVG                                     |
+   //+------------------------------------------------------------------+
+   bool GetUseFvgFilter()
+   {
+      return m_useFvgFilter;
+   }
+   
+   //+------------------------------------------------------------------+
+   //| Définir l'état du filtre FVG                                     |
+   //+------------------------------------------------------------------+
+   void SetUseFvgFilter(bool enabled)
+   {
+      m_useFvgFilter = enabled;
    }
    
 private:

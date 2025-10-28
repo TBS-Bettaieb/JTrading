@@ -46,6 +46,9 @@ private:
    int               m_entryOffsetPoints;   // NEW: Entry offset for Stop orders
    string            m_tradeComment;        // Commentaire des trades
    
+   // Filters
+   bool              m_useFvgFilter;        // Utiliser le filtre FVG
+   
    // Objets de trading (nécessaires pour certaines opérations)
    CTrade            m_trade;               // Objet de trading
    CPositionInfo     m_position;            // Gestion des positions
@@ -96,7 +99,8 @@ public:
                      string customTPLevels = "",
                      bool useDynamicTSLTrigger = true,      // 🆕 AJOUTER
                      double tslCostMultiplier = 1.5,        // 🆕 AJOUTER
-                     int tslMinTriggerPoints = 50)          // 🆕 AJOUTER
+                     int tslMinTriggerPoints = 50,          // 🆕 AJOUTER
+                     bool useFvgFilter = false)             // 🆕 FVG FILTER
    {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -112,6 +116,7 @@ public:
       m_slippagePoints = slippagePoints;
       m_entryOffsetPoints = entryOffsetPoints;
       m_tradeComment = "BreakoutScalper_" + TimeframeToString(m_timeframe);
+      m_useFvgFilter = useFvgFilter;
       
       // Initialiser les variables
       m_point = SymbolInfoDouble(symbol, SYMBOL_POINT);
@@ -134,7 +139,7 @@ public:
          symbol, magicNumber, timeframe,
          tpPoints, slPoints, expirationBars, orderDistPoints,
          entryOffsetPoints, slippagePoints, m_tradeComment,
-         riskPercent, m_currentRiskMultiplier
+         riskPercent, m_currentRiskMultiplier, m_useFvgFilter
       );
       
       // 🆕 Initialiser le Trailing Manager (TP + TSL)
