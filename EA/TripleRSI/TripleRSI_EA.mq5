@@ -48,6 +48,11 @@ input bool InpUseDynamicTrailing = true;    // Activer TSL Dynamique
 input double InpTSLCostMultiplier = 1.5;    // Multiplicateur coûts TSL
 input int InpTSLMinTriggerPoints = 50;      // Trigger minimum TSL (points)
 
+input group "=== TRAILING TAKE PROFIT SYSTEM ==="
+input bool InpUseTrailingTP = false;                        // Activer Trailing TP
+input ENUM_TRAILING_TP_MODE InpTrailingTPMode = TRAILING_TP_STEPPED; // Mode Trailing TP
+input string InpTrailingTPCustomLevels = "50:0:0,100:50:50"; // Niveaux Custom (si CUSTOM mode)
+
 input group "=== TIME RANGE FILTER ==="
 input bool InpUseTimeFilter = false;             // Activer filtre horaire
 input string InpHourRanges = "8-10;16";          // Plages horaires
@@ -89,6 +94,22 @@ int OnInit()
    // Initialiser Logger
    Logger::Initialize((ENUM_LOG_LEVEL)InpLogLevel, "[TripleRSI] ");
    Logger::Info("=== TRIPLE RSI EA INITIALIZATION ===");
+   
+   // Valider la configuration Trailing TP AVANT de créer le bot
+   if(InpUseTrailingTP && InpTrailingTPMode == TRAILING_TP_CUSTOM)
+   {
+      string errorMsg;
+      if(!CTrailingTPValidator::ValidateCustomLevelsString(InpTrailingTPCustomLevels, errorMsg))
+      {
+         Logger::Error("❌ Trailing TP validation failed:");
+         Logger::Error(errorMsg);
+         Alert("Configuration Trailing TP invalide!\n" + errorMsg);
+         return INIT_FAILED;
+      }
+      
+      Logger::Success("✅ Trailing TP configuration validated");
+      CTrailingTPValidator::PrintParsedLevels(InpTrailingTPCustomLevels);
+   }
    
    // Créer et initialiser ChartManager
    chartManager = new ChartManager(0, "TripleRSI");
@@ -155,6 +176,9 @@ int OnInit()
    config.slMode = InpSLMode;
    config.fixedSLPoints = InpFixedSLPoints;
    config.percentSLPrice = InpPercentSLPrice;
+   config.useTrailingTP = InpUseTrailingTP;
+   config.trailingTPMode = InpTrailingTPMode;
+   config.trailingTPCustomLevels = InpTrailingTPCustomLevels;
    config.barsLookback = 5;
    config.useAlerts = InpUseAlerts;
    config.sendNotifications = InpSendNotif;

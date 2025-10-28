@@ -11,6 +11,7 @@
 #include "../../Shared/TradingEnums.mqh"
 #include "../../Shared/DynamicTrailingStop.mqh"
 #include "../../Shared/ForexCommissionManager.mqh"
+#include "../../Shared/TrailingTP_System.mqh"
 #include "TripleRSIConfig.mqh"
 #include "../Logic/RSI_Calculator.mqh"
 #include "../Logic/RSI_AlignmentDetector.mqh"
@@ -37,6 +38,11 @@ private:
    bool m_useDynamicTrailing;
    CDynamicTrailingStop* m_dynamicTSL;
    ForexCommissionManager* m_commissionManager;
+   
+   // Trailing Take Profit System
+   bool m_useTrailingTP;
+   CTrailingTP* m_trailingTP;
+   ulong m_currentPositionTicket;
    
    // Configuration
    TripleRSIConfig m_config;
@@ -81,6 +87,11 @@ public:
       m_entryValidator = NULL;
       m_dynamicTSL = NULL;
       m_commissionManager = NULL;
+      
+      // Trailing TP
+      m_useTrailingTP = false;
+      m_trailingTP = NULL;
+      m_currentPositionTicket = 0;
    }
    
    //--- Constructor principal
@@ -156,6 +167,25 @@ public:
    void Initialize(TripleRSIConfig& config)
    {
       m_config = config;
+      
+      // Initialiser Trailing TP si activé
+      if(config.useTrailingTP)
+      {
+         m_useTrailingTP = true;
+         m_trailingTP = new CTrailingTP(config.trailingTPMode, config.trailingTPCustomLevels);
+         
+         if(m_trailingTP == NULL)
+         {
+            Logger::Error("Failed to create Trailing TP for " + m_symbol);
+            m_useTrailingTP = false;
+         }
+         else
+         {
+            Logger::Success("✅ Trailing TP System initialized for " + m_symbol + 
+                           " (Mode: " + EnumToString(config.trailingTPMode) + ")");
+         }
+      }
+      
       Logger::Info("Configuration applied to trader for " + m_symbol);
    }
    
@@ -194,6 +224,13 @@ public:
          m_commissionManager = NULL;
       }
       
+      // Nettoyer le Trailing TP
+      if(m_trailingTP != NULL)
+      {
+         delete m_trailingTP;
+         m_trailingTP = NULL;
+      }
+      
       Logger::Debug("TripleRSI Trader destroyed for " + m_symbol);
    }
    
@@ -204,6 +241,9 @@ public:
       // Vérifier que tous les composants sont initialisés
       if(m_rsiCalc == NULL || m_alignDetector == NULL || m_entryValidator == NULL)
          return;
+      
+      // Gérer les positions ouvertes (trailing stop, trailing TP, etc.)
+      ManageOpenPositions();
       
       // Vérifier si c'est une nouvelle barre
       datetime currentBarTime = iTime(m_symbol, m_timeframe, 0);
@@ -254,13 +294,7 @@ public:
          }
       }
       
-      // 4. Gérer trailing stop si activé et position ouverte
-      if(m_useDynamicTrailing && HasPosition())
-      {
-         ProcessTrailingStop();
-      }
-      
-      // 5. Mettre à jour les statistiques
+      // 4. Mettre à jour les statistiques
       UpdateStatistics();
    }
    
@@ -340,14 +374,31 @@ public:
       if(result)
       {
          m_lastTradeTime = TimeCurrent();
+         ulong ticket = m_trade.ResultOrder();
          
-         // Calculer les coûts pour le TSL dynamique
-         if(m_useDynamicTrailing && m_dynamicTSL != NULL)
+         // Stocker le ticket pour le trailing TP
+         if(ticket > 0)
          {
-            ulong ticket = m_trade.ResultOrder();
-            if(ticket > 0)
+            m_currentPositionTicket = ticket;
+            
+            // Calculer les coûts pour le TSL dynamique
+            if(m_useDynamicTrailing && m_dynamicTSL != NULL)
             {
                m_dynamicTSL.CalculatePositionCosts(ticket, m_symbol);
+            }
+            
+            // Initialiser le Trailing TP
+            if(m_useTrailingTP && m_trailingTP != NULL)
+            {
+               if(m_trailingTP.Initialize(currentPrice, slPrice, tpPrice, true))
+               {
+                  Logger::Info("✅ Trailing TP initialized for BUY position #" + 
+                             IntegerToString(ticket));
+               }
+               else
+               {
+                  Logger::Warning("Failed to initialize Trailing TP for BUY position");
+               }
             }
          }
          
@@ -417,14 +468,31 @@ public:
       if(result)
       {
          m_lastTradeTime = TimeCurrent();
+         ulong ticket = m_trade.ResultOrder();
          
-         // Calculer les coûts pour le TSL dynamique
-         if(m_useDynamicTrailing && m_dynamicTSL != NULL)
+         // Stocker le ticket pour le trailing TP
+         if(ticket > 0)
          {
-            ulong ticket = m_trade.ResultOrder();
-            if(ticket > 0)
+            m_currentPositionTicket = ticket;
+            
+            // Calculer les coûts pour le TSL dynamique
+            if(m_useDynamicTrailing && m_dynamicTSL != NULL)
             {
                m_dynamicTSL.CalculatePositionCosts(ticket, m_symbol);
+            }
+            
+            // Initialiser le Trailing TP
+            if(m_useTrailingTP && m_trailingTP != NULL)
+            {
+               if(m_trailingTP.Initialize(currentPrice, slPrice, tpPrice, false))
+               {
+                  Logger::Info("✅ Trailing TP initialized for SELL position #" + 
+                             IntegerToString(ticket));
+               }
+               else
+               {
+                  Logger::Warning("Failed to initialize Trailing TP for SELL position");
+               }
             }
          }
          
@@ -578,6 +646,16 @@ public:
          info += "TSL Cost Multiplier: " + DoubleToString(m_dynamicTSL.GetCostMultiplier(), 1) + "\n";
       }
       
+      // Infos Trailing TP
+      if(m_useTrailingTP && m_trailingTP != NULL)
+      {
+         info += "Trailing TP: " + EnumToString(m_trailingTP.GetMode()) + "\n";
+         if(m_currentPositionTicket > 0)
+         {
+            info += "Trailing TP Status: " + m_trailingTP.GetStatusInfo() + "\n";
+         }
+      }
+      
       if(HasPosition())
       {
          double entryPrice, slPrice, tpPrice, profit;
@@ -602,6 +680,77 @@ public:
       info += "================================";
       
       return info;
+   }
+   
+   //--- Gérer les positions ouvertes (Trailing Stop, Trailing TP, etc.)
+   void ManageOpenPositions()
+   {
+      // Vérifier s'il y a une position ouverte pour ce symbole
+      if(!HasPosition())
+      {
+         m_currentPositionTicket = 0;  // Pas de position
+         return;
+      }
+      
+      // Appliquer le Trailing Stop dynamique si activé
+      if(m_useDynamicTrailing && m_dynamicTSL != NULL)
+      {
+         m_dynamicTSL.ApplyTrailing(m_symbol, m_magic);
+      }
+      
+      // Appliquer le Trailing TP si activé
+      if(m_useTrailingTP && m_trailingTP != NULL && m_currentPositionTicket > 0)
+      {
+         ApplyTrailingTP();
+      }
+   }
+   
+   //--- Appliquer le Trailing Take Profit
+   void ApplyTrailingTP()
+   {
+      if(!PositionSelectByTicket(m_currentPositionTicket))
+      {
+         m_currentPositionTicket = 0;  // Position fermée
+         return;
+      }
+      
+      ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+      bool isBuy = (posType == POSITION_TYPE_BUY);
+      
+      double currentPrice = isBuy ? 
+         SymbolInfoDouble(m_symbol, SYMBOL_ASK) : 
+         SymbolInfoDouble(m_symbol, SYMBOL_BID);
+      
+      double newSL = 0, newTP = 0;
+      
+      // Mettre à jour le trailing TP
+      if(m_trailingTP.Update(currentPrice, newSL, newTP))
+      {
+         // Le système suggère de modifier SL/TP
+         double currentSL = PositionGetDouble(POSITION_SL);
+         double currentTP = PositionGetDouble(POSITION_TP);
+         
+         // Vérifier si les valeurs ont changé (avec tolérance d'un point)
+         double point = SymbolInfoDouble(m_symbol, SYMBOL_POINT);
+         bool slChanged = (MathAbs(newSL - currentSL) > point);
+         bool tpChanged = (MathAbs(newTP - currentTP) > point);
+         
+         if(slChanged || tpChanged)
+         {
+            if(m_trade.PositionModify(m_currentPositionTicket, newSL, newTP))
+            {
+               Logger::Info(StringFormat(
+                  "✅ Trailing TP applied on %s | New SL: %.5f | New TP: %.5f | %s",
+                  m_symbol, newSL, newTP, m_trailingTP.GetStatusInfo()
+               ));
+            }
+            else
+            {
+               Logger::Warning("Failed to modify position with Trailing TP: " + 
+                             IntegerToString(GetLastError()));
+            }
+         }
+      }
    }
    
    //--- Obtenir le taux de réussite

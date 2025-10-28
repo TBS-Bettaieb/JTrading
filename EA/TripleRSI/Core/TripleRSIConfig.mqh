@@ -7,6 +7,7 @@
 
 #include "../../Shared/Logger.mqh"
 #include "../../Shared/TradingEnums.mqh"
+#include "../../Shared/TrailingTP_System.mqh"
 
 //+------------------------------------------------------------------+
 //| Configuration structure for Triple RSI Strategy                  |
@@ -42,6 +43,11 @@ struct TripleRSIConfig
    int               tslPoints;        // Distance trailing
    double            tslCostMultiplier; // Multiplicateur coûts TSL
    int               tslMinTriggerPoints; // Trigger minimum TSL
+   
+   // Trailing Take Profit System
+   bool                    useTrailingTP;         // Activer Trailing TP
+   ENUM_TRAILING_TP_MODE   trailingTPMode;        // Mode (LINEAR/STEPPED/EXPONENTIAL/CUSTOM)
+   string                  trailingTPCustomLevels; // Niveaux custom
    
    // Entry validation
    int               barsLookback;     // Barres pour calcul SL (5)
@@ -87,6 +93,11 @@ struct TripleRSIConfig
       tslPoints = 30;
       tslCostMultiplier = 1.5;
       tslMinTriggerPoints = 50;
+      
+      // Trailing Take Profit System - Valeurs par défaut
+      useTrailingTP = false;
+      trailingTPMode = TRAILING_TP_STEPPED;
+      trailingTPCustomLevels = "50:0:0,100:50:50";  // 50% → BE, 100% → SL+50%, TP+50%
       
       barsLookback = 5;
       
@@ -143,6 +154,17 @@ struct TripleRSIConfig
          return false;
       }
       
+      // Validation Trailing TP
+      if(useTrailingTP && trailingTPMode == TRAILING_TP_CUSTOM)
+      {
+         string errorMsg;
+         if(!CTrailingTPValidator::ValidateCustomLevelsString(trailingTPCustomLevels, errorMsg))
+         {
+            Logger::Error("Trailing TP Custom Levels validation failed: " + errorMsg);
+            return false;
+         }
+      }
+      
       return true;
    }
    
@@ -166,6 +188,20 @@ struct TripleRSIConfig
       {
          Logger::Info("TSL Cost Multiplier: " + DoubleToString(tslCostMultiplier, 1));
          Logger::Info("TSL Min Trigger: " + IntegerToString(tslMinTriggerPoints) + " pts");
+      }
+      
+      // Affichage Trailing TP
+      if(useTrailingTP)
+      {
+         Logger::Info("Trailing TP: ENABLED (" + EnumToString(trailingTPMode) + ")");
+         if(trailingTPMode == TRAILING_TP_CUSTOM)
+         {
+            Logger::Info("Custom Levels: " + trailingTPCustomLevels);
+         }
+      }
+      else
+      {
+         Logger::Info("Trailing TP: DISABLED");
       }
       
       Logger::Info("================================");
