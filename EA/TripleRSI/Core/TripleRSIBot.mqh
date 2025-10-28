@@ -266,6 +266,7 @@ private:
             m_config.useDynamicTrailing,
             m_config.rsiPeriod1, m_config.rsiPeriod2, m_config.rsiPeriod3,
             m_config.rsiOversold, m_config.rsiOverbought,
+            m_config.useStrictAlignment,
             m_config.useAlerts, m_config.sendNotifications
          );
          

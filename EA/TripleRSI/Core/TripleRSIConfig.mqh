@@ -27,6 +27,7 @@ struct TripleRSIConfig
    int               rsiPeriod3;        // RSI période lente (21)
    int               rsiOversold;       // Niveau survente (30)
    int               rsiOverbought;     // Niveau surachat (70)
+   bool              useStrictAlignment; // Mode Strict (3/3) ou Flexible (2/3)
    
    // Stop Loss / Take Profit
    int               slPoints;          // SL en points
@@ -67,6 +68,7 @@ struct TripleRSIConfig
       rsiPeriod3 = 21;
       rsiOversold = 30;
       rsiOverbought = 70;
+      useStrictAlignment = true;
       
       slPoints = 100;
       tpRatio = 2.0;

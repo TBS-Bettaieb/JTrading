@@ -89,6 +89,7 @@ public:
                     bool useDynamicTrailing,
                     int rsiP1, int rsiP2, int rsiP3,
                     int oversold, int overbought,
+                    bool strictAlignment = true,
                     bool useAlerts = true, bool sendNotif = false)
    {
       m_symbol = symbol;
@@ -122,7 +123,7 @@ public:
          m_rsiCalc = NULL;
       }
       
-      m_alignDetector = new CRSIAlignmentDetector(oversold, overbought);
+      m_alignDetector = new CRSIAlignmentDetector(oversold, overbought, strictAlignment);
       m_entryValidator = new CEntryRulesValidator();
       
       // Initialiser le TSL dynamique si activé

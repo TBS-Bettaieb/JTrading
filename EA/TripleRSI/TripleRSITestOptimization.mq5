@@ -36,6 +36,7 @@ input int InpRSIPeriod2 = 14;   // RSI Période 2 (moyen)
 input int InpRSIPeriod3 = 21;   // RSI Période 3 (lent)
 input int InpOversold = 30;     // Niveau survente
 input int InpOverbought = 70;   // Niveau surachat
+input bool InpUseStrictAlignment = true; // Mode Strict (3/3) ou Flexible (2/3)
 
 input group "=== TRAILING STOP ==="
 input bool InpUseDynamicTrailing = true;    // Activer TSL Dynamique
@@ -154,6 +155,7 @@ int OnInit()
    config.rsiPeriod3 = InpRSIPeriod3;
    config.rsiOversold = InpOversold;
    config.rsiOverbought = InpOverbought;
+   config.useStrictAlignment = InpUseStrictAlignment;
    config.slPoints = 0; // SL géré via les nouveaux paramètres
    config.tpRatio = InpTPRatio;
    config.useDynamicTrailing = InpUseDynamicTrailing;
@@ -361,6 +363,8 @@ void DisplayConfigurationInfo(TripleRSIConfig &config)
       slStr = "Percent Price (" + DoubleToString(config.percentSLPrice, 1) + "%)";
    }
    
+   string alignmentMode = config.useStrictAlignment ? "Strict (3/3)" : "Flexible (2/3)";
+   
    string info = StringFormat(
       "=== %s ===\n" +
       "Symbols: %s\n" +
@@ -369,6 +373,7 @@ void DisplayConfigurationInfo(TripleRSIConfig &config)
       "Risk: %.1f%%\n" +
       "RSI Periods: %d/%d/%d\n" +
       "RSI Levels: %d/%d\n" +
+      "RSI Alignment: %s\n" +
       "Stop-Loss: %s\n" +
       "TP Ratio: %.1fx\n" +
       "Trailing Stop: %s\n" +
@@ -383,6 +388,7 @@ void DisplayConfigurationInfo(TripleRSIConfig &config)
       config.riskPercent,
       config.rsiPeriod1, config.rsiPeriod2, config.rsiPeriod3,
       config.rsiOversold, config.rsiOverbought,
+      alignmentMode,
       slStr,
       config.tpRatio,
       trailingStr,

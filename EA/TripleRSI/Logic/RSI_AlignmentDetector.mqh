@@ -69,7 +69,6 @@ public:
          int count = 0;
          if(rsi1 < m_oversoldLevel) count++;
          if(rsi2 < m_oversoldLevel) count++;
-         if(rsi3 < m_oversoldLevel) count++;
          
          return (count >= 2);
       }
@@ -92,7 +91,6 @@ public:
          int count = 0;
          if(rsi1 > m_overboughtLevel) count++;
          if(rsi2 > m_overboughtLevel) count++;
-         if(rsi3 > m_overboughtLevel) count++;
          
          return (count >= 2);
       }
