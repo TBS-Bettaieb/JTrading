@@ -476,7 +476,7 @@ private:
    {
       // Cette fonction peut être étendue pour afficher des informations détaillées
       // sur chaque symbole, les statistiques, etc.
-      Logger::Debug("Detailed info update - " + IntegerToString(m_totalSymbols) + " symbols");
+      //Logger::Debug("Detailed info update - " + IntegerToString(m_totalSymbols) + " symbols");
    }
    
 public:

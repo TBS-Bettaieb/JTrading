@@ -43,6 +43,12 @@ input bool InpUseEMACrossFilter = false;    // Filtrer si trop de croisements EM
 input int InpEMACrossBarsCheck = 20;        // Barres à analyser pour croisements (10-50)
 input int InpEMAMaxCrossings = 2;           // Max croisements tolérés (1-5)
 
+input group "=== DIVERGENCE CONFIRMATION ==="
+input bool InpUseDivergenceConfirm = false;  // Activer confirmation divergence
+input int InpDivConfirmBars = 8;             // Barres max attente (7-10)
+input int InpDivLookbackBars = 10;           // Barres recherche pivots (5-15)
+input double InpDivMinStrength = 3.0;        // Force min % divergence
+
 input group "=== TRAILING STOP ==="
 input bool InpUseDynamicTrailing = true;    // Activer TSL Dynamique
 input double InpTSLCostMultiplier = 1.5;    // Multiplicateur coûts TSL
@@ -168,6 +174,10 @@ int OnInit()
    config.useEMACrossFilter = InpUseEMACrossFilter;
    config.emaCrossBarsCheck = InpEMACrossBarsCheck;
    config.emaMaxCrossings = InpEMAMaxCrossings;
+   config.useDivergenceConfirm = InpUseDivergenceConfirm;
+   config.divConfirmBars = InpDivConfirmBars;
+   config.divLookbackBars = InpDivLookbackBars;
+   config.divMinStrength = InpDivMinStrength;
    config.slPoints = 0; // SL géré via les nouveaux paramètres
    config.tpRatio = InpTPRatio;
    config.useDynamicTrailing = InpUseDynamicTrailing;

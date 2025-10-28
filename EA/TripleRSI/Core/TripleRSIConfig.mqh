@@ -35,6 +35,12 @@ struct TripleRSIConfig
    int               emaCrossBarsCheck;     // Nombre de barres à analyser (10-50)
    int               emaMaxCrossings;       // Nombre max de croisements tolérés (1-5)
    
+   // Divergence Confirmation System
+   bool              useDivergenceConfirm;  // Activer confirmation par divergence
+   int               divConfirmBars;        // Barres max d'attente (7-10)
+   int               divLookbackBars;       // Barres recherche pivots (5-15)
+   double            divMinStrength;        // Force min % (optionnel)
+   
    // Stop Loss / Take Profit
    int               slPoints;          // SL en points
    double            tpRatio;          // Ratio TP/SL (ex: 2.0 = 1:2)
@@ -85,6 +91,12 @@ struct TripleRSIConfig
       useEMACrossFilter = false;      // Filtre croisements désactivé par défaut
       emaCrossBarsCheck = 20;         // Analyser 20 dernières barres
       emaMaxCrossings = 2;            // Max 2 croisements tolérés
+      
+      // Divergence System - Valeurs par défaut
+      useDivergenceConfirm = false;   // Désactivé par défaut
+      divConfirmBars = 8;             // 8 barres max d'attente
+      divLookbackBars = 10;           // 10 barres pour pivots
+      divMinStrength = 3.0;           // 3% minimum
       
       slPoints = 100;
       tpRatio = 2.0;

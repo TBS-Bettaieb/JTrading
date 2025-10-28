@@ -168,6 +168,32 @@ public:
    {
       m_config = config;
       
+      // Réinitialiser m_alignDetector avec les nouveaux paramètres de divergence
+      if(m_alignDetector != NULL)
+        {
+         delete m_alignDetector;
+         m_alignDetector = NULL;
+        }
+      
+      m_alignDetector = new CRSIAlignmentDetector(
+         config.rsiOversold, 
+         config.rsiOverbought, 
+         config.useStrictAlignment,
+         config.useDivergenceConfirm,
+         config.divConfirmBars,
+         config.divLookbackBars,
+         config.divMinStrength
+      );
+      
+      // Enregistrer les handles RSI pour la détection de divergence
+      if(config.useDivergenceConfirm && m_rsiCalc != NULL && m_alignDetector != NULL)
+        {
+         int handle1, handle2, handle3;
+         m_rsiCalc.GetHandles(handle1, handle2, handle3);
+         m_alignDetector.SetRSIHandles(handle1, handle2, handle3);
+         Logger::Info("Divergence confirmation enabled for " + m_symbol);
+        }
+      
       // Initialiser Trailing TP si activé
       if(config.useTrailingTP)
       {
@@ -261,18 +287,41 @@ public:
          return;
       }
       
-      // 2. Détecter alignement avec validation EMA optionnelle
-      ENUM_RSI_SIGNAL signal = m_alignDetector.GetSignal(
-         rsi1, rsi2, rsi3, 
-         false,                              // allowRepeat
-         m_config.useEMAValidation,          // validateWithEMA
-         m_symbol,                           // symbol
-         m_timeframe,                        // currentTF
-         m_config.emaPeriodValidation,       // emaPeriod
-         m_config.useEMACrossFilter,         // useCrossFilter
-         m_config.emaCrossBarsCheck,         // crossBarsCheck
-         m_config.emaMaxCrossings            // maxCrossings
-      );
+      // 2. Détecter alignement avec validation EMA optionnelle et divergence
+      ENUM_RSI_SIGNAL signal;
+      
+      if(m_config.useDivergenceConfirm)
+        {
+         // Utiliser GetSignalWithDivergence si la divergence est activée
+         int currentBar = Bars(m_symbol, m_timeframe);
+         signal = m_alignDetector.GetSignalWithDivergence(
+            rsi1, rsi2, rsi3,
+            m_symbol,                           // symbol
+            m_timeframe,                        // tf
+            currentBar,                         // currentBar
+            false,                              // allowRepeat
+            m_config.useEMAValidation,          // validateWithEMA
+            m_config.emaPeriodValidation,       // emaPeriod
+            m_config.useEMACrossFilter,         // useCrossFilter
+            m_config.emaCrossBarsCheck,         // crossBarsCheck
+            m_config.emaMaxCrossings            // maxCrossings
+         );
+        }
+      else
+        {
+         // Utiliser GetSignal classique
+         signal = m_alignDetector.GetSignal(
+            rsi1, rsi2, rsi3, 
+            false,                              // allowRepeat
+            m_config.useEMAValidation,          // validateWithEMA
+            m_symbol,                           // symbol
+            m_timeframe,                        // currentTF
+            m_config.emaPeriodValidation,       // emaPeriod
+            m_config.useEMACrossFilter,         // useCrossFilter
+            m_config.emaCrossBarsCheck,         // crossBarsCheck
+            m_config.emaMaxCrossings            // maxCrossings
+         );
+        }
       
       // 3. Si signal valide et pas de position, valider entrée
       if(signal == RSI_SIGNAL_BUY)

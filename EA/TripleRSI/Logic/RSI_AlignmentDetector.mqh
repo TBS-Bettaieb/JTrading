@@ -8,16 +8,8 @@
 #include "../../Shared/Logger.mqh"
 #include "../../Shared/TrendFilters/TrendAnalysis.mqh"
 #include "../../Shared/TimeframeUtils.mqh"
-
-//+------------------------------------------------------------------+
-//| Enumération des signaux RSI                                      |
-//+------------------------------------------------------------------+
-enum ENUM_RSI_SIGNAL
-  {
-   RSI_SIGNAL_NONE = 0,    // Aucun signal
-   RSI_SIGNAL_BUY = 1,     // Signal d'achat (3 RSI > oversold)
-   RSI_SIGNAL_SELL = -1    // Signal de vente (3 RSI < overbought)
-  };
+#include "PendingSignalManager.mqh"  // Inclut ENUM_RSI_SIGNAL
+#include "RSI_DivergenceDetector.mqh"
 
 //+------------------------------------------------------------------+
 //| Triple RSI Alignment Detector Class                              |
@@ -32,6 +24,19 @@ private:
    // Historique des signaux pour éviter les signaux répétés
    ENUM_RSI_SIGNAL   m_lastSignal;
    datetime          m_lastSignalTime;
+
+   // Système de confirmation par divergence
+   CPendingSignalManager*     m_pendingManager;
+   CRSIDivergenceDetector*    m_divDetector;
+   bool                       m_useDivergenceConfirm;
+   int                        m_divConfirmBars;
+   int                        m_divLookbackBars;
+   double                     m_divMinStrength;
+
+   // Handles RSI pour la divergence
+   int m_rsiHandle1;
+   int m_rsiHandle2;
+   int m_rsiHandle3;
 
    //--- Détecter le signal de base RSI
    ENUM_RSI_SIGNAL   DetectBaseSignal(double rsi1, double rsi2, double rsi3)
@@ -68,42 +73,12 @@ private:
       // 2. Validation croisements EMA (si activée)
       if(useCrossFilter && (emaConfirm || emaConfirmSecond))
         {
-
-
          if(tooCrossing)
-           {
-            Logger::Debug("Signal RSI " + SignalToString(signal) +
-                          " rejeté: trop de croisements EMA (max: " + IntegerToString(maxCrossings) + " sur " +
-                          IntegerToString(crossBarsCheck) + " barres) - " +
-                          TimeframeUtils::GetTimeframeName(higherTF) + ": " + IntegerToString(crossingsHigherTF) + ", " +
-                          TimeframeUtils::GetTimeframeName(higherTFSecond) + ": " + IntegerToString(crossingsHigherTFSecond));
             return false;
-           }
-         else
-           {
-            Logger::Debug("Croisements EMA OK sur tous les TF (≤ " + IntegerToString(maxCrossings) + ") - " +
-                          TimeframeUtils::GetTimeframeName(higherTF) + ": " + IntegerToString(crossingsHigherTF) + ", " +
-                          TimeframeUtils::GetTimeframeName(higherTFSecond) + ": " + IntegerToString(crossingsHigherTFSecond));
-           }
         }
 
       // 3. Résultat final
       bool tendanceOK = emaConfirm && emaConfirmSecond;
-
-      if(!tendanceOK)
-        {
-         Logger::Debug("Signal RSI " + SignalToString(signal) +
-                       " rejeté par validation EMA-" + IntegerToString(emaPeriod) + " - " +
-                       TimeframeUtils::GetTimeframeName(higherTF) + ": " + (emaConfirm ? "OK" : "KO") + ", " +
-                       TimeframeUtils::GetTimeframeName(higherTFSecond) + ": " + (emaConfirmSecond ? "OK" : "KO"));
-        }
-      else
-        {
-         Logger::Debug("Signal RSI " + SignalToString(signal) +
-                       " confirmé par EMA-" + IntegerToString(emaPeriod) + " - " +
-                       TimeframeUtils::GetTimeframeName(higherTF) + ": " + (emaConfirm ? "✓" : "✗") + ", " +
-                       TimeframeUtils::GetTimeframeName(higherTFSecond) + ": " + (emaConfirmSecond ? "✓" : "✗"));
-        }
 
       return tendanceOK;
      }
@@ -128,7 +103,9 @@ private:
 
       m_lastSignal = signal;
       m_lastSignalTime = TimeCurrent();
-
+      Logger::Debug("RSI Values: " + DoubleToString(rsi1, 1) + "/" + 
+      DoubleToString(rsi2, 1) + "/" + DoubleToString(rsi3, 1));
+      
       Logger::Signal(signal == RSI_SIGNAL_BUY,
                      "RSI Alignment Signal: " + SignalToString(signal) +
                      " | RSI: " + DoubleToString(rsi1, 1) + "/" +
@@ -137,13 +114,53 @@ private:
 
 public:
    //--- Constructor
-                     CRSIAlignmentDetector(int oversold, int overbought, bool strictAlignment = true)
+                     CRSIAlignmentDetector(int oversold, int overbought, bool strictAlignment = true,
+                                          bool useDivConfirm = false, int divConfirmBars = 8,
+                                          int divLookback = 10, double divMinStrength = 3.0)
      {
       m_oversoldLevel = oversold;
       m_overboughtLevel = overbought;
       m_useStrictAlignment = strictAlignment;
       m_lastSignal = RSI_SIGNAL_NONE;
       m_lastSignalTime = 0;
+
+      // Initialisation du système de divergence
+      m_useDivergenceConfirm = useDivConfirm;
+      m_divConfirmBars = divConfirmBars;
+      m_divLookbackBars = divLookback;
+      m_divMinStrength = divMinStrength;
+      m_rsiHandle1 = INVALID_HANDLE;
+      m_rsiHandle2 = INVALID_HANDLE;
+      m_rsiHandle3 = INVALID_HANDLE;
+
+      if(useDivConfirm)
+        {
+         m_pendingManager = new CPendingSignalManager(divConfirmBars);
+         
+         // Mapper les paramètres d'input de l'EA vers le détecteur
+         // Utiliser les niveaux RSI de l'EA (cohérent avec la stratégie Triple RSI)
+         m_divDetector = new CRSIDivergenceDetector(
+             3,                              // lookbackLeft (TradingView default)
+             1,                              // lookbackRight (TradingView default)
+             3,                              // rangeLower (distance min pivots)
+             100,                            // rangeUpper (distance max pivots)
+             (double)m_overboughtLevel,      // upperLevel (70 de l'EA)
+             (double)m_oversoldLevel,        // lowerLevel (30 de l'EA)
+             divMinStrength                  // minStrength (3.0 de l'EA)
+         );
+         
+         Logger::Debug("Divergence confirmation system ENABLED");
+         Logger::Debug("  RSI levels: " + IntegerToString(m_oversoldLevel) + 
+                       " / " + IntegerToString(m_overboughtLevel) + 
+                       " (from EA config)");
+         Logger::Debug("  Lookback: 3/1 | Range: 3-100 | Strength: " + 
+                       DoubleToString(divMinStrength, 1) + "%");
+        }
+      else
+        {
+         m_pendingManager = NULL;
+         m_divDetector = NULL;
+        }
 
       Logger::Debug("RSI Alignment Detector initialized");
       Logger::Debug("Oversold: " + IntegerToString(oversold) +
@@ -153,7 +170,20 @@ public:
    //--- Destructor
                     ~CRSIAlignmentDetector()
      {
+      if(m_pendingManager != NULL)
+         delete m_pendingManager;
+      if(m_divDetector != NULL)
+         delete m_divDetector;
       Logger::Debug("RSI Alignment Detector destroyed");
+     }
+
+   //--- Enregistrer les handles RSI pour la détection de divergence
+   void SetRSIHandles(int handle1, int handle2, int handle3)
+     {
+      m_rsiHandle1 = handle1;
+      m_rsiHandle2 = handle2;
+      m_rsiHandle3 = handle3;
+      Logger::Debug("RSI handles registered for divergence detection");
      }
 
    //--- Détecter alignement pour signal achat
@@ -243,6 +273,159 @@ public:
       
       return signal;
    }
+
+   //--- Obtenir signal avec confirmation par divergence
+   ENUM_RSI_SIGNAL GetSignalWithDivergence(double rsi1, double rsi2, double rsi3,
+                                          string symbol, ENUM_TIMEFRAMES tf, int currentBar,
+                                          bool allowRepeat = false,
+                                          bool validateWithEMA = false,
+                                          int emaPeriod = 50,
+                                          bool useCrossFilter = false,
+                                          int crossBarsCheck = 20,
+                                          int maxCrossings = 2)
+     {
+      // Vérifier que les handles RSI sont valides si mode divergence activé
+      if(m_useDivergenceConfirm && 
+         (m_rsiHandle1 == INVALID_HANDLE || 
+          m_rsiHandle2 == INVALID_HANDLE || 
+          m_rsiHandle3 == INVALID_HANDLE))
+        {
+         Logger::Error("GetSignalWithDivergence: Handles RSI non enregistrés ! " +
+                       "Appelez SetRSIHandles() dans OnInit()");
+         
+         // Mode dégradé : désactiver temporairement la divergence
+         m_useDivergenceConfirm = false;
+         Logger::Warning("Mode divergence désactivé temporairement");
+        }
+      
+      // Si le mode divergence est désactivé, utiliser la méthode classique
+      if(!m_useDivergenceConfirm)
+        {
+         return GetSignal(rsi1, rsi2, rsi3, allowRepeat, validateWithEMA, 
+                         symbol, tf, emaPeriod, useCrossFilter, crossBarsCheck, maxCrossings);
+        }
+
+      // === ÉTAPE 1 : Vérifier si un signal est en attente ===
+      if(m_pendingManager != NULL && m_pendingManager.HasPendingSignal())
+        {
+         // Vérifier le timeout
+         if(m_pendingManager.IsTimeout(currentBar))
+           {
+            SPendingSignal pending = m_pendingManager.GetPendingSignal();
+            Logger::Debug("⏱️ Timeout signal " + SignalToString(pending.signalType) + 
+                          " après " + IntegerToString(m_divConfirmBars) + 
+                          " barres sans divergence - Annulation");
+            m_pendingManager.CancelSignal();
+            return RSI_SIGNAL_NONE;
+           }
+
+         // Récupérer le signal en attente
+         SPendingSignal pending = m_pendingManager.GetPendingSignal();
+         bool divergenceFound = false;
+
+         // Calculer le nombre de barres écoulées depuis le signal
+         int barsElapsed = currentBar - pending.detectionBar;
+         
+         Logger::Debug("Recherche divergence - Signal @ bar[" + IntegerToString(pending.detectionBar) + 
+                       "] (il y a " + IntegerToString(barsElapsed) + " barres)");
+
+         // Chercher la divergence selon le type de signal (dans le FUTUR depuis le signal initial)
+         if(pending.signalType == RSI_SIGNAL_BUY)
+           {
+            // Chercher divergence bullish dans le futur (Prix ↓ RSI ↑)
+            // Le signal initial est le premier pivot, on cherche un nouveau pivot qui se forme après
+            if(m_divDetector != NULL)
+              {
+               divergenceFound = m_divDetector.DetectBullishDivergenceInFuture(
+                  symbol,                    // Symbole
+                  tf,                        // Timeframe
+                  m_rsiHandle1,              // Handle RSI
+                  barsElapsed,               // Barre du signal (ancienneté)
+                  pending.rsi1,              // RSI au moment du signal
+                  pending.detectionPrice,    // Prix au moment du signal
+                  m_divConfirmBars);         // Fenêtre de recherche max
+               
+               Logger::Debug("DetectBullishDivergenceInFuture appelé: " + 
+                            (divergenceFound ? "TROUVÉE ✅" : "NON TROUVÉE ❌"));
+              }
+           }
+         else
+            if(pending.signalType == RSI_SIGNAL_SELL)
+              {
+               // Chercher divergence bearish dans le futur (Prix ↑ RSI ↓)
+               if(m_divDetector != NULL)
+                 {
+                  divergenceFound = m_divDetector.DetectBearishDivergenceInFuture(
+                     symbol,
+                     tf,
+                     m_rsiHandle1,
+                     barsElapsed,
+                     pending.rsi1,
+                     pending.detectionPrice,
+                     m_divConfirmBars);
+                  
+                  Logger::Debug("DetectBearishDivergenceInFuture appelé: " + 
+                               (divergenceFound ? "TROUVÉE ✅" : "NON TROUVÉE ❌"));
+                 }
+              }
+
+         // Si divergence trouvée, confirmer et retourner le signal
+         if(divergenceFound)
+           {
+            m_pendingManager.ConfirmSignal();
+            UpdateSignalHistory(pending.signalType, pending.rsi1, pending.rsi2, pending.rsi3);
+            return pending.signalType;
+           }
+
+         // Sinon, continuer d'attendre
+         return RSI_SIGNAL_NONE;
+        }
+
+      // === ÉTAPE 2 : Détecter un nouveau signal RSI ===
+      ENUM_RSI_SIGNAL signal = DetectBaseSignal(rsi1, rsi2, rsi3);
+
+      // Reset si on quitte la zone du signal précédent
+      if(signal == RSI_SIGNAL_NONE && m_lastSignal != RSI_SIGNAL_NONE)
+        {
+         Logger::Debug("Exit from " + SignalToString(m_lastSignal) + " zone - Reset history");
+         ResetSignalHistory();
+        }
+
+      if(signal != RSI_SIGNAL_NONE)
+        {
+         // Validation avec EMA si demandée
+         if(validateWithEMA && !ValidateSignalWithEMA(signal, symbol, tf, emaPeriod,
+                                                      useCrossFilter, crossBarsCheck, maxCrossings))
+           {
+            m_lastSignal = RSI_SIGNAL_NONE;
+            return RSI_SIGNAL_NONE;
+           }
+
+         // Vérifier les répétitions
+         if(!allowRepeat && IsRepeatedSignal(signal))
+            return RSI_SIGNAL_NONE;
+
+         // Récupérer le prix actuel (pivot initial de la divergence)
+         double currentPrice;
+         if(signal == RSI_SIGNAL_BUY)
+            currentPrice = iLow(symbol, tf, 0);   // Prix Low pour signal BUY
+         else
+            currentPrice = iHigh(symbol, tf, 0);  // Prix High pour signal SELL
+
+         // Mettre le signal en attente pour confirmation par divergence
+         if(m_pendingManager != NULL)
+           {
+            m_pendingManager.AddPendingSignal(signal, rsi1, rsi2, rsi3, currentBar, currentPrice);
+            Logger::Debug("Signal en attente @ bar[" + IntegerToString(currentBar) + 
+                         "] Prix=" + DoubleToString(currentPrice, _Digits));
+           }
+
+         // Retourner NONE car le signal n'est pas encore confirmé
+         return RSI_SIGNAL_NONE;
+        }
+
+      return RSI_SIGNAL_NONE;
+     }
 
    //--- Obtenir signal sans vérification de répétition
    ENUM_RSI_SIGNAL   GetRawSignal(double rsi1, double rsi2, double rsi3)
