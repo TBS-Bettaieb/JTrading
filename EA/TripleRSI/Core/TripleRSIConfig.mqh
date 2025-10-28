@@ -28,6 +28,8 @@ struct TripleRSIConfig
    int               rsiOversold;       // Niveau survente (30)
    int               rsiOverbought;     // Niveau surachat (70)
    bool              useStrictAlignment; // Mode Strict (3/3) ou Flexible (2/3)
+   bool              useEMAValidation;  // Validation avec EMA sur timeframe supérieur
+   int               emaPeriodValidation; // Période EMA pour validation (20-200)
    
    // Stop Loss / Take Profit
    int               slPoints;          // SL en points
@@ -69,6 +71,8 @@ struct TripleRSIConfig
       rsiOversold = 30;
       rsiOverbought = 70;
       useStrictAlignment = true;
+      useEMAValidation = false;  // Désactivé par défaut
+      emaPeriodValidation = 50;  // EMA-50 par défaut
       
       slPoints = 100;
       tpRatio = 2.0;

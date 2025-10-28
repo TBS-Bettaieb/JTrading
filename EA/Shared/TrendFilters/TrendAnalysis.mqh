@@ -96,8 +96,18 @@ static bool CheckHigherTimeframeTrendAdvanced(string symbol, ENUM_TIMEFRAMES hig
 //| @param bullish true pour tendance haussière, false pour baissière |
 //| @return true si tendance détectée par MA                         |
 //+------------------------------------------------------------------+
-static bool CheckHigherTimeframeTrend(string symbol, ENUM_TIMEFRAMES higher_tf, bool bullish)
+static bool CheckHigherTimeframeTrend(string symbol, 
+                                      ENUM_TIMEFRAMES higher_tf, 
+                                      bool bullish,
+                                      int emaPeriod = 50)  // Nouveau paramètre avec défaut
 {
+
+if(emaPeriod < 1 || emaPeriod > 500)
+   {
+      Print("ERREUR: Période EMA invalide (", emaPeriod, "). Utilisation de 50 par défaut.");
+      emaPeriod = 50;
+   }
+
    // Array pour stocker les prix de clôture
    double closePrice[];
    ArraySetAsSeries(closePrice, true);
@@ -107,8 +117,8 @@ static bool CheckHigherTimeframeTrend(string symbol, ENUM_TIMEFRAMES higher_tf, 
    ArraySetAsSeries(emaValues, true);
    
    // Créer un handle pour l'EMA sur le timeframe supérieur
-   // Utilisation d'une EMA-50 pour déterminer la tendance
-   int emaHandle = iMA(symbol, higher_tf, 50, 0, MODE_EMA, PRICE_CLOSE);
+   // Utilisation de la période EMA paramétrable
+   int emaHandle = iMA(symbol, higher_tf, emaPeriod, 0, MODE_EMA, PRICE_CLOSE);
    
    // Vérifier si le handle est valide
    if(emaHandle == INVALID_HANDLE)

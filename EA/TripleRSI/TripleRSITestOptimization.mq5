@@ -37,6 +37,8 @@ input int InpRSIPeriod3 = 21;   // RSI Période 3 (lent)
 input int InpOversold = 30;     // Niveau survente
 input int InpOverbought = 70;   // Niveau surachat
 input bool InpUseStrictAlignment = true; // Mode Strict (3/3) ou Flexible (2/3)
+input bool InpUseEMAValidation = false;  // Validation EMA sur timeframe supérieur
+input int InpEMAPeriod = 50;    // Période EMA pour validation (20-200)
 
 input group "=== TRAILING STOP ==="
 input bool InpUseDynamicTrailing = true;    // Activer TSL Dynamique
@@ -156,6 +158,8 @@ int OnInit()
    config.rsiOversold = InpOversold;
    config.rsiOverbought = InpOverbought;
    config.useStrictAlignment = InpUseStrictAlignment;
+   config.useEMAValidation = InpUseEMAValidation;
+   config.emaPeriodValidation = InpEMAPeriod;
    config.slPoints = 0; // SL géré via les nouveaux paramètres
    config.tpRatio = InpTPRatio;
    config.useDynamicTrailing = InpUseDynamicTrailing;

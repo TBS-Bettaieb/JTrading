@@ -221,8 +221,13 @@ public:
          return;
       }
       
-      // 2. Détecter alignement
-      ENUM_RSI_SIGNAL signal = m_alignDetector.GetSignal(rsi1, rsi2, rsi3, false);
+      // 2. Détecter alignement avec validation EMA optionnelle
+      ENUM_RSI_SIGNAL signal = m_alignDetector.GetSignal(rsi1, rsi2, rsi3, 
+                                                          false,              // allowRepeat
+                                                          m_config.useEMAValidation, // validateWithEMA
+                                                          m_symbol,           // symbol
+                                                          m_timeframe,        // currentTF
+                                                          m_config.emaPeriodValidation); // emaPeriod
       
       // 3. Si signal valide et pas de position, valider entrée
       if(signal == RSI_SIGNAL_BUY)

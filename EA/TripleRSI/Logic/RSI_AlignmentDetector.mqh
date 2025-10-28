@@ -6,6 +6,8 @@
 #property strict
 
 #include "../../Shared/Logger.mqh"
+#include "../../Shared/TrendFilters/TrendAnalysis.mqh"
+#include "../../Shared/TimeframeUtils.mqh"
 
 //+------------------------------------------------------------------+
 //| Enumération des signaux RSI                                      |
@@ -30,6 +32,70 @@ private:
    // Historique des signaux pour éviter les signaux répétés
    ENUM_RSI_SIGNAL m_lastSignal;
    datetime m_lastSignalTime;
+   
+   //--- Détecter le signal de base RSI
+   ENUM_RSI_SIGNAL DetectBaseSignal(double rsi1, double rsi2, double rsi3)
+   {
+      if(IsBuyAlignment(rsi1, rsi2, rsi3))
+         return RSI_SIGNAL_BUY;
+      if(IsSellAlignment(rsi1, rsi2, rsi3))
+         return RSI_SIGNAL_SELL;
+      return RSI_SIGNAL_NONE;
+   }
+   
+   //--- Valider signal avec EMA sur timeframe supérieur
+   bool ValidateSignalWithEMA(ENUM_RSI_SIGNAL signal, string symbol, ENUM_TIMEFRAMES currentTF, int emaPeriod)
+   {
+      if(signal == RSI_SIGNAL_NONE)
+         return true; // Pas de signal à valider
+      
+      string targetSymbol = (symbol == NULL) ? _Symbol : symbol;
+      ENUM_TIMEFRAMES higherTF = TimeframeUtils::GetNextHigherTimeframe(currentTF);
+      ENUM_TIMEFRAMES higherTFSecond = TimeframeUtils::GetNextHigherTimeframe(higherTF);
+      bool isBullish = (signal == RSI_SIGNAL_BUY);
+      bool emaConfirm = TrendAnalysis::CheckHigherTimeframeTrend(targetSymbol, higherTF, isBullish, emaPeriod);
+      bool emaConfirmSecond = TrendAnalysis::CheckHigherTimeframeTrend(targetSymbol, higherTFSecond, isBullish, emaPeriod);
+      if(!emaConfirm && !emaConfirmSecond)
+      {
+         Logger::Debug("Signal RSI " + SignalToString(signal) + 
+                      " rejeté par validation EMA-" + IntegerToString(emaPeriod) + 
+                      " sur " + TimeframeUtils::GetTimeframeName(higherTF));
+      }
+      else
+      {
+         Logger::Debug("Signal RSI " + SignalToString(signal) + 
+                      " confirmé par EMA-" + IntegerToString(emaPeriod) + 
+                      " sur " + TimeframeUtils::GetTimeframeName(higherTF));
+      }
+      
+      return emaConfirm || emaConfirmSecond;
+   }
+   
+   //--- Vérifier si le signal est une répétition
+   bool IsRepeatedSignal(ENUM_RSI_SIGNAL signal)
+   {
+      if(signal == m_lastSignal)
+      {
+         Logger::Debug("Signal répété ignoré: " + SignalToString(signal));
+         return true;
+      }
+      return false;
+   }
+   
+   //--- Mettre à jour l'historique du signal
+   void UpdateSignalHistory(ENUM_RSI_SIGNAL signal, double rsi1, double rsi2, double rsi3)
+   {
+      if(signal == RSI_SIGNAL_NONE)
+         return;
+      
+      m_lastSignal = signal;
+      m_lastSignalTime = TimeCurrent();
+      
+      Logger::Signal(signal == RSI_SIGNAL_BUY, 
+                    "RSI Alignment Signal: " + SignalToString(signal) + 
+                    " | RSI: " + DoubleToString(rsi1, 1) + "/" + 
+                    DoubleToString(rsi2, 1) + "/" + DoubleToString(rsi3, 1));
+   }
 
 public:
    //--- Constructor
@@ -98,35 +164,27 @@ public:
    
    //--- Obtenir signal global avec gestion des répétitions
    ENUM_RSI_SIGNAL GetSignal(double rsi1, double rsi2, double rsi3, 
-                            bool allowRepeat = false)
+                            bool allowRepeat = false,
+                            bool validateWithEMA = false,
+                            string symbol = NULL,
+                            ENUM_TIMEFRAMES currentTF = PERIOD_CURRENT,
+                            int emaPeriod = 50)
    {
-      ENUM_RSI_SIGNAL currentSignal = RSI_SIGNAL_NONE;
+      // 1. Détection du signal de base
+      ENUM_RSI_SIGNAL signal = DetectBaseSignal(rsi1, rsi2, rsi3);
       
-      if(IsBuyAlignment(rsi1, rsi2, rsi3))
-         currentSignal = RSI_SIGNAL_BUY;
-      else if(IsSellAlignment(rsi1, rsi2, rsi3))
-         currentSignal = RSI_SIGNAL_SELL;
-      
-      // Éviter les signaux répétés si demandé
-      if(!allowRepeat && currentSignal == m_lastSignal)
-      {
-         Logger::Debug("Signal répété ignoré: " + SignalToString(currentSignal));
+      // 2. Validation avec EMA si demandée
+      if(validateWithEMA && !ValidateSignalWithEMA(signal, symbol, currentTF, emaPeriod))
          return RSI_SIGNAL_NONE;
-      }
       
-      // Mettre à jour l'historique
-      if(currentSignal != RSI_SIGNAL_NONE)
-      {
-         m_lastSignal = currentSignal;
-         m_lastSignalTime = TimeCurrent();
-         
-         Logger::Signal(currentSignal == RSI_SIGNAL_BUY, 
-                       "RSI Alignment Signal: " + SignalToString(currentSignal) + 
-                       " | RSI: " + DoubleToString(rsi1, 1) + "/" + 
-                       DoubleToString(rsi2, 1) + "/" + DoubleToString(rsi3, 1));
-      }
+      // 3. Vérification des répétitions
+      if(!allowRepeat && IsRepeatedSignal(signal))
+         return RSI_SIGNAL_NONE;
       
-      return currentSignal;
+      // 4. Mise à jour de l'historique
+      UpdateSignalHistory(signal, rsi1, rsi2, rsi3);
+      
+      return signal;
    }
    
    //--- Obtenir signal sans vérification de répétition
