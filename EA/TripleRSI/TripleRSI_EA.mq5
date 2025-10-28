@@ -48,6 +48,13 @@ input bool InpUseDivergenceConfirm = false;  // Activer confirmation divergence
 input int InpDivConfirmBars = 8;             // Barres max attente (7-10)
 input int InpDivLookbackBars = 10;           // Barres recherche pivots (5-15)
 input double InpDivMinStrength = 3.0;        // Force min % divergence
+input int InpDivergenceRSI = 3;              // RSI pour divergence (1=rapide, 2=moyen, 3=lent)
+
+input group "=== ATR VOLATILITY FILTER ==="
+input bool InpUseATRVolatilityFilter = false;  // Activer filtre ATR volatilité
+input int InpATRShortPeriod = 14;              // ATR court terme (périodes)
+input int InpATRLongPeriod = 50;               // ATR long terme (périodes)
+input double InpATRExpansionMultiplier = 1.3;  // Multiplicateur expansion (1.2-1.5)
 
 input group "=== TRAILING STOP ==="
 input bool InpUseDynamicTrailing = true;    // Activer TSL Dynamique
@@ -178,6 +185,11 @@ int OnInit()
    config.divConfirmBars = InpDivConfirmBars;
    config.divLookbackBars = InpDivLookbackBars;
    config.divMinStrength = InpDivMinStrength;
+   config.divergenceRsiIndex = InpDivergenceRSI;
+   config.useATRVolatilityFilter = InpUseATRVolatilityFilter;
+   config.atrShortPeriod = InpATRShortPeriod;
+   config.atrLongPeriod = InpATRLongPeriod;
+   config.atrExpansionMultiplier = InpATRExpansionMultiplier;
    config.slPoints = 0; // SL géré via les nouveaux paramètres
    config.tpRatio = InpTPRatio;
    config.useDynamicTrailing = InpUseDynamicTrailing;

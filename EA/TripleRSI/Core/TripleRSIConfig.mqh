@@ -40,6 +40,13 @@ struct TripleRSIConfig
    int               divConfirmBars;        // Barres max d'attente (7-10)
    int               divLookbackBars;       // Barres recherche pivots (5-15)
    double            divMinStrength;        // Force min % (optionnel)
+   int               divergenceRsiIndex;    // RSI pour divergence (1=rapide, 2=moyen, 3=lent)
+   
+   // ATR Volatility Filter
+   bool              useATRVolatilityFilter;   // Activer filtre ATR volatilité
+   int               atrShortPeriod;           // ATR court terme (14 par défaut)
+   int               atrLongPeriod;            // ATR long terme (50 par défaut)
+   double            atrExpansionMultiplier;   // Multiplicateur expansion (1.2-1.5)
    
    // Stop Loss / Take Profit
    int               slPoints;          // SL en points
@@ -97,6 +104,13 @@ struct TripleRSIConfig
       divConfirmBars = 8;             // 8 barres max d'attente
       divLookbackBars = 10;           // 10 barres pour pivots
       divMinStrength = 3.0;           // 3% minimum
+      divergenceRsiIndex = 3;         // RSI lent par défaut (plus stable)
+      
+      // ATR Volatility Filter - Valeurs par défaut
+      useATRVolatilityFilter = false; // Désactivé par défaut
+      atrShortPeriod = 14;            // ATR court terme : 14 périodes
+      atrLongPeriod = 50;             // ATR long terme : 50 périodes
+      atrExpansionMultiplier = 1.3;   // Multiplicateur : 1.3x (équilibré)
       
       slPoints = 100;
       tpRatio = 2.0;
@@ -146,6 +160,37 @@ struct TripleRSIConfig
          Logger::Error("RSI Period3 - Period2 must be > 2 (current: " + 
                       IntegerToString(rsiPeriod3 - rsiPeriod2) + ")");
          return false;
+      }
+      
+      if(divergenceRsiIndex < 1 || divergenceRsiIndex > 3)
+      {
+         Logger::Error("Divergence RSI index must be 1, 2, or 3 (current: " + 
+                      IntegerToString(divergenceRsiIndex) + ")");
+         return false;
+      }
+      
+      // Validation ATR Volatility Filter
+      if(useATRVolatilityFilter)
+      {
+         if(atrShortPeriod <= 0 || atrLongPeriod <= 0)
+         {
+            Logger::Error("ATR periods must be positive");
+            return false;
+         }
+         
+         if(atrShortPeriod >= atrLongPeriod)
+         {
+            Logger::Error("ATR short period must be < ATR long period (current: " + 
+                         IntegerToString(atrShortPeriod) + " vs " + IntegerToString(atrLongPeriod) + ")");
+            return false;
+         }
+         
+         if(atrExpansionMultiplier < 1.0 || atrExpansionMultiplier > 3.0)
+         {
+            Logger::Error("ATR expansion multiplier must be between 1.0 and 3.0 (current: " + 
+                         DoubleToString(atrExpansionMultiplier, 2) + ")");
+            return false;
+         }
       }
       
       if(rsiOversold >= rsiOverbought)

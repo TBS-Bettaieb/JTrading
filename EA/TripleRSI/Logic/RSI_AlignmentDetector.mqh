@@ -37,6 +37,7 @@ private:
    int m_rsiHandle1;
    int m_rsiHandle2;
    int m_rsiHandle3;
+   int m_divergenceRsiIndex;  // Quel RSI utiliser pour divergence (1, 2, ou 3)
 
    //--- Détecter le signal de base RSI
    ENUM_RSI_SIGNAL   DetectBaseSignal(double rsi1, double rsi2, double rsi3)
@@ -116,7 +117,8 @@ public:
    //--- Constructor
                      CRSIAlignmentDetector(int oversold, int overbought, bool strictAlignment = true,
                                           bool useDivConfirm = false, int divConfirmBars = 8,
-                                          int divLookback = 10, double divMinStrength = 3.0)
+                                          int divLookback = 10, double divMinStrength = 3.0,
+                                          int divergenceRsiIndex = 3)
      {
       m_oversoldLevel = oversold;
       m_overboughtLevel = overbought;
@@ -126,6 +128,7 @@ public:
 
       // Initialisation du système de divergence
       m_useDivergenceConfirm = useDivConfirm;
+      m_divergenceRsiIndex = divergenceRsiIndex;
       m_divConfirmBars = divConfirmBars;
       m_divLookbackBars = divLookback;
       m_divMinStrength = divMinStrength;
@@ -155,6 +158,11 @@ public:
                        " (from EA config)");
          Logger::Debug("  Lookback: 3/1 | Range: 3-100 | Strength: " + 
                        DoubleToString(divMinStrength, 1) + "%");
+         
+         string rsiType = (m_divergenceRsiIndex == 1) ? "RAPIDE" : 
+                         (m_divergenceRsiIndex == 2) ? "MOYEN" : "LENT";
+         Logger::Info("  RSI utilisé pour divergence: RSI" + IntegerToString(m_divergenceRsiIndex) + 
+                      " (" + rsiType + ")");
         }
       else
         {
@@ -184,6 +192,36 @@ public:
       m_rsiHandle2 = handle2;
       m_rsiHandle3 = handle3;
       Logger::Debug("RSI handles registered for divergence detection");
+     }
+
+   //--- Obtenir le handle RSI approprié pour la divergence
+   int GetDivergenceRsiHandle()
+     {
+      switch(m_divergenceRsiIndex)
+        {
+         case 1: return m_rsiHandle1;
+         case 2: return m_rsiHandle2;
+         case 3: return m_rsiHandle3;
+         default:
+            Logger::Warning("Invalid divergence RSI index: " + 
+                           IntegerToString(m_divergenceRsiIndex) + ", using RSI1");
+            return m_rsiHandle1;
+        }
+     }
+
+   //--- Obtenir la valeur RSI appropriée pour la divergence
+   double GetDivergenceRsiValue(SPendingSignal &pending)
+     {
+      switch(m_divergenceRsiIndex)
+        {
+         case 1: return pending.rsi1;
+         case 2: return pending.rsi2;
+         case 3: return pending.rsi3;
+         default:
+            Logger::Warning("Invalid divergence RSI index: " + 
+                           IntegerToString(m_divergenceRsiIndex) + ", using RSI1");
+            return pending.rsi1;
+        }
      }
 
    //--- Détecter alignement pour signal achat
@@ -315,6 +353,11 @@ public:
             Logger::Debug("⏱️ Timeout signal " + SignalToString(pending.signalType) + 
                           " après " + IntegerToString(m_divConfirmBars) + 
                           " barres sans divergence - Annulation");
+            
+            // Griser le marqueur pour indiquer l'annulation
+            datetime signalTime = iTime(symbol, tf, pending.detectionBar);
+            CancelPendingSignalMarker(symbol, tf, signalTime);
+            
             m_pendingManager.CancelSignal();
             return RSI_SIGNAL_NONE;
            }
@@ -337,13 +380,13 @@ public:
             if(m_divDetector != NULL)
               {
                divergenceFound = m_divDetector.DetectBullishDivergenceInFuture(
-                  symbol,                    // Symbole
-                  tf,                        // Timeframe
-                  m_rsiHandle1,              // Handle RSI
-                  barsElapsed,               // Barre du signal (ancienneté)
-                  pending.rsi1,              // RSI au moment du signal
-                  pending.detectionPrice,    // Prix au moment du signal
-                  m_divConfirmBars);         // Fenêtre de recherche max
+                  symbol,                          // Symbole
+                  tf,                              // Timeframe
+                  GetDivergenceRsiHandle(),        // Handle RSI (1, 2, ou 3 selon config)
+                  barsElapsed,                     // Barre du signal (ancienneté)
+                  GetDivergenceRsiValue(pending),  // RSI au moment du signal
+                  pending.detectionPrice,          // Prix au moment du signal
+                  m_divConfirmBars);               // Fenêtre de recherche max
                
                Logger::Debug("DetectBullishDivergenceInFuture appelé: " + 
                             (divergenceFound ? "TROUVÉE ✅" : "NON TROUVÉE ❌"));
@@ -358,9 +401,9 @@ public:
                   divergenceFound = m_divDetector.DetectBearishDivergenceInFuture(
                      symbol,
                      tf,
-                     m_rsiHandle1,
+                     GetDivergenceRsiHandle(),        // Handle RSI (1, 2, ou 3 selon config)
                      barsElapsed,
-                     pending.rsi1,
+                     GetDivergenceRsiValue(pending),  // RSI au moment du signal
                      pending.detectionPrice,
                      m_divConfirmBars);
                   
@@ -374,6 +417,11 @@ public:
            {
             m_pendingManager.ConfirmSignal();
             UpdateSignalHistory(pending.signalType, pending.rsi1, pending.rsi2, pending.rsi3);
+            
+            // Changer la couleur du marqueur (bleu/orange → vert/rouge)
+            datetime signalTime = iTime(symbol, tf, pending.detectionBar);
+            ConfirmPendingSignalMarker(symbol, tf, signalTime, pending.signalType);
+            
             return pending.signalType;
            }
 
@@ -418,6 +466,10 @@ public:
             m_pendingManager.AddPendingSignal(signal, rsi1, rsi2, rsi3, currentBar, currentPrice);
             Logger::Debug("Signal en attente @ bar[" + IntegerToString(currentBar) + 
                          "] Prix=" + DoubleToString(currentPrice, _Digits));
+            
+            // Dessiner le marqueur visuel
+            datetime barTime = iTime(symbol, tf, 0);
+            DrawPendingSignalMarker(symbol, tf, barTime, currentPrice, signal);
            }
 
          // Retourner NONE car le signal n'est pas encore confirmé
@@ -552,6 +604,69 @@ public:
      {
       m_useStrictAlignment = strict;
       Logger::Info("Alignment mode: " + (strict ? "STRICT" : "FLEXIBLE"));
+     }
+
+   //+------------------------------------------------------------------+
+   //| Marqueurs visuels pour signaux en attente                        |
+   //+------------------------------------------------------------------+
+   
+   //--- Dessiner un marqueur visuel pour signal en attente
+   void DrawPendingSignalMarker(string symbol, ENUM_TIMEFRAMES tf,
+                                datetime barTime, double price,
+                                ENUM_RSI_SIGNAL signalType)
+     {
+      string objectName = "PendingSignal_" + TimeToString(barTime, TIME_DATE|TIME_MINUTES);
+      
+      // Supprimer l'ancien objet s'il existe
+      if(ObjectFind(0, objectName) >= 0)
+         ObjectDelete(0, objectName);
+      
+      // Créer une flèche
+      int arrowCode = (signalType == RSI_SIGNAL_BUY) ? 241 : 242; // ⬆️ ou ⬇️
+      color arrowColor = (signalType == RSI_SIGNAL_BUY) ? clrDodgerBlue : clrOrange;
+      
+      ObjectCreate(0, objectName, OBJ_ARROW, 0, barTime, price);
+      ObjectSetInteger(0, objectName, OBJPROP_ARROWCODE, arrowCode);
+      ObjectSetInteger(0, objectName, OBJPROP_COLOR, arrowColor);
+      ObjectSetInteger(0, objectName, OBJPROP_WIDTH, 3);
+      ObjectSetString(0, objectName, OBJPROP_TOOLTIP,
+                      "Signal " + SignalToString(signalType) + " en attente de divergence");
+      
+      Logger::Debug("🎨 Marqueur dessiné @ " + TimeToString(barTime));
+     }
+
+   //--- Changer la couleur du marqueur quand divergence confirmée
+   void ConfirmPendingSignalMarker(string symbol, ENUM_TIMEFRAMES tf,
+                                   datetime barTime, ENUM_RSI_SIGNAL signalType)
+     {
+      string objectName = "PendingSignal_" + TimeToString(barTime, TIME_DATE|TIME_MINUTES);
+      
+      if(ObjectFind(0, objectName) >= 0)
+        {
+         // Changer en vert/rouge vif pour confirmation
+         color confirmedColor = (signalType == RSI_SIGNAL_BUY) ? clrLime : clrRed;
+         ObjectSetInteger(0, objectName, OBJPROP_COLOR, confirmedColor);
+         ObjectSetInteger(0, objectName, OBJPROP_WIDTH, 4);
+         ObjectSetString(0, objectName, OBJPROP_TOOLTIP,
+                         "Signal " + SignalToString(signalType) + " CONFIRME par divergence ✅");
+         
+         Logger::Debug("✅ Marqueur confirmé @ " + TimeToString(barTime));
+        }
+     }
+
+   //--- Annuler le marqueur si timeout
+   void CancelPendingSignalMarker(string symbol, ENUM_TIMEFRAMES tf, datetime barTime)
+     {
+      string objectName = "PendingSignal_" + TimeToString(barTime, TIME_DATE|TIME_MINUTES);
+      
+      if(ObjectFind(0, objectName) >= 0)
+        {
+         // Changer en gris pour annulation
+         ObjectSetInteger(0, objectName, OBJPROP_COLOR, clrGray);
+         ObjectSetString(0, objectName, OBJPROP_TOOLTIP, "Signal annule (timeout) ❌");
+         
+         Logger::Debug("❌ Marqueur annulé @ " + TimeToString(barTime));
+        }
      }
   };
 //+------------------------------------------------------------------+

@@ -12,6 +12,7 @@
 #include "../../Shared/DynamicTrailingStop.mqh"
 #include "../../Shared/ForexCommissionManager.mqh"
 #include "../../Shared/TrailingTP_System.mqh"
+#include "../../Shared/ATRVolatilityFilter.mqh"
 #include "TripleRSIConfig.mqh"
 #include "../Logic/RSI_Calculator.mqh"
 #include "../Logic/RSI_AlignmentDetector.mqh"
@@ -33,6 +34,7 @@ private:
    CTripleRSICalculator* m_rsiCalc;
    CRSIAlignmentDetector* m_alignDetector;
    CEntryRulesValidator* m_entryValidator;
+   CATRVolatilityFilter* m_atrVolatilityFilter;
    
    // Trailing Stop Dynamique
    bool m_useDynamicTrailing;
@@ -85,6 +87,7 @@ public:
       m_rsiCalc = NULL;
       m_alignDetector = NULL;
       m_entryValidator = NULL;
+      m_atrVolatilityFilter = NULL;
       m_dynamicTSL = NULL;
       m_commissionManager = NULL;
       
@@ -182,7 +185,8 @@ public:
          config.useDivergenceConfirm,
          config.divConfirmBars,
          config.divLookbackBars,
-         config.divMinStrength
+         config.divMinStrength,
+         config.divergenceRsiIndex
       );
       
       // Enregistrer les handles RSI pour la détection de divergence
@@ -212,6 +216,34 @@ public:
          }
       }
       
+      // Initialiser ATR Volatility Filter si activé
+      if(config.useATRVolatilityFilter)
+      {
+         m_atrVolatilityFilter = new CATRVolatilityFilter();
+         
+         if(m_atrVolatilityFilter != NULL)
+         {
+            if(m_atrVolatilityFilter.Initialize(m_symbol, m_timeframe, 
+                                                config.atrShortPeriod, config.atrLongPeriod))
+            {
+               Logger::Success("✅ ATR Volatility Filter initialized for " + m_symbol + 
+                              " (Short: " + IntegerToString(config.atrShortPeriod) + 
+                              ", Long: " + IntegerToString(config.atrLongPeriod) + 
+                              ", Multiplier: " + DoubleToString(config.atrExpansionMultiplier, 1) + ")");
+            }
+            else
+            {
+               Logger::Error("Failed to initialize ATR Volatility Filter for " + m_symbol);
+               delete m_atrVolatilityFilter;
+               m_atrVolatilityFilter = NULL;
+            }
+         }
+         else
+         {
+            Logger::Error("Failed to create ATR Volatility Filter for " + m_symbol);
+         }
+      }
+      
       Logger::Info("Configuration applied to trader for " + m_symbol);
    }
    
@@ -235,6 +267,12 @@ public:
       { 
          delete m_entryValidator; 
          m_entryValidator = NULL;
+      }
+      
+      if(m_atrVolatilityFilter != NULL)
+      {
+         delete m_atrVolatilityFilter;
+         m_atrVolatilityFilter = NULL;
       }
       
       // Nettoyer le TSL dynamique
@@ -279,7 +317,41 @@ public:
       // Nouvelle barre détectée
       m_lastBarTime = currentBarTime;
       
-      // 1. Récupérer valeurs RSI
+      // 1. Vérifier le filtre ATR de volatilité (si activé)
+if(m_atrVolatilityFilter != NULL)
+{
+   // Debug : Valeurs ATR avant vérification
+   double atrShort = m_atrVolatilityFilter.GetCurrentATR();
+   double atrLong = m_atrVolatilityFilter.GetBaselineATR();
+   double ratio = m_atrVolatilityFilter.GetVolatilityRatio();
+   
+   Logger::Debug("🔍 ATR Filter Check | Short: " + DoubleToString(atrShort, 5) + 
+                 " | Long: " + DoubleToString(atrLong, 5) + 
+                 " | Ratio: " + DoubleToString(ratio, 2) + 
+                 " | Threshold: " + DoubleToString(m_config.atrExpansionMultiplier, 2));
+   
+   if(!m_atrVolatilityFilter.IsVolatilityExpansion(m_config.atrExpansionMultiplier))
+   {
+      // Debug : Trading bloqué par le filtre ATR
+      Logger::Debug("❌ ATR Filter BLOCKED trading | Ratio " + 
+                    DoubleToString(ratio, 2) + " < " + 
+                    DoubleToString(m_config.atrExpansionMultiplier, 2) + 
+                    " | Insufficient volatility expansion");
+      return;
+   }
+   
+   // Debug : Filtre passé avec succès
+   Logger::Debug("✅ ATR Filter PASSED | Volatility expansion detected | " +
+                 "Ratio " + DoubleToString(ratio, 2) + " >= " + 
+                 DoubleToString(m_config.atrExpansionMultiplier, 2));
+}
+else
+{
+   // Debug : Filtre désactivé
+   Logger::Debug("ℹ️ ATR Filter DISABLED | Trading allowed without volatility check");
+}
+      
+      // 2. Récupérer valeurs RSI
       double rsi1, rsi2, rsi3;
       if(!m_rsiCalc.GetCurrentValues(rsi1, rsi2, rsi3))
       {
@@ -287,7 +359,7 @@ public:
          return;
       }
       
-      // 2. Détecter alignement avec validation EMA optionnelle et divergence
+      // 3. Détecter alignement avec validation EMA optionnelle et divergence
       ENUM_RSI_SIGNAL signal;
       
       if(m_config.useDivergenceConfirm)
@@ -323,7 +395,7 @@ public:
          );
         }
       
-      // 3. Si signal valide et pas de position, valider entrée
+      // 4. Si signal valide et pas de position, valider entrée
       if(signal == RSI_SIGNAL_BUY)
       {
          // Valider règles d'entrée de base uniquement
@@ -343,7 +415,7 @@ public:
          }
       }
       
-      // 4. Mettre à jour les statistiques
+      // 5. Mettre à jour les statistiques
       UpdateStatistics();
    }
    
