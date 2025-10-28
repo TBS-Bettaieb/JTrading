@@ -11,6 +11,13 @@
 #include "BotConfig.mqh"
 
 //+------------------------------------------------------------------+
+//| ⏰ IMPORTANT: ALL TIME CONFIGURATIONS USE GMT (Greenwich Mean Time) |
+//| - TradingHours: Use GMT time ranges (e.g., "05:00-19:00")        |
+//| - RiskMultiplier: Use GMT time ranges (e.g., "11:00-15:00")      |
+//| - System automatically uses TimeGMT() for all time checks         |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
 //| Base Configuration Group Class                                   |
 //+------------------------------------------------------------------+
 class CConfigGroup
@@ -130,10 +137,11 @@ protected:
       if(customTPLevels != "") m_config.customTPLevels = customTPLevels;
    }
    
-   // Setup trading hours (nouveau format unifié)
-   void SetupTradingHours(string timeRanges)
+   // Setup trading hours (GMT format: "HH:MM-HH:MM" or "HH:MM-HH:MM;HH:MM-HH:MM")
+   // ⏰ ALL TIMES ARE IN GMT
+   void SetupTradingHours(string timeRangesGMT)
    {
-      m_config.tradingTimeRanges = timeRanges;
+      m_config.tradingTimeRanges = timeRangesGMT;
       
       // Garder les anciens champs vides pour la rétro-compatibilité
       m_config.startHour = 0;
@@ -151,11 +159,12 @@ protected:
       m_config.entryOffsetPoints = entryOffsetPoints;
    }
    
-   // Setup risk multiplier (nouveau format unifié)
-   void SetupRiskMultiplier(bool useRiskMultiplier, string timeRanges, double multiplier, string description = "")
+   // Setup risk multiplier (GMT format: "HH:MM-HH:MM")
+   // ⏰ ALL TIMES ARE IN GMT
+   void SetupRiskMultiplier(bool useRiskMultiplier, string timeRangesGMT, double multiplier, string description = "")
    {
       m_config.useRiskMultiplier = useRiskMultiplier;
-      m_config.riskMultTimeRanges = timeRanges;
+      m_config.riskMultTimeRanges = timeRangesGMT;
       m_config.riskMultiplier = multiplier;
       if(description != "") m_config.riskMultDescription = description;
       
@@ -205,9 +214,11 @@ public:
       SetupBasicParams("EURUSD_FXScalper V1.0", "EURUSD_FXScalper", 2971308);
       SetupRiskParams(1.0, 200, 180);
       SetupDynamicTrailingStop(10, 10, 1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours("07:00-21:00");
+      // ⏰ GMT Times: 05:00-19:00 GMT (was 07:00-21:00 GMT+2)
+      SetupTradingHours("05:00-19:00");
       SetupStrategyParams(5, 50, 80,10,10);
-      SetupRiskMultiplier(true, "13:00-17:00", 2.0, "London-NY Overlap");
+      // ⏰ GMT Times: 11:00-15:00 GMT (was 13:00-17:00 GMT+2) - London-NY Overlap
+      SetupRiskMultiplier(true, "11:00-15:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
@@ -230,9 +241,11 @@ public:
       SetupBasicParams("GBPUSD_FXScalper V1.0", "GBPUSD_FXScalper", 2971308);
       SetupRiskParams(1.0, 200, 180);
       SetupDynamicTrailingStop(20, 15, 1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours("07:00-21:00");
+      // ⏰ GMT Times: 05:00-19:00 GMT (was 07:00-21:00 GMT+2)
+      SetupTradingHours("05:00-19:00");
       SetupStrategyParams(5, 50, 80,10,15);
-      SetupRiskMultiplier(true, "13:00-17:00", 2.0, "London-NY Overlap");
+      // ⏰ GMT Times: 11:00-15:00 GMT (was 13:00-17:00 GMT+2) - London-NY Overlap
+      SetupRiskMultiplier(true, "11:00-15:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
@@ -255,9 +268,11 @@ public:
       SetupBasicParams("GER40 Scalper V1.0", "GER40_Scalper", 28834731);
       SetupRiskParams(0.5, 7000, 5500);
       SetupDynamicTrailingStop(200, 120, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours("07:00-18:00");
+      // ⏰ GMT Times: 05:00-16:00 GMT (was 07:00-18:00 GMT+2)
+      SetupTradingHours("05:00-16:00");
       SetupStrategyParams(6, 60, 120,50,30);
-      SetupRiskMultiplier(true, "08:00-10:00", 2.0, "Euro Session");
+      // ⏰ GMT Times: 06:00-08:00 GMT (was 08:00-10:00 GMT+2) - Euro Session
+      SetupRiskMultiplier(true, "06:00-08:00", 2.0, "Euro Session");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
@@ -280,9 +295,11 @@ public:
       SetupBasicParams("USDJPY_FXScalper V1.0", "USDJPY_FXScalper", 37483647);
       SetupRiskParams(0.25, 230, 210);
       SetupDynamicTrailingStop(30, 20, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours("13:00-18:00");
+      // ⏰ GMT Times: 11:00-16:00 GMT (was 13:00-18:00 GMT+2)
+      SetupTradingHours("11:00-16:00");
       SetupStrategyParams(5, 50, 80,10,30);
-      SetupRiskMultiplier(true, "14:00-15:30", 2.0, "London-NY Overlap");
+      // ⏰ GMT Times: 12:00-13:30 GMT (was 14:00-15:30 GMT+2) - London-NY Overlap
+      SetupRiskMultiplier(true, "12:00-13:30", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
@@ -305,9 +322,11 @@ public:
       SetupBasicParams("US100 Index Scalper V1.0", "US100_Scalper", 29834757);
       SetupRiskParams(0.5, 5000, 5000);
       SetupDynamicTrailingStop(200, 150, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours("13:00-21:00");
+      // ⏰ GMT Times: 11:00-19:00 GMT (was 13:00-21:00 GMT+2)
+      SetupTradingHours("11:00-19:00");
       SetupStrategyParams(6, 60, 120,50,20);
-      SetupRiskMultiplier(false, "14:30-18:00", 2.0, "London-NY Overlap");
+      // ⏰ GMT Times: 12:30-16:00 GMT (was 14:30-18:00 GMT+2) - London-NY Overlap
+      SetupRiskMultiplier(false, "12:30-16:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
@@ -330,9 +349,11 @@ public:
       SetupBasicParams("US30 Index Scalper V1.0", "US30_Scalper", 29834758);
       SetupRiskParams(0.5, 7000, 5500);
       SetupDynamicTrailingStop(500, 550, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours("08:00-21:00");
+      // ⏰ GMT Times: 06:00-19:00 GMT (was 08:00-21:00 GMT+2)
+      SetupTradingHours("06:00-19:00");
       SetupStrategyParams(5, 50, 140,50,200);
-      SetupRiskMultiplier(true, "14:00-18:00", 2.0, "London-NY Overlap");
+      // ⏰ GMT Times: 12:00-16:00 GMT (was 14:00-18:00 GMT+2) - London-NY Overlap
+      SetupRiskMultiplier(true, "12:00-16:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
@@ -355,9 +376,11 @@ public:
       SetupBasicParams("US500 Index Scalper V1.0", "US500_Scalper", 29834759);
       SetupRiskParams(0.25, 4000, 3600);
       SetupDynamicTrailingStop(150, 90, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours("08:00-20:00");
+      // ⏰ GMT Times: 06:00-18:00 GMT (was 08:00-20:00 GMT+2)
+      SetupTradingHours("06:00-18:00");
       SetupStrategyParams(6, 60, 120,30,60);
-      SetupRiskMultiplier(true, "14:00-18:00", 2.0, "London-NY Overlap");
+      // ⏰ GMT Times: 12:00-16:00 GMT (was 14:00-18:00 GMT+2) - London-NY Overlap
+      SetupRiskMultiplier(true, "12:00-16:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
@@ -380,9 +403,11 @@ public:
       SetupBasicParams("XAUUSD Gold Scalper V1.0", "XAUUSD_Gold_Scalper", 29479999);
       SetupRiskParams(0.25, 1600,1400);
       SetupDynamicTrailingStop(80, 50, 1.1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
-      SetupTradingHours("07:00-20:00");
+      // ⏰ GMT Times: 05:00-18:00 GMT (was 07:00-20:00 GMT+2)
+      SetupTradingHours("05:00-18:00");
       SetupStrategyParams(6, 60, 90,30,40);
-      SetupRiskMultiplier(true, "13:15-18:00", 2.0, "London-NY Overlap");
+      // ⏰ GMT Times: 11:15-16:00 GMT (was 13:15-18:00 GMT+2) - London-NY Overlap
+      SetupRiskMultiplier(true, "11:15-16:00", 2.0, "London-NY Overlap");
       SetupNewsFilter(true);
       SetupBlockMessages();
       
