@@ -96,8 +96,18 @@ static bool CheckHigherTimeframeTrendAdvanced(string symbol, ENUM_TIMEFRAMES hig
 //| @param bullish true pour tendance haussière, false pour baissière |
 //| @return true si tendance détectée par MA                         |
 //+------------------------------------------------------------------+
-static bool CheckHigherTimeframeTrend(string symbol, ENUM_TIMEFRAMES higher_tf, bool bullish)
+static bool CheckHigherTimeframeTrend(string symbol, 
+                                      ENUM_TIMEFRAMES higher_tf, 
+                                      bool bullish,
+                                      int emaPeriod = 50)  // Nouveau paramètre avec défaut
 {
+
+if(emaPeriod < 1 || emaPeriod > 500)
+   {
+      Print("ERREUR: Période EMA invalide (", emaPeriod, "). Utilisation de 50 par défaut.");
+      emaPeriod = 50;
+   }
+
    // Array pour stocker les prix de clôture
    double closePrice[];
    ArraySetAsSeries(closePrice, true);
@@ -107,8 +117,8 @@ static bool CheckHigherTimeframeTrend(string symbol, ENUM_TIMEFRAMES higher_tf, 
    ArraySetAsSeries(emaValues, true);
    
    // Créer un handle pour l'EMA sur le timeframe supérieur
-   // Utilisation d'une EMA-50 pour déterminer la tendance
-   int emaHandle = iMA(symbol, higher_tf, 50, 0, MODE_EMA, PRICE_CLOSE);
+   // Utilisation de la période EMA paramétrable
+   int emaHandle = iMA(symbol, higher_tf, emaPeriod, 0, MODE_EMA, PRICE_CLOSE);
    
    // Vérifier si le handle est valide
    if(emaHandle == INVALID_HANDLE)
@@ -161,5 +171,65 @@ static bool CheckHigherTimeframeTrend(string symbol, ENUM_TIMEFRAMES higher_tf, 
       
       return (priceBelowEMA && emaFalling);
    }
+}
+
+//+------------------------------------------------------------------+
+//| Compte les croisements prix/EMA sur N dernières barres           |
+//| @param symbol Symbole à analyser                                  |
+//| @param timeframe Timeframe à analyser                            |
+//| @param emaPeriod Période de l'EMA                                |
+//| @param barsToCheck Nombre de barres à analyser (ex: 10, 20)     |
+//| @return Nombre de croisements détectés                           |
+//+------------------------------------------------------------------+
+static int CountEMACrossings(string symbol, 
+                            ENUM_TIMEFRAMES timeframe, 
+                            int emaPeriod, 
+                            int barsToCheck)
+{
+   // Validation
+   if(barsToCheck < 2 || emaPeriod < 1)
+   {
+      Print("ERREUR: Paramètres invalides pour CountEMACrossings");
+      return 0;
+   }
+   
+   // Arrays
+   double closePrice[], emaValues[];
+   ArraySetAsSeries(closePrice, true);
+   ArraySetAsSeries(emaValues, true);
+   
+   // Créer handle EMA
+   int emaHandle = iMA(symbol, timeframe, emaPeriod, 0, MODE_EMA, PRICE_CLOSE);
+   if(emaHandle == INVALID_HANDLE)
+   {
+      Print("Erreur création handle EMA pour CountEMACrossings");
+      return 0;
+   }
+   
+   // Copier données (barsToCheck + 1 pour avoir bar précédente)
+   if(CopyBuffer(emaHandle, 0, 0, barsToCheck + 1, emaValues) <= 0 ||
+      CopyClose(symbol, timeframe, 0, barsToCheck + 1, closePrice) <= 0)
+   {
+      Print("Erreur copie données pour CountEMACrossings");
+      IndicatorRelease(emaHandle);
+      return 0;
+   }
+   
+   IndicatorRelease(emaHandle);
+   
+   // Compter les croisements
+   int crossCount = 0;
+   for(int i = 0; i < barsToCheck; i++)
+   {
+      // Vérifier si croisement entre barre i et barre i+1
+      bool currentAbove = closePrice[i] > emaValues[i];
+      bool previousAbove = closePrice[i+1] > emaValues[i+1];
+      
+      // Si changement de position = croisement
+      if(currentAbove != previousAbove)
+         crossCount++;
+   }
+   
+   return crossCount;
 }
 };

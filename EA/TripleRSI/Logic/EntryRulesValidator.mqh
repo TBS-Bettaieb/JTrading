@@ -36,141 +36,29 @@ public:
       Logger::Debug("Entry Rules Validator destroyed");
    }
    
-   //--- Valider entrée BUY et calculer SL
-   bool ValidateBuyEntry(string symbol, ENUM_TIMEFRAMES tf, 
-                         int barsLookback, double &slPrice)
+   //--- Valider entrée BUY
+   bool ValidateBuyEntry(string symbol, ENUM_TIMEFRAMES tf, int barsLookback)
    {
       Logger::Debug("Validating BUY entry for " + symbol);
       
-      // 1. Vérifier les conditions de base
+      // Vérifier les conditions de base uniquement
       if(!ValidateBasicConditions(symbol))
          return false;
       
-      // 2. Trouver le plus bas des N dernières barres pour SL
-      if(!FindLowestPrice(symbol, tf, barsLookback, slPrice))
-         return false;
-      
-      // 3. Vérifier que le SL est raisonnable
-      double currentPrice = SymbolInfoDouble(symbol, SYMBOL_ASK);
-      double slDistance = currentPrice - slPrice;
-      double slPoints = slDistance / SymbolInfoDouble(symbol, SYMBOL_POINT);
-      
-      if(slPoints < 10) // SL trop proche
-      {
-         Logger::Warning("SL too close for BUY: " + DoubleToString(slPoints, 0) + " points");
-         return false;
-      }
-      
-      if(slPoints > 500) // SL trop éloigné
-      {
-         Logger::Warning("SL too far for BUY: " + DoubleToString(slPoints, 0) + " points");
-         return false;
-      }
-      
-      Logger::Debug("BUY entry validated - SL: " + DoubleToString(slPrice, 5) + 
-                    " (" + DoubleToString(slPoints, 0) + " points)");
-      
+      Logger::Debug("BUY entry validated");
       return true;
    }
    
-   //--- Valider entrée SELL et calculer SL
-   bool ValidateSellEntry(string symbol, ENUM_TIMEFRAMES tf, 
-                          int barsLookback, double &slPrice)
+   //--- Valider entrée SELL
+   bool ValidateSellEntry(string symbol, ENUM_TIMEFRAMES tf, int barsLookback)
    {
       Logger::Debug("Validating SELL entry for " + symbol);
       
-      // 1. Vérifier les conditions de base
+      // Vérifier les conditions de base uniquement
       if(!ValidateBasicConditions(symbol))
          return false;
       
-      // 2. Trouver le plus haut des N dernières barres pour SL
-      if(!FindHighestPrice(symbol, tf, barsLookback, slPrice))
-         return false;
-      
-      // 3. Vérifier que le SL est raisonnable
-      double currentPrice = SymbolInfoDouble(symbol, SYMBOL_BID);
-      double slDistance = slPrice - currentPrice;
-      double slPoints = slDistance / SymbolInfoDouble(symbol, SYMBOL_POINT);
-      
-      if(slPoints < 10) // SL trop proche
-      {
-         Logger::Warning("SL too close for SELL: " + DoubleToString(slPoints, 0) + " points");
-         return false;
-      }
-      
-      if(slPoints > 500) // SL trop éloigné
-      {
-         Logger::Warning("SL too far for SELL: " + DoubleToString(slPoints, 0) + " points");
-         return false;
-      }
-      
-      Logger::Debug("SELL entry validated - SL: " + DoubleToString(slPrice, 5) + 
-                    " (" + DoubleToString(slPoints, 0) + " points)");
-      
-      return true;
-   }
-   
-   //--- Trouver le plus bas prix pour SL BUY
-   bool FindLowestPrice(string symbol, ENUM_TIMEFRAMES tf, 
-                        int barsLookback, double &lowestPrice)
-   {
-      double low[];
-      ArraySetAsSeries(low, true);
-      
-      if(CopyLow(symbol, tf, 0, barsLookback, low) <= 0)
-      {
-         Logger::Error("Failed to copy low prices for " + symbol);
-         return false;
-      }
-      
-      int minIndex = ArrayMinimum(low);
-      if(minIndex < 0)
-      {
-         Logger::Error("Failed to find minimum low price");
-         return false;
-      }
-      
-      lowestPrice = low[minIndex];
-      
-      // Ajouter un petit buffer pour éviter les SL trop serrés
-      double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-      lowestPrice -= (point * 2); // 2 points de buffer
-      
-      Logger::Debug("Lowest price found: " + DoubleToString(lowestPrice, 5) + 
-                    " (bar " + IntegerToString(minIndex) + ")");
-      
-      return true;
-   }
-   
-   //--- Trouver le plus haut prix pour SL SELL
-   bool FindHighestPrice(string symbol, ENUM_TIMEFRAMES tf, 
-                         int barsLookback, double &highestPrice)
-   {
-      double high[];
-      ArraySetAsSeries(high, true);
-      
-      if(CopyHigh(symbol, tf, 0, barsLookback, high) <= 0)
-      {
-         Logger::Error("Failed to copy high prices for " + symbol);
-         return false;
-      }
-      
-      int maxIndex = ArrayMaximum(high);
-      if(maxIndex < 0)
-      {
-         Logger::Error("Failed to find maximum high price");
-         return false;
-      }
-      
-      highestPrice = high[maxIndex];
-      
-      // Ajouter un petit buffer pour éviter les SL trop serrés
-      double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-      highestPrice += (point * 2); // 2 points de buffer
-      
-      Logger::Debug("Highest price found: " + DoubleToString(highestPrice, 5) + 
-                    " (bar " + IntegerToString(maxIndex) + ")");
-      
+      Logger::Debug("SELL entry validated");
       return true;
    }
    
@@ -269,19 +157,6 @@ public:
       }
       
       return true;
-   }
-   
-   //--- Calculer la distance SL en points
-   double CalculateSLDistance(string symbol, double entryPrice, double slPrice, bool isBuy)
-   {
-      double distance;
-      if(isBuy)
-         distance = entryPrice - slPrice;
-      else
-         distance = slPrice - entryPrice;
-      
-      double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-      return distance / point;
    }
    
    //--- Obtenir informations de validation

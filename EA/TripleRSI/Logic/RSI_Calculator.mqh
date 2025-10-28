@@ -129,8 +129,6 @@ public:
          return false;
       }
       
-      Logger::Debug("RSI Values: " + DoubleToString(rsi1, 2) + "/" + 
-                    DoubleToString(rsi2, 2) + "/" + DoubleToString(rsi3, 2));
       
       return true;
    }
@@ -185,6 +183,14 @@ public:
       return "RSI1:" + IntegerToString(m_rsi1Handle) + 
              " RSI2:" + IntegerToString(m_rsi2Handle) + 
              " RSI3:" + IntegerToString(m_rsi3Handle);
+   }
+   
+   //--- Obtenir les handles RSI (pour divergence detection)
+   void GetHandles(int &handle1, int &handle2, int &handle3)
+   {
+      handle1 = m_rsi1Handle;
+      handle2 = m_rsi2Handle;
+      handle3 = m_rsi3Handle;
    }
    
    //--- Cleanup

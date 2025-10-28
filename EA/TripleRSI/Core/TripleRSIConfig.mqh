@@ -6,6 +6,8 @@
 #property strict
 
 #include "../../Shared/Logger.mqh"
+#include "../../Shared/TradingEnums.mqh"
+#include "../../Shared/TrailingTP_System.mqh"
 
 //+------------------------------------------------------------------+
 //| Configuration structure for Triple RSI Strategy                  |
@@ -26,6 +28,25 @@ struct TripleRSIConfig
    int               rsiPeriod3;        // RSI période lente (21)
    int               rsiOversold;       // Niveau survente (30)
    int               rsiOverbought;     // Niveau surachat (70)
+   bool              useStrictAlignment; // Mode Strict (3/3) ou Flexible (2/3)
+   bool              useEMAValidation;      // Validation avec EMA sur timeframe supérieur
+   int               emaPeriodValidation;   // Période EMA pour validation (20-200)
+   bool              useEMACrossFilter;     // Filtrer si trop de croisements EMA
+   int               emaCrossBarsCheck;     // Nombre de barres à analyser (10-50)
+   int               emaMaxCrossings;       // Nombre max de croisements tolérés (1-5)
+   
+   // Divergence Confirmation System
+   bool              useDivergenceConfirm;  // Activer confirmation par divergence
+   int               divConfirmBars;        // Barres max d'attente (7-10)
+   int               divLookbackBars;       // Barres recherche pivots (5-15)
+   double            divMinStrength;        // Force min % (optionnel)
+   int               divergenceRsiIndex;    // RSI pour divergence (1=rapide, 2=moyen, 3=lent)
+   
+   // ATR Volatility Filter
+   bool              useATRVolatilityFilter;   // Activer filtre ATR volatilité
+   int               atrShortPeriod;           // ATR court terme (14 par défaut)
+   int               atrLongPeriod;            // ATR long terme (50 par défaut)
+   double            atrExpansionMultiplier;   // Multiplicateur expansion (1.2-1.5)
    
    // Stop Loss / Take Profit
    int               slPoints;          // SL en points
@@ -35,6 +56,11 @@ struct TripleRSIConfig
    int               tslPoints;        // Distance trailing
    double            tslCostMultiplier; // Multiplicateur coûts TSL
    int               tslMinTriggerPoints; // Trigger minimum TSL
+   
+   // Trailing Take Profit System
+   bool                    useTrailingTP;         // Activer Trailing TP
+   ENUM_TRAILING_TP_MODE   trailingTPMode;        // Mode (LINEAR/STEPPED/EXPONENTIAL/CUSTOM)
+   string                  trailingTPCustomLevels; // Niveaux custom
    
    // Entry validation
    int               barsLookback;     // Barres pour calcul SL (5)
@@ -46,47 +72,10 @@ struct TripleRSIConfig
    // Logging
    ENUM_LOG_LEVEL    logLevel;
    
-   //=== CONFLUENCE CONFIGURATION ===
-   bool              enableConfluence;        // Activer le système de confluences
-   string            confluenceMode;         // Mode de confluence ("AUTO", "SCALPING", "SWING", "CONSERVATIVE", "AGGRESSIVE")
-   int               minConfluenceScore;     // Score minimum requis (ex: 3)
-   bool              useStrictMode;         // Mode strict (tous les filtres requis)
-   
-   // Volume Filters
-   bool              enableVolumeFilter;     // Activer filtre volume
-   double            minVolumeMultiplier;    // Multiplicateur volume minimum (ex: 1.2)
-   
-   // Support/Resistance Filters  
-   bool              enableEMA200Filter;     // Activer filtre EMA200
-   double            ema200Tolerance;       // Tolérance EMA200 en points (ex: 5.0)
-   
-   // MACD Filters
-   bool              enableMACDFilter;       // Activer filtre MACD
-   bool              useMACDCrossover;      // Utiliser croisement MACD
-   bool              useMACDState;          // Utiliser état MACD simple
-   
-   // Oscillator Filters
-   bool              enableStochasticFilter; // Activer filtre Stochastique
-   
-   // Price Action Filters
-   bool              enablePsychologicalLevels; // Activer niveaux psychologiques
-   
-   // Multi-timeframe
-   bool              enableMultiTimeframe; // Activer multi-timeframe
-   ENUM_TIMEFRAMES   higherTimeframe;      // Timeframe supérieur (ex: PERIOD_M15)
-   
-   //=== DYNAMIC STOP-LOSS CONFIGURATION ===
-   bool              useDynamicStopLoss;     // Activer SL dynamique
-   int               dynamicSL_SwingLookback; // Périodes pour détecter swings (20)
-   int               dynamicSL_SwingMinDistance; // Distance minimale swing points (30)
-   double            dynamicSL_SwingVolumeThreshold; // Seuil volume swing (1.2)
-   int               dynamicSL_SwingBuffer; // Buffer sécurité swing (5)
-   int               dynamicSL_ATRPeriod; // Période ATR standard (14)
-   double            dynamicSL_ATRMultiplier; // Multiplicateur ATR (1.5)
-   int               dynamicSL_ATRLongPeriod; // Période ATR longue (28)
-   double            dynamicSL_ATRLongMultiplier; // Multiplicateur ATR longue (1.2)
-   double            dynamicSL_ATRVolatilityThreshold; // Seuil volatilité (1.7)
-   double            dynamicSL_DefaultPercent; // SL par défaut en % (0.5)
+   //=== STOP-LOSS CONFIGURATION ===
+   ENUM_SL_MODE      slMode;                // Mode SL (FIXED_POINTS ou PERCENT_PRICE)
+   int               fixedSLPoints;         // SL fixe en points
+   double            percentSLPrice;        // SL en % du prix
    
    // Constructor par défaut
    TripleRSIConfig()
@@ -103,6 +92,25 @@ struct TripleRSIConfig
       rsiPeriod3 = 21;
       rsiOversold = 30;
       rsiOverbought = 70;
+      useStrictAlignment = true;
+      useEMAValidation = false;       // Désactivé par défaut
+      emaPeriodValidation = 50;       // EMA-50 par défaut
+      useEMACrossFilter = false;      // Filtre croisements désactivé par défaut
+      emaCrossBarsCheck = 20;         // Analyser 20 dernières barres
+      emaMaxCrossings = 2;            // Max 2 croisements tolérés
+      
+      // Divergence System - Valeurs par défaut
+      useDivergenceConfirm = false;   // Désactivé par défaut
+      divConfirmBars = 8;             // 8 barres max d'attente
+      divLookbackBars = 10;           // 10 barres pour pivots
+      divMinStrength = 3.0;           // 3% minimum
+      divergenceRsiIndex = 3;         // RSI lent par défaut (plus stable)
+      
+      // ATR Volatility Filter - Valeurs par défaut
+      useATRVolatilityFilter = false; // Désactivé par défaut
+      atrShortPeriod = 14;            // ATR court terme : 14 périodes
+      atrLongPeriod = 50;             // ATR long terme : 50 périodes
+      atrExpansionMultiplier = 1.3;   // Multiplicateur : 1.3x (équilibré)
       
       slPoints = 100;
       tpRatio = 2.0;
@@ -112,6 +120,11 @@ struct TripleRSIConfig
       tslCostMultiplier = 1.5;
       tslMinTriggerPoints = 50;
       
+      // Trailing Take Profit System - Valeurs par défaut
+      useTrailingTP = false;
+      trailingTPMode = TRAILING_TP_STEPPED;
+      trailingTPCustomLevels = "50:0:0,100:50:50";  // 50% → BE, 100% → SL+50%, TP+50%
+      
       barsLookback = 5;
       
       useAlerts = true;
@@ -119,39 +132,10 @@ struct TripleRSIConfig
       
       logLevel = LOG_INFO;
       
-      // Configuration des confluences par défaut
-      enableConfluence = true;
-      confluenceMode = "AUTO";
-      minConfluenceScore = 3;
-      useStrictMode = false;
-      
-      enableVolumeFilter = true;
-      minVolumeMultiplier = 1.2;
-      
-      enableEMA200Filter = true;
-      ema200Tolerance = 5.0;
-      
-      enableMACDFilter = true;
-      useMACDCrossover = false;
-      useMACDState = true;
-      
-      enableStochasticFilter = true;
-      enablePsychologicalLevels = true;
-      enableMultiTimeframe = true;
-      higherTimeframe = PERIOD_M15;
-      
-      // Configuration Dynamic Stop-Loss par défaut
-      useDynamicStopLoss = true;
-      dynamicSL_SwingLookback = 20;
-      dynamicSL_SwingMinDistance = 30;
-      dynamicSL_SwingVolumeThreshold = 1.2;
-      dynamicSL_SwingBuffer = 5;
-      dynamicSL_ATRPeriod = 14;
-      dynamicSL_ATRMultiplier = 1.5;
-      dynamicSL_ATRLongPeriod = 28;
-      dynamicSL_ATRLongMultiplier = 1.2;
-      dynamicSL_ATRVolatilityThreshold = 1.7;
-      dynamicSL_DefaultPercent = 0.5;
+      // Configuration Stop-Loss par défaut
+      slMode = SL_FIXED_POINTS;
+      fixedSLPoints = 50;
+      percentSLPrice = 0.5;
    }
    
    // Validation de la configuration
@@ -178,6 +162,37 @@ struct TripleRSIConfig
          return false;
       }
       
+      if(divergenceRsiIndex < 1 || divergenceRsiIndex > 3)
+      {
+         Logger::Error("Divergence RSI index must be 1, 2, or 3 (current: " + 
+                      IntegerToString(divergenceRsiIndex) + ")");
+         return false;
+      }
+      
+      // Validation ATR Volatility Filter
+      if(useATRVolatilityFilter)
+      {
+         if(atrShortPeriod <= 0 || atrLongPeriod <= 0)
+         {
+            Logger::Error("ATR periods must be positive");
+            return false;
+         }
+         
+         if(atrShortPeriod >= atrLongPeriod)
+         {
+            Logger::Error("ATR short period must be < ATR long period (current: " + 
+                         IntegerToString(atrShortPeriod) + " vs " + IntegerToString(atrLongPeriod) + ")");
+            return false;
+         }
+         
+         if(atrExpansionMultiplier < 1.0 || atrExpansionMultiplier > 3.0)
+         {
+            Logger::Error("ATR expansion multiplier must be between 1.0 and 3.0 (current: " + 
+                         DoubleToString(atrExpansionMultiplier, 2) + ")");
+            return false;
+         }
+      }
+      
       if(rsiOversold >= rsiOverbought)
       {
          Logger::Error("Oversold level must be less than overbought level");
@@ -194,6 +209,17 @@ struct TripleRSIConfig
       {
          Logger::Error("Risk percent must be between 0 and 10");
          return false;
+      }
+      
+      // Validation Trailing TP
+      if(useTrailingTP && trailingTPMode == TRAILING_TP_CUSTOM)
+      {
+         string errorMsg;
+         if(!CTrailingTPValidator::ValidateCustomLevelsString(trailingTPCustomLevels, errorMsg))
+         {
+            Logger::Error("Trailing TP Custom Levels validation failed: " + errorMsg);
+            return false;
+         }
       }
       
       return true;
@@ -221,21 +247,20 @@ struct TripleRSIConfig
          Logger::Info("TSL Min Trigger: " + IntegerToString(tslMinTriggerPoints) + " pts");
       }
       
-      // Affichage configuration confluences
-      Logger::Info("Confluence System: " + (enableConfluence ? "ENABLED" : "DISABLED"));
-      if(enableConfluence)
+      // Affichage Trailing TP
+      if(useTrailingTP)
       {
-         Logger::Info("Confluence Mode: " + confluenceMode);
-         Logger::Info("Min Score: " + IntegerToString(minConfluenceScore));
-         Logger::Info("Strict Mode: " + (useStrictMode ? "ON" : "OFF"));
-         Logger::Info("Active Filters:");
-         Logger::Info("  Volume: " + (enableVolumeFilter ? "ON" : "OFF"));
-         Logger::Info("  EMA200: " + (enableEMA200Filter ? "ON" : "OFF"));
-         Logger::Info("  MACD: " + (enableMACDFilter ? "ON" : "OFF"));
-         Logger::Info("  Stochastic: " + (enableStochasticFilter ? "ON" : "OFF"));
-         Logger::Info("  Psychological: " + (enablePsychologicalLevels ? "ON" : "OFF"));
-         Logger::Info("  Multi-timeframe: " + (enableMultiTimeframe ? "ON" : "OFF"));
+         Logger::Info("Trailing TP: ENABLED (" + EnumToString(trailingTPMode) + ")");
+         if(trailingTPMode == TRAILING_TP_CUSTOM)
+         {
+            Logger::Info("Custom Levels: " + trailingTPCustomLevels);
+         }
       }
+      else
+      {
+         Logger::Info("Trailing TP: DISABLED");
+      }
+      
       Logger::Info("================================");
    }
 };

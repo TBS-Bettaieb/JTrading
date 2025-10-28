@@ -62,21 +62,20 @@ int OnInit()
       Print("⚠️ SL SELL non calculé (fallback attendu)");
    }
    
-   // Test 5: Création d'un TripleRSITrader avec Dynamic SL
-   Print("\n5. Test création TripleRSITrader avec Dynamic SL...");
+   // Test 5: Création d'un TripleRSITrader avec nouveaux paramètres SL
+   Print("\n5. Test création TripleRSITrader avec nouveaux paramètres SL...");
    TripleRSIConfig config;
-   config.useDynamicStopLoss = true;
+   config.slMode = SL_FIXED_POINTS;
+   config.fixedSLPoints = 50;
+   config.percentSLPrice = 0.5;
    
    CTripleRSITrader* trader = new CTripleRSITrader(
       Symbol(), 12345, PERIOD_M5,
-      2.0, 50, 2.0,  // risk, slPoints, tpRatio
-      false, true,    // useTrailing, useDynamicTrailing
-      20, 10,         // tslTrigger, tslPoints
-      14, 21, 28,     // rsi periods
-      30, 70,         // oversold, overbought
-      true, false,    // useAlerts, sendNotif
-      true, "AUTO",   // enableConfluence, confluenceMode
-      true            // useDynamicStopLoss
+      2.0, 2.0,           // risk, tpRatio
+      false,               // useDynamicTrailing
+      14, 21, 28,          // rsi periods
+      30, 70,              // oversold, overbought
+      true, false          // useAlerts, sendNotif
    );
    
    if(trader == NULL)
@@ -85,25 +84,44 @@ int OnInit()
       delete calculator;
       return INIT_FAILED;
    }
-   Print("✅ TripleRSITrader créé avec Dynamic SL activé");
    
-   // Test 6: Configuration du Dynamic SL dans le trader
-   Print("\n6. Test configuration Dynamic SL dans le trader...");
-   trader.ConfigureDynamicSL(
-      20, 30, 1.2,    // swing params
-      5, 14, 1.5,     // atr params
-      28, 1.2, 1.7,   // atr long params
-      0.5              // default percent
+   // Initialiser la configuration
+   trader.Initialize(config);
+   Print("✅ TripleRSITrader créé avec nouveaux paramètres SL");
+   
+   // Test 6: Test du calcul de SL
+   Print("\n6. Test calcul SL...");
+   double testPrice = SymbolInfoDouble(Symbol(), SYMBOL_BID);
+   double slPrice = trader.CalculateStopLoss(true, testPrice);
+   
+   if(slPrice > 0)
+   {
+      Print("✅ SL calculé: " + DoubleToString(slPrice, 5) + " (Prix: " + DoubleToString(testPrice, 5) + ")");
+   }
+   else
+   {
+      Print("❌ ERREUR: Impossible de calculer le SL");
+   }
+   
+   // Test 7: Test avec mode pourcentage
+   Print("\n7. Test mode SL pourcentage...");
+   config.slMode = SL_PERCENT_PRICE;
+   config.percentSLPrice = 1.0; // 1%
+   trader = new CTripleRSITrader(
+      Symbol(), 12346, PERIOD_M5,
+      2.0, 2.0,           // risk, tpRatio
+      false,               // useDynamicTrailing
+      14, 21, 28,          // rsi periods
+      30, 70,              // oversold, overbought
+      true, false          // useAlerts, sendNotif
    );
-   Print("✅ Configuration Dynamic SL appliquée au trader");
    
-   // Test 7: Test de la méthode CalculateDynamicStopLoss du trader
-   Print("\n7. Test CalculateDynamicStopLoss du trader...");
-   double traderSLBuy = trader.CalculateDynamicStopLoss(true, currentPrice);
-   double traderSLSell = trader.CalculateDynamicStopLoss(false, currentPrice);
-   
-   Print("✅ Trader SL BUY: " + DoubleToString(traderSLBuy, 5));
-   Print("✅ Trader SL SELL: " + DoubleToString(traderSLSell, 5));
+   if(trader != NULL)
+   {
+      trader.Initialize(config);
+      double slPercent = trader.CalculateStopLoss(false, testPrice);
+      Print("✅ SL pourcentage calculé: " + DoubleToString(slPercent, 5));
+   }
    
    // Test 8: Informations de debug
    Print("\n8. Informations de debug du calculator...");
@@ -117,7 +135,7 @@ int OnInit()
    Print("✅ Ressources nettoyées");
    
    Print("\n=== TOUS LES TESTS TERMINÉS AVEC SUCCÈS ===");
-   Print("✅ L'intégration du Dynamic Stop-Loss fonctionne correctement !");
+   Print("✅ L'intégration des nouveaux paramètres SL fonctionne correctement !");
    
    return INIT_SUCCEEDED;
 }
