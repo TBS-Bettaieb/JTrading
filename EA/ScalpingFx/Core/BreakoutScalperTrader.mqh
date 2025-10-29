@@ -242,7 +242,7 @@ public:
    {
       // Mettre à jour les compteurs
       m_statusManager.UpdateCounters();
-      
+      m_orderManager.CheckFvgDisqualifier();
       // Vérifier si c'est une nouvelle barre
       if(!m_statusManager.IsNewBar()) return;
       

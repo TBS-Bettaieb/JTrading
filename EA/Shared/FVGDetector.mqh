@@ -24,14 +24,14 @@
       #define LOG_ERROR(msg)   Print("[ERROR] [FVGDetector - ", m_symbol, "] ", msg)
       #define LOG_WARNING(msg) Print("[WARN] [FVGDetector - ", m_symbol, "] ", msg)
       #define LOG_INFO(msg)    Print("[INFO] [FVGDetector - ", m_symbol, "] ", msg)
-      #define LOG_DEBUG(msg)   // Pas de debug sans logger
+      #define LOG_DEBUG(msg)   do { } while(false) // safe no-op to avoid empty statement warnings
    #endif
 #else
    // Définir les macros pour MQL4
    #define LOG_ERROR(msg)   Print("[ERROR] [FVGDetector - ", m_symbol, "] ", msg)
    #define LOG_WARNING(msg) Print("[WARN] [FVGDetector - ", m_symbol, "] ", msg)
-      #define LOG_INFO(msg)    Print("[INFO] [FVGDetector - ", m_symbol, "] ", msg)
-   #define LOG_DEBUG(msg)   // Pas de debug sans logger
+   #define LOG_INFO(msg)    Print("[INFO] [FVGDetector - ", m_symbol, "] ", msg)
+   #define LOG_DEBUG(msg)   do { } while(false) // safe no-op to avoid empty statement warnings
 #endif
 
 //+------------------------------------------------------------------+
@@ -264,18 +264,18 @@ private:
    bool CheckInvalidation(const FVGInfo &fvg, ENUM_TIMEFRAMES tf)
    {
       double top = fvg.top;
-      double bot = fvg.bottom;
+      double bottomVal = fvg.bottom;
       
       // Normalisation bornes si inversées
-      if(top < bot)
+      if(top < bottomVal)
       {
          double tmp = top;
-         top = bot;
-         bot = tmp;
+         top = bottomVal;
+         bottomVal = tmp;
       }
       
       // Hauteur strictement positive
-      const double height = top - bot;
+      const double height = top - bottomVal;
       if(height <= 0.0)
          return false;
       
@@ -301,14 +301,14 @@ private:
             if(fvg.isBullish)
                invalidate = (barLow <= (top - threshold));
             else
-               invalidate = (barHigh >= (bot + threshold));
+               invalidate = (barHigh >= (bottomVal + threshold));
          }
          else // CLOSE_BODY
          {
             if(fvg.isBullish)
                invalidate = (barClose <= (top - threshold));
             else
-               invalidate = (barClose >= (bot + threshold));
+               invalidate = (barClose >= (bottomVal + threshold));
          }
          
          if(invalidate)
@@ -613,8 +613,12 @@ public:
             ArrayResize(result, k + 1);
             result[k] = m_fvgList[i];
          }
-      }
-   }
+  
+  // Undefine local logging macros to avoid leaking into includers
+  #undef LOG_ERROR
+  #undef LOG_WARNING
+     }
+  }
    
    //+------------------------------------------------------------------+
    //| Réinitialise complètement la liste                               |
@@ -675,6 +679,11 @@ public:
    //+------------------------------------------------------------------+
    string GetSymbol() const { return m_symbol; }
 };
+// Undefine local logging macros to avoid leaking into includers
+#undef LOG_ERROR
+#undef LOG_WARNING
+#undef LOG_INFO
+#undef LOG_DEBUG
 
 #endif // FVGDETECTOR_MQH
 //+------------------------------------------------------------------+
