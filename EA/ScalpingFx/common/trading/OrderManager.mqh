@@ -7,7 +7,6 @@
 
 #include <Trade\Trade.mqh>
 #include "../../../Shared/TradingEnums.mqh"
-#include "FVGTradeFilter.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe OrderManager - Gestion des ordres pour un symbole   |
@@ -34,8 +33,6 @@ private:
    double            m_riskPercent;         // Risque par symbole
    double            m_currentRiskMultiplier; // Multiplicateur de risque actuel
 
-   // Filters
-   FVGTradeFilter    m_fvgFilter;           // Filtre FVG encapsulé
 
    // Objet de trading
    CTrade            m_trade;               // Objet de trading
@@ -55,8 +52,7 @@ public:
                 int slippagePoints,
                 string tradeComment,
                 double riskPercent = 0.0,
-                double riskMultiplier = 1.0,
-                bool useFvgFilter = false)
+                double riskMultiplier = 1.0)
      {
       m_symbol = symbol;
       m_magicNumber = magicNumber;
@@ -69,8 +65,7 @@ public:
       m_slippagePoints = slippagePoints;
       m_tradeComment = tradeComment;
       m_riskPercent = riskPercent;
-      m_currentRiskMultiplier = riskMultiplier;
-      // FVG filter is managed by FVGTradeFilter
+     m_currentRiskMultiplier = riskMultiplier;
 
       // Initialiser les variables
       m_point = SymbolInfoDouble(symbol, SYMBOL_POINT);
@@ -81,11 +76,7 @@ public:
       m_trade.SetTypeFilling(ORDER_FILLING_FOK);
       m_trade.SetAsyncMode(false);
 
-      // Initialiser le filtre FVG
-      m_fvgFilter.Init(m_symbol, m_timeframe, useFvgFilter);
-
-      Print("✓ OrderManager initialized for ", symbol, " | Magic: ", magicNumber,
-            " | FVG Filter: ", (m_fvgFilter.GetEnabled() ? "ON" : "OFF"));
+      Print("✓ OrderManager initialized for ", symbol, " | Magic: ", magicNumber);
      }
 
    //+------------------------------------------------------------------+
@@ -93,139 +84,58 @@ public:
    //+------------------------------------------------------------------+
                     ~OrderManager()
      {
-      // Cleanup handled by FVGTradeFilter destructor
-
       Print("✓ OrderManager destroyed for ", m_symbol);
      }
 
-   //+------------------------------------------------------------------+
-   //| Vérifier le filtre FVG (à implémenter)                          |
-   //+------------------------------------------------------------------+
-   bool              CheckFvgDisqualifier()
+     
+
+   // Annuler un ordre à partir de son ticket (id)
+   bool CancelOrderById(ulong ticket)
      {
-      ulong tickets[];
-      ArrayResize(tickets, 0);
-      int count = 0;
-      for(int i = OrdersTotal() - 1; i >= 0; i--)
+      if(OrderSelect(ticket))
         {
-         ulong ticket = OrderGetTicket(i);
-         if(!OrderSelect(ticket))
-            continue;
-         if(OrderGetInteger(ORDER_MAGIC) != m_magicNumber)
-            continue;
-         if(OrderGetString(ORDER_SYMBOL) != m_symbol)
-            continue;
-         ArrayResize(tickets, count + 1);
-         tickets[count++] = ticket;
-        }
-      if(count == 0)
-        {
-         return true;
-        }
-
-      // Obtenir le prix actuel du symbole (utilise le prix de BID par défaut)
-      double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
-
-      // Ici on veut récupérer le ticket avec le prix le plus proche à currentPrice, et son stop loss
-      ulong closestTicket = 0;
-      double closestDiff = DBL_MAX;
-      double closestOrderPrice = 0.0;
-      long closestOrderType = -1;
-      double closestOrderSL = 0.0;
-      for(int i = 0; i < count; i++)
-        {
-         ulong ticket = tickets[i];
-         if(!OrderSelect(ticket))
-            continue;
-         double orderPrice = OrderGetDouble(ORDER_PRICE_OPEN);
-         long orderType = OrderGetInteger(ORDER_TYPE);
-         double orderSL = OrderGetDouble(ORDER_SL);     // Ajout récupération SL
-         double diff = MathAbs(currentPrice - orderPrice);
-         if(diff < closestDiff)
+         if(OrderGetInteger(ORDER_MAGIC) == m_magicNumber && OrderGetString(ORDER_SYMBOL) == m_symbol)
            {
-            closestDiff = diff;
-            closestTicket = ticket;
-            closestOrderPrice = orderPrice;    // aussi le prix d'entree de l'ordre plus proche
-            closestOrderType = orderType;      // aussi le type de l'ordre
-            closestOrderSL = orderSL;          // Ajout du stop loss du ticket le plus proche
-           }
-        }
-
-      // Calcul de la distance entre currentPrice et closestOrderPrice
-      double distanceToClosest = MathAbs(currentPrice - closestOrderPrice);
-      // Ajouter une clause if si la différence de prix est inférieure à 0.02%
-      // 0.02% de currentPrice
-      double priceTolerance = currentPrice * 0.0001;
-      if(distanceToClosest < priceTolerance)
-        {
-         Logger::Debug("La différence de prix avec l'ordre le plus proche est < 0.02% (" + DoubleToString(distanceToClosest, 5) + " < " + DoubleToString(priceTolerance, 5) + ")");
-         // Ici, on peut ajouter un traitement si besoin, ou simplement retourner/finaliser
-        }
-
-
-
-
-
-        
-      // Grouper les types d'ordres par ceux pouvant être exécutés par SendBuyOrder ou SendSellOrder
-      // Ordres qui peuvent être exécutés par SendBuyOrder
-      if(
-         closestOrderType == ORDER_TYPE_BUY      // Market Buy
-         || closestOrderType == ORDER_TYPE_BUY_LIMIT
-         || closestOrderType == ORDER_TYPE_BUY_STOP
-         || closestOrderType == ORDER_TYPE_BUY_STOP_LIMIT
-      )
-        {
-         if(m_fvgFilter.IsTradeAllowedByFVG(closestOrderPrice, closestOrderSL, true))
-           {
-
-           }
-        }
-      // Ordres qui peuvent être exécutés par SendSellOrder
-      else
-         if(
-            closestOrderType == ORDER_TYPE_SELL     // Market Sell
-            || closestOrderType == ORDER_TYPE_SELL_LIMIT
-            || closestOrderType == ORDER_TYPE_SELL_STOP
-            || closestOrderType == ORDER_TYPE_SELL_STOP_LIMIT
-         )
-           {
-            if(m_fvgFilter.IsTradeAllowedByFVG(closestOrderPrice, closestOrderSL, false))
+            if(m_trade.OrderDelete(ticket))
               {
-
+               Print("✓ Ordre #", ticket, " annulé pour ", m_symbol);
+               return true;
+              }
+            else
+              {
+               Print("✗ Échec de l'annulation de l'ordre #", ticket, " | Erreur: ", GetLastError());
+               return false;
               }
            }
-
-
-      return false;
+         else
+           {
+            Print("✗ Ticket #", ticket, " ne correspond pas au symbole ou au magic number.");
+            return false;
+           }
+        }
+      else
+        {
+         Print("✗ Impossible de sélectionner l'ordre #", ticket, " pour annulation.");
+         return false;
+        }
      }
 
 
-
-
-
-
+     
    //+------------------------------------------------------------------+
    //| Envoyer un ordre Buy (Stop ou Limit selon la stratégie)         |
    //+------------------------------------------------------------------+
    bool              SendBuyOrder(double entry)
      {
       double ask = SymbolInfoDouble(m_symbol, SYMBOL_ASK);
-
-      double tp = entry + m_tpPoints * m_point;
-      double sl = entry - m_slPoints * m_point;
-
-      double lots = 0.01;
-      if(m_riskPercent > 0)
-         lots = CalcLots(entry - sl);
-
-      datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
-
       // Mode BREAKOUT : utiliser BuyStop (attendre que le prix casse le niveau)
       double adjustedEntry = entry - (m_entryOffsetPoints * m_point);
-      double adjustedTP = adjustedEntry + m_tpPoints * m_point;
-      double adjustedSL = adjustedEntry - m_slPoints * m_point;
+      double adjustedTP, adjustedSL;
+      ComputeTpSlWithOffset(true, entry, m_entryOffsetPoints, adjustedTP, adjustedSL);
+      datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
 
+      double lots = 0.01; 
+ 
       // Recalculate lots with adjusted SL for proper risk calculation
       if(m_riskPercent > 0)
          lots = CalcLots(adjustedEntry - adjustedSL);
@@ -252,25 +162,16 @@ public:
    bool              SendSellOrder(double entry)
      {
       double bid = SymbolInfoDouble(m_symbol, SYMBOL_BID);
-
-      double tp = entry - m_tpPoints * m_point;
-      double sl = entry + m_slPoints * m_point;
-
-      double lots = 0.01;
-      if(m_riskPercent > 0)
-         lots = CalcLots(sl - entry);
-
-      datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
-
-      // Mode BREAKOUT : utiliser SellStop (attendre que le prix casse le niveau)
+ 
       double adjustedEntry = entry + (m_entryOffsetPoints * m_point);
-      double adjustedTP = adjustedEntry - m_tpPoints * m_point;
-      double adjustedSL = adjustedEntry + m_slPoints * m_point;
+      double adjustedTP, adjustedSL;
+      ComputeTpSlWithOffset(false, entry, m_entryOffsetPoints, adjustedTP, adjustedSL);
+      datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
+      
 
-      // Recalculate lots with adjusted SL for proper risk calculation
-      if(m_riskPercent > 0)
-         lots = CalcLots(adjustedSL - adjustedEntry);
-
+         double lots = 0.01;
+      if(m_riskPercent > 0) lots = CalcLots(adjustedEntry - adjustedSL);
+      
       if(bid < adjustedEntry + m_orderDistPoints * m_point)
          return false;
 
@@ -286,6 +187,66 @@ public:
          return false;
         }
      }
+
+  //+------------------------------------------------------------------+
+  //| Envoyer un ordre Limit (délègue aux variantes BUY/SELL)         |
+  //+------------------------------------------------------------------+
+  bool              SendLimitOrder(bool isBuy, double entry)
+    {
+     return isBuy ? SendBuyLimitOrder(entry) : SendeSellLimitOrder(entry);
+    }
+
+  //+------------------------------------------------------------------+
+  //| Envoyer un ordre Buy Limit                                       |
+  //+------------------------------------------------------------------+
+  bool              SendBuyLimitOrder(double entry)
+    {
+     double tp, sl;
+     ComputeTpSlWithOffset(true, entry, m_entryOffsetPoints, tp, sl);
+
+     datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
+
+     double lots = 0.01;
+     if(m_riskPercent > 0)
+        lots = CalcLots(entry - sl);
+
+     if(m_trade.BuyLimit(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
+       {
+        Print("✓ Buy Limit order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
+        return true;
+       }
+     else
+       {
+        Print("✗ Failed to send Buy Limit order for ", m_symbol, " | Error: ", GetLastError());
+        return false;
+       }
+    }
+
+  //+------------------------------------------------------------------+
+  //| Envoyer un ordre Sell Limit                                      |
+  //+------------------------------------------------------------------+
+  bool              SendeSellLimitOrder(double entry)
+    {
+     double tp, sl;
+     ComputeTpSlWithOffset(false, entry, m_entryOffsetPoints, tp, sl);
+
+     datetime expiration = iTime(m_symbol, m_timeframe, 0) + m_expirationBars * PeriodSeconds(m_timeframe);
+
+     double lots = 0.01;
+     if(m_riskPercent > 0)
+        lots = CalcLots(sl - entry);
+
+     if(m_trade.SellLimit(lots, entry, m_symbol, sl, tp, ORDER_TIME_SPECIFIED, expiration, m_tradeComment))
+       {
+        Print("✓ Sell Limit order sent for ", m_symbol, " at ", entry, " | Lots: ", lots);
+        return true;
+       }
+     else
+       {
+        Print("✗ Failed to send Sell Limit order for ", m_symbol, " | Error: ", GetLastError());
+        return false;
+       }
+    }
 
    //+------------------------------------------------------------------+
    //| Annuler tous les ordres pending sans fermer les positions      |
@@ -457,33 +418,76 @@ public:
       return m_currentRiskMultiplier;
      }
 
-   //+------------------------------------------------------------------+
-   //| Obtenir l'état du filtre FVG                                     |
-   //+------------------------------------------------------------------+
-   bool              GetUseFvgFilter()
-     {
-      return m_fvgFilter.GetEnabled();
-     }
-
-   //+------------------------------------------------------------------+
-   //| Définir l'état du filtre FVG                                     |
-   //+------------------------------------------------------------------+
-   void              SetUseFvgFilter(bool enabled)
-     {
-      m_fvgFilter.SetEnabled(enabled);
-     }
-
-   //+------------------------------------------------------------------+
-   //| Définir le rayon de recherche FVG (en points)                   |
-   //+------------------------------------------------------------------+
-   void              SetFvgCheckRadius(double radiusPoints)
-     {
-      m_fvgFilter.SetRadius(radiusPoints);  // Minimum 50 points handled inside
-     }
 
 
+  //+------------------------------------------------------------------+
+  //| Retourner un ticket violant priceTolerance (+ sens isBuy)        |
+  //+------------------------------------------------------------------+
+  // Modifié pour retourner également le StopLoss de l'ordre (slOrder)
+  bool FindTicketViolatingPriceTolerance(const double priceTolerance, ulong &ticket, bool &isBuy, double &orderPrice, double &slOrder)
+    {
+     ticket = 0;
+     isBuy = false;
+     slOrder = 0.0;
+     orderPrice=0.0;
+     bool shouldCheckFVG = false;
+     double currentPrice = SymbolInfoDouble(m_symbol, SYMBOL_BID);
+     for(int i = OrdersTotal() - 1; i >= 0; i--)
+       {
+        ulong t = OrderGetTicket(i);
+        if(!OrderSelect(t)) continue;
+        if(OrderGetInteger(ORDER_MAGIC) != m_magicNumber) continue;
+        if(OrderGetString(ORDER_SYMBOL) != m_symbol) continue;
+        orderPrice = OrderGetDouble(ORDER_PRICE_OPEN);
+        slOrder = OrderGetDouble(ORDER_SL);
+        long orderType = OrderGetInteger(ORDER_TYPE);
+        double distanceToPrice = MathAbs(currentPrice - orderPrice);
 
+        if(distanceToPrice >= priceTolerance)
+          {
+           ticket = t;
+                 if(orderType == ORDER_TYPE_BUY_STOP)
+                {
+                 isBuy = true;
+                 shouldCheckFVG = true;
+                }
+               else if(orderType == ORDER_TYPE_SELL_STOP)
+                {
+                 isBuy = false;
+                 shouldCheckFVG = true;
+                }
+                if(shouldCheckFVG)
+                 return true;
+          }
+       }
+     return shouldCheckFVG;
+    }
+ 
 private:
+
+  //+------------------------------------------------------------------+
+  //| Calculer TP/SL à partir d'une entrée et du sens                  |
+  //+------------------------------------------------------------------+
+  void              ComputeTpSl(bool isBuy, double entry, double &tp, double &sl)
+    {
+     if(isBuy)
+       {
+        tp = entry + m_tpPoints * m_point;
+        sl = entry - m_slPoints * m_point;
+       }
+     else
+       {
+        tp = entry - m_tpPoints * m_point;
+        sl = entry + m_slPoints * m_point;
+       }
+    }
+
+  // Option: version avec offset intégré (pour TP/SL ajustés)
+  void              ComputeTpSlWithOffset(bool isBuy, double rawEntry, int offsetPoints, double &tp, double &sl)
+    {
+     double adjustedEntry = rawEntry + (isBuy ? -offsetPoints : +offsetPoints) * m_point;
+     ComputeTpSl(isBuy, adjustedEntry, tp, sl);
+    }
 
    //+------------------------------------------------------------------+
    //| Calculer la taille du lot basée sur le risque                   |

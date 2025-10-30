@@ -9,6 +9,7 @@
 #include <Trade\PositionInfo.mqh>
 #include <Trade\OrderInfo.mqh>
 #include "../../../EA/Shared/TradingEnums.mqh"
+#include "../../../EA/Shared/Logger.mqh"
 #include "../../../EA/Shared/ForexCommissionManager.mqh"
 #include "../common/analysis/SwingAnalyzer.mqh"
 #include "../common/trading/TrendlineManager.mqh"
@@ -17,6 +18,7 @@
 #include "../common/trading/TrailingManager.mqh"
 #include "../common/status/SymbolDisplay.mqh"
 #include "../common/analysis/SignalDetectionManager.mqh"
+#include "../common/trading/FVGTradeFilter.mqh"
 
 //+------------------------------------------------------------------+
 //| Classe BreakoutScalperTrader - Gestion d'un symbole spécifique       |
@@ -75,6 +77,9 @@ private:
    
    // 🆕 Signal Detection Manager
    SignalDetectionManager* m_signalManager;
+   
+   // 🆕 FVG Filter (initialized in constructor)
+   FVGTradeFilter m_fvgFilter;
    
 public:
    //+------------------------------------------------------------------+
@@ -139,7 +144,7 @@ public:
          symbol, magicNumber, timeframe,
          tpPoints, slPoints, expirationBars, orderDistPoints,
          entryOffsetPoints, slippagePoints, m_tradeComment,
-         riskPercent, m_currentRiskMultiplier, m_useFvgFilter
+         riskPercent, m_currentRiskMultiplier
       );
       
       // 🆕 Initialiser le Trailing Manager (TP + TSL)
@@ -181,6 +186,9 @@ public:
          &m_swingAnalyzer,
          m_statusManager
       );
+      
+      // Initialiser le filtre FVG au niveau du trader
+      m_fvgFilter.Init(m_symbol, m_timeframe, m_useFvgFilter);
       
       Print("✓ BreakoutScalperTrader initialized for ", symbol, " | Magic: ", magicNumber);
    }
@@ -242,7 +250,7 @@ public:
    {
       // Mettre à jour les compteurs
       m_statusManager.UpdateCounters();
-      m_orderManager.CheckFvgDisqualifier();
+      CheckFvgDisqualifier();
       // Vérifier si c'est une nouvelle barre
       if(!m_statusManager.IsNewBar()) return;
       
@@ -306,6 +314,46 @@ public:
          }
       }
    }
+   
+   //+------------------------------------------------------------------+
+   //| Vérifier et annuler les ordres disqualifiés par le filtre FVG    |
+   //+------------------------------------------------------------------+
+   bool CheckFvgDisqualifier()
+   {
+      if(!m_fvgFilter.GetEnabled())
+         return false;
+
+
+      // Utiliser OrderManager::FindTicketViolatingPriceTolerance pour trouver un ordre dépassant le priceTolerance
+      ulong violatingTicket = 0;
+      bool isBuy = false;
+      double priceTolerance = SymbolInfoDouble(m_symbol, SYMBOL_BID) * 0.0001; // 0.01% tolerance
+      double orderPrice = 0.0;
+      double orderSL = 0.0;
+      if(m_orderManager != NULL && m_orderManager.FindTicketViolatingPriceTolerance(priceTolerance, violatingTicket, isBuy, orderPrice, orderSL))
+      {
+         
+            bool isAllowed = m_fvgFilter.IsTradeAllowedByFVG(orderPrice, orderSL, isBuy);
+
+            if(!isAllowed)
+            {
+               if(m_orderManager.CancelOrderById(violatingTicket))
+               {
+               }
+               else
+               {
+                  Logger::Error(StringFormat("❌ Erreur suppression ordre #%I64u | Erreur: %d", violatingTicket, GetLastError()));
+               }
+
+               m_orderManager.SendLimitOrder(!isBuy, orderPrice);
+            }
+            
+         
+      }
+			return false;
+   }
+ 
+ 
    
    //+------------------------------------------------------------------+
    //| Annuler tous les ordres pending sans fermer les positions      |

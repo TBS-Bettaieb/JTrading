@@ -192,7 +192,7 @@ protected:
    // Setup FVG filter parameter
    void SetupFvgFilter(bool useFvgFilter)
    {
-      m_config.useFvgFilter = useFvgFilter;
+      m_config.useFvgFilter = true;
    }
    
    // Setup block messages (used by all groups identically)
