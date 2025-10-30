@@ -221,7 +221,7 @@ public:
       SetupRiskParams(1.0, 200, 180);
       SetupDynamicTrailingStop(10, 10, 1, true, TRAILING_TP_CUSTOM, "25:0:0, 50:25:25, 75:40:50, 100:60:100, 125:75:150");
       // ⏰ GMT Times: 05:00-19:00 GMT (was 07:00-21:00 GMT+2)
-      SetupTradingHours("05:00-19:00");
+      SetupTradingHours("06:00-20:00");
       SetupStrategyParams(5, 50, 80,10,10);
       // ⏰ GMT Times: 11:00-15:00 GMT (was 13:00-17:00 GMT+2) - London-NY Overlap
       SetupRiskMultiplier(true, "11:00-15:00", 2.0, "London-NY Overlap");

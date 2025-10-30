@@ -106,6 +106,28 @@ private:
    double            m_point;               // Point du symbole
    bool              m_initialized;        // État d'initialisation
    
+   // Cache par timeframe pour éviter les CopyRates inutiles
+   datetime         m_lastBarTime[];       // Dernière barre vue par timeframe
+   int              m_lastBarsCount[];     // Compteur de barres (optionnel)
+
+   // HashSet O(1) pour l'existence des FVG (open addressing linear probing)
+   ulong            m_fvgHashKeys[];       // Clés de hash
+   uchar            m_fvgHashState[];      // 0=empty, 1=occupied, 2=deleted
+   int              m_fvgHashSize;         // Nombre d'éléments
+   int              m_fvgHashCap;          // Capacité du hashset
+   
+   // Métriques de performance basiques
+   ulong            m_processTimeMs;       // Temps cumulé ProcessTimeframe
+   ulong            m_invalidateTimeMs;    // Temps cumulé UpdateInvalidation
+   int              m_cacheHits;           // Hits cache (ProcessTimeframe ignoré)
+   int              m_cacheMisses;         // Miss cache (traitement effectué)
+   int              m_memoryAllocs;        // Compteur grossier d'allocations
+
+   // Cache des FVG valides préfiltrés (tous timeframes)
+   FVGInfo          m_cachedBullish[];
+   FVGInfo          m_cachedBearish[];
+   bool             m_validCacheBuilt;
+   
    //+------------------------------------------------------------------+
    //| Création d'un FVGInfo                                           |
    //+------------------------------------------------------------------+
@@ -134,28 +156,123 @@ private:
       int n = ArraySize(m_fvgList);
       ArrayResize(m_fvgList, n + 1);
       m_fvgList[n] = fvg;
+      m_memoryAllocs++;
+      HashInsert(HashFVG(fvg));
+      m_validCacheBuilt = false; // invalider le cache des listes valides
+   }
+
+   // Reconstruit les caches bullish/bearish valides en une passe optimisée
+   void RebuildValidCaches()
+   {
+      int total = ArraySize(m_fvgList);
+      int nb = 0, ns = 0;
+      for(int i=0;i<total;i++)
+      {
+         if(!m_fvgList[i].IsValid) continue;
+         if(m_fvgList[i].isBullish) nb++; else ns++;
+      }
+      ArrayResize(m_cachedBullish, nb);
+      ArrayResize(m_cachedBearish, ns);
+      int ib=0,is=0;
+      for(int i=0;i<total;i++)
+      {
+         if(!m_fvgList[i].IsValid) continue;
+         if(m_fvgList[i].isBullish) { m_cachedBullish[ib++] = m_fvgList[i]; }
+         else { m_cachedBearish[is++] = m_fvgList[i]; }
+      }
+      m_validCacheBuilt = true;
    }
    
+   // Hash d'un FVG (FNV-1a 32-bit, renvoyé en ulong)
+   ulong HashFVG(const FVGInfo &x) const
+   {
+      uint h = 2166136261;        // offset basis (FNV-1a 32-bit)
+      uint a = (uint)(x.startTime ^ x.endTime);
+      uint b = (uint)MathRound(x.top / m_point);
+      uint c = (uint)MathRound(x.bottom / m_point);
+      uint d = (uint)(x.isBullish ? 1 : 0);
+      const uint FNV_PRIME = 16777619; // FNV prime (32-bit)
+      h ^= a; h *= FNV_PRIME;
+      h ^= b; h *= FNV_PRIME;
+      h ^= c; h *= FNV_PRIME;
+      h ^= d; h *= FNV_PRIME;
+      return (ulong)h;
+   }
+   
+   void EnsureHashCapacity(int minCap)
+   {
+      if(m_fvgHashCap >= minCap * 2) // garder du slack de charge
+         return;
+      int newCap = (m_fvgHashCap <= 0 ? 256 : m_fvgHashCap);
+      while(newCap < minCap * 2) newCap <<= 1;
+      ulong oldKeys[]; uchar oldState[];
+      int oldCap = m_fvgHashCap;
+      // sauvegarde
+      if(oldCap > 0)
+      {
+         ArrayResize(oldKeys, oldCap);
+         ArrayResize(oldState, oldCap);
+         ArrayCopy(oldKeys, m_fvgHashKeys);
+         ArrayCopy(oldState, m_fvgHashState);
+      }
+      ArrayResize(m_fvgHashKeys, newCap);      // init à 0
+      ArrayResize(m_fvgHashState, newCap);     // init à 0
+      m_fvgHashCap = newCap;
+      m_memoryAllocs++;
+      // rehash
+      if(oldCap > 0)
+      {
+         m_fvgHashSize = 0;
+         for(int i=0;i<oldCap;i++)
+         {
+            if(oldState[i]==1)
+            {
+               // réinsérer
+               int idx = (int)(oldKeys[i] & (newCap - 1));
+               while(m_fvgHashState[idx]==1) idx = (idx + 1) & (newCap - 1);
+               m_fvgHashKeys[idx] = oldKeys[i];
+               m_fvgHashState[idx] = 1;
+               m_fvgHashSize++;
+            }
+         }
+      }
+   }
+   
+   bool HashContains(ulong key)
+   {
+      if(m_fvgHashCap==0) return false;
+      int idx = (int)(key & (m_fvgHashCap - 1));
+      while(true)
+      {
+         uchar st = m_fvgHashState[idx];
+         if(st==0) return false;
+         if(st==1 && m_fvgHashKeys[idx]==key) return true;
+         idx = (idx + 1) & (m_fvgHashCap - 1);
+      }
+      return false;
+   }
+   
+   void HashInsert(ulong key)
+   {
+      EnsureHashCapacity(m_fvgHashSize + 1);
+      int idx = (int)(key & (m_fvgHashCap - 1));
+      while(m_fvgHashState[idx]==1 && m_fvgHashKeys[idx]!=key)
+         idx = (idx + 1) & (m_fvgHashCap - 1);
+      if(m_fvgHashState[idx]!=1)
+      {
+         m_fvgHashKeys[idx] = key;
+         m_fvgHashState[idx] = 1;
+         m_fvgHashSize++;
+      }
+   }
+
    //+------------------------------------------------------------------+
    //| Vérifie si un FVG existe déjà                                   |
    //+------------------------------------------------------------------+
    bool ExistsFVG(const FVGInfo &x)
    {
-      long xt1 = (long)x.startTime;
-      long xt2 = (long)x.endTime;
-      long xtop = (long)MathRound(x.top / m_point);
-      long xbot = (long)MathRound(x.bottom / m_point);
-      
-      for(int k = 0; k < ArraySize(m_fvgList); k++)
-      {
-         FVGInfo y = m_fvgList[k];
-         if((long)y.startTime == xt1 && (long)y.endTime == xt2 &&
-            (long)MathRound(y.top / m_point) == xtop &&
-            (long)MathRound(y.bottom / m_point) == xbot && 
-            y.isBullish == x.isBullish)
-            return true;
-      }
-      return false;
+      ulong h = HashFVG(x);
+      return HashContains(h);
    }
    
    //+------------------------------------------------------------------+
@@ -343,6 +460,17 @@ public:
       ArrayResize(m_fvgList, 0);
       ArrayResize(m_atrHandles, 0);
       ArrayResize(m_timeframes, 0);
+      ArrayResize(m_lastBarTime, 0);
+      ArrayResize(m_lastBarsCount, 0);
+      ArrayResize(m_fvgHashKeys, 0);
+      ArrayResize(m_fvgHashState, 0);
+      m_fvgHashSize = 0;
+      m_fvgHashCap = 0;
+      m_processTimeMs = 0;
+      m_invalidateTimeMs = 0;
+      m_cacheHits = 0;
+      m_cacheMisses = 0;
+      m_memoryAllocs = 0;
    }
    
    //+------------------------------------------------------------------+
@@ -392,6 +520,15 @@ public:
       }
       
       ArrayResize(m_fvgList, 0);
+      // init cache TF
+      ArrayResize(m_lastBarTime, ArraySize(timeframes));
+      ArrayResize(m_lastBarsCount, ArraySize(timeframes));
+      for(int i=0;i<ArraySize(timeframes);i++){ m_lastBarTime[i]=0; m_lastBarsCount[i]=0; }
+      // init hash
+      m_fvgHashSize = 0;
+      m_fvgHashCap = 0;
+      ArrayResize(m_fvgHashKeys, 0);
+      ArrayResize(m_fvgHashState, 0);
       m_initialized = true;
       
       LOG_INFO("Initialized for " + symbol + " with " + IntegerToString(ArraySize(timeframes)) + " timeframe(s)");
@@ -443,7 +580,19 @@ public:
          LOG_WARNING("Timeframe " + EnumToString(tf) + " not configured");
          return 0;
       }
-      
+      // Cache: ne recalculer que si nouvelle barre
+      datetime cur = iTime(m_symbol, tf, 0);
+      if(handleIdx >= 0)
+      {
+         if(m_lastBarTime[handleIdx] == cur && m_lastBarTime[handleIdx] != 0)
+         {
+            m_cacheHits++;
+            return 0;
+         }
+      }
+      m_cacheMisses++;
+      ulong t0 = GetMicrosecondCount();
+
       int need = MathMax(m_config.lookbackBars + 10, 500);
       
       MqlRates rates[];
@@ -469,10 +618,20 @@ public:
       // Détection bullish et bearish
       added = DetectBullishGap(rates, atr, eps, tf, added);
       added = DetectBearishGap(rates, atr, eps, tf, added);
+
+      // Enregistrer les nouveaux FVG dans le hashset (parcours du bloc récemment ajouté)
+      // Ici, comme AddFVGToList appelle déjà EnsureFvgCapacity et ajuste la taille,
+      // on insère dans le hash juste après les insertions lors de Detect*.
+      // Note: AddFVGToList n'insère pas dans le hash; le faire au moment de l'ajout.
       
       if(m_config.debugMode)
          LOG_DEBUG("FVG added: " + IntegerToString(added) + " total=" + IntegerToString(ArraySize(m_fvgList)));
       
+      // Mettre à jour état cache
+      if(handleIdx >= 0) m_lastBarTime[handleIdx] = cur;
+      m_processTimeMs += (GetMicrosecondCount() - t0) / 1000;
+      // Rebuild caches une seule fois par nouvelle bougie
+      RebuildValidCaches();
       return added;
    }
    
@@ -484,6 +643,7 @@ public:
       if(!m_initialized)
          return 0;
       
+      ulong t0 = GetMicrosecondCount();
       int invalidated = 0;
       
       for(int idx = 0; idx < ArraySize(m_fvgList); ++idx)
@@ -504,7 +664,8 @@ public:
       
       if(m_config.debugMode && invalidated > 0)
          LOG_DEBUG("Invalidated " + IntegerToString(invalidated) + " FVG(s)");
-      
+      m_invalidateTimeMs += (GetMicrosecondCount() - t0) / 1000;
+      if(invalidated>0) RebuildValidCaches();
       return invalidated;
    }
    
@@ -549,17 +710,21 @@ public:
    //+------------------------------------------------------------------+
    void GetFVGList(FVGInfo &result[], bool validOnly = true)
    {
-      ArrayResize(result, 0);
-      
-      for(int i = 0; i < ArraySize(m_fvgList); i++)
+      if(validOnly && m_validCacheBuilt)
       {
-         if(!validOnly || m_fvgList[i].IsValid)
-         {
-            int k = ArraySize(result);
-            ArrayResize(result, k + 1);
-            result[k] = m_fvgList[i];
-         }
+         int nb = ArraySize(m_cachedBullish);
+         int ns = ArraySize(m_cachedBearish);
+         ArrayResize(result, nb+ns);
+         if(nb>0) ArrayCopy(result, m_cachedBullish, 0, 0, nb);
+         if(ns>0) ArrayCopy(result, m_cachedBearish, nb, 0, ns);
+         return;
       }
+      // Fallback: deux passes pour minimiser les reallocations
+      int count = 0;
+      for(int i=0;i<ArraySize(m_fvgList);i++) if(!validOnly || m_fvgList[i].IsValid) count++;
+      ArrayResize(result, count);
+      int k=0;
+      for(int i=0;i<ArraySize(m_fvgList);i++) if(!validOnly || m_fvgList[i].IsValid) result[k++] = m_fvgList[i];
    }
    
    //+------------------------------------------------------------------+
@@ -567,17 +732,18 @@ public:
    //+------------------------------------------------------------------+
    void GetBullishFVGs(FVGInfo &result[], bool validOnly = true)
    {
-      ArrayResize(result, 0);
-      
-      for(int i = 0; i < ArraySize(m_fvgList); i++)
+      if(validOnly && m_validCacheBuilt)
       {
-         if(m_fvgList[i].isBullish && (!validOnly || m_fvgList[i].IsValid))
-         {
-            int k = ArraySize(result);
-            ArrayResize(result, k + 1);
-            result[k] = m_fvgList[i];
-         }
+         int nb = ArraySize(m_cachedBullish);
+         ArrayResize(result, nb);
+         if(nb>0) ArrayCopy(result, m_cachedBullish);
+         return;
       }
+      int count = 0;
+      for(int i=0;i<ArraySize(m_fvgList);i++) if(m_fvgList[i].isBullish && (!validOnly || m_fvgList[i].IsValid)) count++;
+      ArrayResize(result, count);
+      int k=0;
+      for(int i=0;i<ArraySize(m_fvgList);i++) if(m_fvgList[i].isBullish && (!validOnly || m_fvgList[i].IsValid)) result[k++] = m_fvgList[i];
    }
    
    //+------------------------------------------------------------------+
@@ -585,17 +751,18 @@ public:
    //+------------------------------------------------------------------+
    void GetBearishFVGs(FVGInfo &result[], bool validOnly = true)
    {
-      ArrayResize(result, 0);
-      
-      for(int i = 0; i < ArraySize(m_fvgList); i++)
+      if(validOnly && m_validCacheBuilt)
       {
-         if(!m_fvgList[i].isBullish && (!validOnly || m_fvgList[i].IsValid))
-         {
-            int k = ArraySize(result);
-            ArrayResize(result, k + 1);
-            result[k] = m_fvgList[i];
-         }
+         int ns = ArraySize(m_cachedBearish);
+         ArrayResize(result, ns);
+         if(ns>0) ArrayCopy(result, m_cachedBearish);
+         return;
       }
+      int count = 0;
+      for(int i=0;i<ArraySize(m_fvgList);i++) if(!m_fvgList[i].isBullish && (!validOnly || m_fvgList[i].IsValid)) count++;
+      ArrayResize(result, count);
+      int k=0;
+      for(int i=0;i<ArraySize(m_fvgList);i++) if(!m_fvgList[i].isBullish && (!validOnly || m_fvgList[i].IsValid)) result[k++] = m_fvgList[i];
    }
    
    //+------------------------------------------------------------------+

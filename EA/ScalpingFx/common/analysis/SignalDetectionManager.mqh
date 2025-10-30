@@ -78,10 +78,11 @@ public:
       
       // Mode BREAKOUT : acheter quand le prix CASSE un swing high (suivre la tendance)
       triggerPrice = m_swingAnalyzer.FindHigh();
-      description = "Breakout Buy Signal - Price breaks swing high";
+      
       
       if(triggerPrice > 0)
       {
+         description = "Breakout Buy Signal - Price breaks swing high";
          signal.signalType = ORDER_TYPE_BUY;
          signal.triggerPrice = triggerPrice;
          signal.timestamp = TimeGMT();
@@ -107,10 +108,11 @@ public:
       
       // Mode BREAKOUT : vendre quand le prix CASSE un swing low (suivre la tendance)
       triggerPrice = m_swingAnalyzer.FindLow();
-      description = "Breakout Sell Signal - Price breaks swing low";
+      
       
       if(triggerPrice > 0)
       {
+         description = "Breakout Sell Signal - Price breaks swing low";
          signal.signalType = ORDER_TYPE_SELL;
          signal.triggerPrice = triggerPrice;
          signal.timestamp = TimeGMT();
